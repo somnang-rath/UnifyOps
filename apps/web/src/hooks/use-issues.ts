@@ -1,0 +1,188 @@
+'use client';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryKey,
+} from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { toast } from '@/stores/toast-store';
+import type { Issue, IssueTodo, IssueListResponse } from '@/schemas/issue';
+
+export interface IssueListParams {
+  status?: 'open' | 'closed' | 'all';
+  projectId?: string;
+  type?: string;
+  priority?: string;
+  q?: string;
+  assigneeId?: string;
+}
+
+interface SaveBody {
+  title: string;
+  desc: string;
+  type: string;
+  status: string;
+  priority: string;
+  projectId?: string | null;
+  assigneeId?: string | null;
+  dueDate?: string | null;
+  labels: string[];
+  todos: IssueTodo[];
+}
+
+const issuesService = {
+  list: (params: IssueListParams = {}) =>
+    api
+      .get<IssueListResponse>('/issues', { params })
+      .then((r) => r.data),
+  byId: (id: string) => api.get<Issue>(`/issues/${id}`).then((r) => r.data),
+  create: (b: SaveBody) =>
+    api.post<Issue>('/issues', b).then((r) => r.data),
+  update: (id: string, b: Partial<SaveBody>) =>
+    api.patch<Issue>(`/issues/${id}`, b).then((r) => r.data),
+  remove: (id: string) =>
+    api.delete<{ ok: true }>(`/issues/${id}`).then((r) => r.data),
+  comment: (id: string, body: string) =>
+    api.post<Issue>(`/issues/${id}/comments`, { body }).then((r) => r.data),
+  calendar: (from: string, to: string) =>
+    api
+      .get<Issue[]>('/issues/calendar/range', { params: { from, to } })
+      .then((r) => r.data),
+};
+
+export const useIssues = (params: IssueListParams) =>
+  useQuery({
+    queryKey: ['issues', params],
+    queryFn: () => issuesService.list(params),
+    placeholderData: (prev) => prev,
+  });
+
+export const useIssue = (id: string | null) =>
+  useQuery({
+    queryKey: ['issues', 'byId', id],
+    queryFn: () => issuesService.byId(id!),
+    enabled: !!id,
+  });
+
+export const useCalendarIssues = (from: string, to: string) =>
+  useQuery({
+    queryKey: ['calendar', from, to],
+    queryFn: () => issuesService.calendar(from, to),
+    enabled: !!from && !!to,
+    placeholderData: (prev) => prev,
+  });
+
+// Does a list query's params plausibly include this newly-created issue?
+// We use this to decide whether to optimistically inject the temp issue.
+function queryMatches(params: IssueListParams, body: SaveBody): boolean {
+  if (params.projectId && params.projectId !== (body.projectId ?? undefined))
+    return false;
+  if (
+    params.assigneeId &&
+    params.assigneeId !== (body.assigneeId ?? undefined)
+  )
+    return false;
+  if (params.type && params.type !== body.type) return false;
+  if (params.priority && params.priority !== body.priority) return false;
+  if (params.status === 'open' && body.status === 'done') return false;
+  if (params.status === 'closed' && body.status !== 'done') return false;
+  if (params.q) {
+    const needle = params.q.toLowerCase();
+    const hay = (body.title + ' ' + body.desc).toLowerCase();
+    if (!hay.includes(needle)) return false;
+  }
+  return true;
+}
+
+export function useIssueMutations() {
+  const qc = useQueryClient();
+  const onDone = (msg: string) => () => {
+    toast(msg, 'success');
+    qc.invalidateQueries({ queryKey: ['issues'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['calendar'] });
+  };
+  return {
+    create: useMutation({
+      mutationFn: issuesService.create,
+      onMutate: async (body) => {
+        await qc.cancelQueries({ queryKey: ['issues'] });
+
+        const tempId = 'temp_' + Math.random().toString(36).slice(2, 10);
+        const now = new Date().toISOString();
+        const optimistic: Issue = {
+          _id: tempId,
+          title: body.title,
+          desc: body.desc,
+          type: body.type as Issue['type'],
+          status: body.status,
+          priority: body.priority as Issue['priority'],
+          projectId: body.projectId ?? undefined,
+          assigneeId: body.assigneeId ?? undefined,
+          authorId: '',
+          dueDate: body.dueDate ?? undefined,
+          labels: body.labels,
+          todos: body.todos,
+          comments: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const prev: Array<[QueryKey, IssueListResponse]> = [];
+        const queries = qc.getQueriesData<IssueListResponse>({
+          queryKey: ['issues'],
+        });
+        for (const [key, data] of queries) {
+          // Only the list queries: ['issues', params] (skip ['issues','byId',id])
+          if (key.length !== 2 || typeof key[1] !== 'object' || !key[1]) continue;
+          if (!data) continue;
+          const params = key[1] as IssueListParams;
+          if (!queryMatches(params, body)) continue;
+          prev.push([key, data]);
+          const isDone = body.status === 'done';
+          qc.setQueryData<IssueListResponse>(key, {
+            items: [optimistic, ...data.items],
+            totals: {
+              open: data.totals.open + (isDone ? 0 : 1),
+              closed: data.totals.closed + (isDone ? 1 : 0),
+              all: data.totals.all + 1,
+            },
+          });
+        }
+        return { prev, tempId };
+      },
+      onError: (_e, _body, ctx) => {
+        if (!ctx) return;
+        for (const [key, data] of ctx.prev) qc.setQueryData(key, data);
+      },
+      onSuccess: () => toast('Issue created', 'success'),
+      onSettled: () => {
+        qc.invalidateQueries({ queryKey: ['issues'] });
+        qc.invalidateQueries({ queryKey: ['dashboard'] });
+        qc.invalidateQueries({ queryKey: ['calendar'] });
+      },
+    }),
+    update: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: Partial<SaveBody> }) =>
+        issuesService.update(id, body),
+      onSuccess: (issue) => {
+        qc.setQueryData(['issues', 'byId', issue._id], issue);
+        qc.invalidateQueries({ queryKey: ['issues'] });
+        qc.invalidateQueries({ queryKey: ['dashboard'] });
+        qc.invalidateQueries({ queryKey: ['calendar'] });
+      },
+    }),
+    remove: useMutation({
+      mutationFn: issuesService.remove,
+      onSuccess: onDone('Issue deleted'),
+    }),
+    comment: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: string }) =>
+        issuesService.comment(id, body),
+      onSuccess: (issue) => {
+        qc.setQueryData(['issues', 'byId', issue._id], issue);
+      },
+    }),
+  };
+}
