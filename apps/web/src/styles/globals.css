@@ -659,6 +659,68 @@
   }
 }
 
+/* ── Moveable canvas handles (report / canvas editor) ───────────
+   Override react-moveable's default large 14px bright-blue handles
+   with smaller, subtler handles that don't obscure element content.
+   ─────────────────────────────────────────────────────────────── */
+
+/* Selection border lines (the 4 sides around the element) */
+.moveable-control-box .moveable-line.moveable-direction {
+  background: rgba(99, 102, 241, 0.55) !important;
+}
+
+/* All resize / edge handles */
+.moveable-control-box .moveable-control {
+  width:        7px !important;
+  height:       7px !important;
+  margin-top:  -3.5px !important;
+  margin-left: -3.5px !important;
+  background:   #ffffff !important;
+  border:       1.5px solid rgba(99, 102, 241, 0.75) !important;
+  border-radius: 2px !important;
+  box-shadow:   0 1px 3px rgba(0, 0, 0, 0.15) !important;
+  transition:   box-shadow 120ms, border-color 120ms !important;
+}
+.moveable-control-box .moveable-control:hover {
+  border-color: rgba(99, 102, 241, 1) !important;
+  box-shadow:   0 1px 6px rgba(99, 102, 241, 0.35) !important;
+}
+
+/* Rotation handle — keep round, slightly larger so it's easy to grab */
+.moveable-control-box .moveable-control.moveable-rotation {
+  width:        9px !important;
+  height:       9px !important;
+  margin-top:  -4.5px !important;
+  margin-left: -4.5px !important;
+  border-radius: 50% !important;
+  background:   #ffffff !important;
+  border:       1.5px solid rgba(239, 68, 68, 0.65) !important;
+  box-shadow:   0 1px 4px rgba(239, 68, 68, 0.2) !important;
+}
+.moveable-control-box .moveable-control.moveable-rotation:hover {
+  border-color: rgba(239, 68, 68, 1) !important;
+  box-shadow:   0 1px 8px rgba(239, 68, 68, 0.35) !important;
+}
+
+/* Rotation arm (line from element top to rotation handle) */
+.moveable-control-box .moveable-line.moveable-rotation-line {
+  background: rgba(99, 102, 241, 0.35) !important;
+  width:      1px !important;
+}
+
+/* Dark theme — invert the handle fill so it stays visible */
+[data-theme='dark'] .moveable-control-box .moveable-control {
+  background: #1e1e36 !important;
+  border-color: rgba(129, 140, 248, 0.8) !important;
+}
+[data-theme='dark'] .moveable-control-box .moveable-line.moveable-direction {
+  background: rgba(129, 140, 248, 0.5) !important;
+}
+[data-theme='dark'] .moveable-control-box .moveable-control.moveable-rotation {
+  background: #1e1e36 !important;
+  border-color: rgba(252, 165, 165, 0.75) !important;
+}
+
 /* Print styles — hide app chrome and bleed the sheet grid to the page. */
 @media print {
   /* Hide everything except the spreadsheet shell. The shell carries the

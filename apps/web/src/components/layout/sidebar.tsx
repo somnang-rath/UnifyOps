@@ -8,6 +8,7 @@ import {
   Calendar,
   CheckSquare,
   Database,
+  FileBarChart2,
   FileText,
   Grid3x3,
   Home,
@@ -62,6 +63,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/wiki", label: "Wiki", Icon: BookOpen },
       { href: "/notes", label: "Notes", Icon: StickyNote },
       { href: "/tables", label: "Tables", Icon: Database },
+      { href: "/reports", label: "Reports", Icon: FileBarChart2 },
     ],
   },
   {

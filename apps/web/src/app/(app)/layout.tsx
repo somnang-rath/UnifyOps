@@ -42,6 +42,9 @@ export default function AppLayout({
 
   if (!booted || !user) return <LoadingScreen />;
 
+  // Report editor gets a full-screen layout — no topbar overhead, no content padding
+  const isReportEditor = /\/reports\/[^/]+\/edit/.test(pathname);
+
   return (
     <div className="min-h-screen">
       <NavigationProgress />
@@ -52,8 +55,16 @@ export default function AppLayout({
           collapsed ? 'ml-sb-collapsed' : 'ml-sb',
         )}
       >
-        <Topbar />
-        <main className="px-6 py-5">{children}</main>
+        {!isReportEditor && <Topbar />}
+        <main
+          className={cn(
+            isReportEditor
+              ? 'h-screen overflow-hidden'
+              : 'px-6 py-5',
+          )}
+        >
+          {children}
+        </main>
       </div>
       <CommandPalette />
     </div>

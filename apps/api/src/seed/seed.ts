@@ -15,6 +15,7 @@ import { KanbanPosition, KanbanPositionDocument } from '../modules/kanban/schema
 import { Workbook, WorkbookDocument } from '../modules/workbooks/schemas/workbook.schema';
 import { FileItem, FileItemDocument } from '../modules/files/schemas/file.schema';
 import { Folder, FolderDocument } from '../modules/files/schemas/folder.schema';
+import { ReportTemplate, ReportTemplateDocument } from '../modules/reports/schemas/report-template.schema';
 import { RolesService } from '../modules/roles/roles.service';
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -59,8 +60,9 @@ async function run() {
   const kbBoardModel = app.get<Model<KanbanBoardDocument>>(getModelToken(KanbanBoard.name));
   const kbPosModel   = app.get<Model<KanbanPositionDocument>>(getModelToken(KanbanPosition.name));
   const wbModel      = app.get<Model<WorkbookDocument>>(getModelToken(Workbook.name));
-  const fileModel    = app.get<Model<FileItemDocument>>(getModelToken(FileItem.name));
+  const fileModel       = app.get<Model<FileItemDocument>>(getModelToken(FileItem.name));
   const fileFolderModel = app.get<Model<FolderDocument>>(getModelToken(Folder.name));
+  const reportModel     = app.get<Model<ReportTemplateDocument>>(getModelToken(ReportTemplate.name));
 
   // ── 1. Users ──────────────────────────────────────────────────────────────
   const userMap: Record<string, Types.ObjectId> = {};
@@ -112,6 +114,7 @@ async function run() {
   await wbModel.deleteMany({ ownerId: { $in: [admin, sales, cpo, dev, mkt] } });
   await fileModel.deleteMany({ ownerId: { $in: [admin, cpo, mkt, dev, dev2, dev3, mkt2, sales] } });
   await fileFolderModel.deleteMany({ ownerId: { $in: [admin, cpo, mkt, dev, dev2, mkt2, sales] } });
+  await reportModel.deleteMany({ ownerId: { $in: [admin, cpo, mkt, sales] } });
 
   // ── 3. Projects ───────────────────────────────────────────────────────────
   const projects = await projectModel.insertMany([
@@ -1624,7 +1627,240 @@ Critical bugs go straight to the Mobile App project as issues with label \`beta-
   ]);
 
   console.log('✓ Workbooks seeded');
-  console.log('\n🌱 Seed complete — users, projects, issues, kanban, MRs, wiki (30+ pages), notes (20+ notes), files (50+ records), workbooks (6) created.\n');
+
+  // ── Report templates ──────────────────────────────────────────────────────
+  const uid7 = () => Math.random().toString(36).slice(2, 9);
+
+  await reportModel.insertMany([
+    // ── Demo report: Table (URL datasource) + Chart ──────────────────────────
+    {
+      ownerId: admin,
+      name: 'Team Overview — Demo Report',
+      description: 'Sample report with a URL-connected table and a revenue bar chart.',
+      pageSize: 'A4',
+      orientation: 'portrait',
+      background: '#ffffff',
+      pages: [{ id: 'page-1' }],
+      schedule: { enabled: false, frequency: 'monthly', hour: 8 },
+      recipients: [],
+      permissions: { allowDownload: true, allowedFormats: ['pdf'] },
+      elements: [
+        // ── Page heading ──────────────────────────────────────────────────
+        {
+          id: uid7(), type: 'heading', x: 40, y: 30, w: 714, h: 56, rotation: 0, zIndex: 1,
+          props: {
+            content: 'Team Overview',
+            fontSize: 32, bold: true, color: '#111827',
+            textAlign: 'left', lineHeight: 1.2,
+          },
+        },
+        // ── Sub-heading ───────────────────────────────────────────────────
+        {
+          id: uid7(), type: 'text', x: 40, y: 88, w: 714, h: 28, rotation: 0, zIndex: 2,
+          props: {
+            content: 'Generated from JSONPlaceholder — https://jsonplaceholder.typicode.com/users',
+            fontSize: 11, color: '#6b7280', italic: true,
+          },
+        },
+        // ── Divider ───────────────────────────────────────────────────────
+        {
+          id: uid7(), type: 'divider', x: 40, y: 124, w: 714, h: 2, rotation: 0, zIndex: 3,
+          props: { color: '#e5e7eb', thickness: 1 },
+        },
+        // ── Table (pre-populated from JSONPlaceholder /users) ─────────────
+        {
+          id: uid7(), type: 'table', x: 40, y: 140, w: 714, h: 200, rotation: 0, zIndex: 4,
+          props: {
+            headerBg: '#f3f4f6', headerColor: '#374151',
+            fontSize: 12, stripedRows: true,
+            columns: ['Name', 'Email', 'Phone', 'Website'],
+            rows: [
+              { Name: 'Leanne Graham',   Email: 'Sincere@april.biz',          Phone: '1-770-736-8031 x56442', Website: 'hildegard.org' },
+              { Name: 'Ervin Howell',    Email: 'Shanna@melissa.tv',          Phone: '010-692-6593 x09125',   Website: 'anastasia.net' },
+              { Name: 'Clementine Bauch',Email: 'Nathan@yesenia.net',         Phone: '1-463-123-4447',        Website: 'ramiro.info' },
+              { Name: 'Patricia Lebsack',Email: 'Julianne.OConner@kory.org',  Phone: '493-170-9623 x156',     Website: 'kale.biz' },
+              { Name: 'Chelsey Dietrich',Email: 'Lucio_Hettinger@annie.ca',   Phone: '(254)954-1289',         Website: 'demarco.info' },
+              { Name: 'Mrs. Dennis Schulist', Email: 'Karley_Dach@jasper.info', Phone: '1-477-935-8478 x6430', Website: 'ola.org' },
+              { Name: 'Kurtis Weissnat', Email: 'Telly.Hoeger@billy.biz',     Phone: '210.067.6132',          Website: 'elvis.io' },
+              { Name: 'Nicholas Runolfsdottir V', Email: 'Sherwood@rosamond.me', Phone: '586.493.6943 x140',  Website: 'jacynthe.com' },
+              { Name: 'Glenna Reichert', Email: 'Chaim_McDermott@dana.io',    Phone: '(775)976-6794 x41206',  Website: 'conrad.com' },
+              { Name: 'Clementina DuBuque', Email: 'Rey.Padberg@karina.biz',  Phone: '024-648-3804',          Website: 'ambrose.net' },
+            ],
+            dataSource: {
+              url: 'https://jsonplaceholder.typicode.com/users',
+              method: 'GET',
+              dataPath: '',
+              columnDefs: [
+                { key: 'name',    label: 'Name' },
+                { key: 'email',   label: 'Email' },
+                { key: 'phone',   label: 'Phone' },
+                { key: 'website', label: 'Website' },
+              ],
+            },
+          },
+        },
+        // ── Section label ─────────────────────────────────────────────────
+        {
+          id: uid7(), type: 'text', x: 40, y: 358, w: 714, h: 24, rotation: 0, zIndex: 5,
+          props: {
+            content: 'Quarterly Revenue (Sample Data)',
+            fontSize: 13, bold: true, color: '#111827',
+          },
+        },
+        // ── Bar chart (quarterly revenue) ─────────────────────────────────
+        {
+          id: uid7(), type: 'chart', x: 40, y: 388, w: 714, h: 260, rotation: 0, zIndex: 6,
+          props: {
+            chartType: 'bar',
+            seriesData: [
+              { name: 'Q1 2025', value: 128000, color: '#6366f1' },
+              { name: 'Q2 2025', value: 154000, color: '#8b5cf6' },
+              { name: 'Q3 2025', value: 142000, color: '#a78bfa' },
+              { name: 'Q4 2025', value: 193000, color: '#c4b5fd' },
+            ],
+            background: '#f9fafb',
+            borderRadius: 8,
+            borderSides: ['top','right','bottom','left'],
+            borderColor: '#e5e7eb',
+            borderWidth: 1,
+            borderStyle: 'solid',
+            paddingX: 16,
+            paddingY: 12,
+          },
+        },
+        // ── Progress bars row ─────────────────────────────────────────────
+        {
+          id: uid7(), type: 'progress-bar', x: 40, y: 668, w: 340, h: 56, rotation: 0, zIndex: 7,
+          props: {
+            label: 'Sprint Completion',
+            value: 72, maxValue: 100,
+            color: '#6366f1', trackColor: '#e0e7ff',
+            barHeight: 12, fontSize: 11, showValue: true, rounded: true,
+          },
+        },
+        {
+          id: uid7(), type: 'progress-bar', x: 414, y: 668, w: 340, h: 56, rotation: 0, zIndex: 8,
+          props: {
+            label: 'Revenue Target',
+            value: 617000, maxValue: 1000000,
+            color: '#10b981', trackColor: '#d1fae5',
+            barHeight: 12, fontSize: 11, showValue: true, rounded: true,
+          },
+        },
+        // ── Page number ───────────────────────────────────────────────────
+        {
+          id: uid7(), type: 'page-number', x: 40, y: 1090, w: 714, h: 24, rotation: 0, zIndex: 9,
+          props: { fontSize: 10, color: '#9ca3af', format: 'page', align: 'center' },
+        },
+      ],
+    },
+
+    // ── Sales pipeline report ─────────────────────────────────────────────────
+    {
+      ownerId: sales,
+      name: 'Sales Pipeline — Q2 2025',
+      description: 'Pipeline snapshot with deal stages and a win-rate chart.',
+      pageSize: 'A4',
+      orientation: 'portrait',
+      background: '#ffffff',
+      pages: [{ id: 'page-1' }],
+      schedule: { enabled: false, frequency: 'monthly', hour: 8 },
+      recipients: [],
+      permissions: { allowDownload: true, allowedFormats: ['pdf'] },
+      elements: [
+        {
+          id: uid7(), type: 'heading', x: 40, y: 30, w: 714, h: 56, rotation: 0, zIndex: 1,
+          props: { content: 'Sales Pipeline — Q2 2025', fontSize: 30, bold: true, color: '#111827' },
+        },
+        {
+          id: uid7(), type: 'divider', x: 40, y: 94, w: 714, h: 2, rotation: 0, zIndex: 2,
+          props: { color: '#e5e7eb', thickness: 1 },
+        },
+        // KPI widgets row
+        {
+          id: uid7(), type: 'data-widget', x: 40, y: 110, w: 215, h: 100, rotation: 0, zIndex: 3,
+          props: {
+            kpiLabel: 'Total Deals', kpiValue: '38',
+            kpiTrend: 6, kpiTrendLabel: 'vs last quarter',
+            background: '#f0fdf4', borderRadius: 10,
+            borderSides: ['top','right','bottom','left'], borderColor: '#86efac', borderWidth: 1, borderStyle: 'solid',
+          },
+        },
+        {
+          id: uid7(), type: 'data-widget', x: 270, y: 110, w: 215, h: 100, rotation: 0, zIndex: 4,
+          props: {
+            kpiLabel: 'Pipeline Value', kpiValue: '$2.4M',
+            kpiTrend: 18, kpiTrendLabel: 'vs last quarter',
+            background: '#eff6ff', borderRadius: 10,
+            borderSides: ['top','right','bottom','left'], borderColor: '#93c5fd', borderWidth: 1, borderStyle: 'solid',
+          },
+        },
+        {
+          id: uid7(), type: 'data-widget', x: 500, y: 110, w: 215, h: 100, rotation: 0, zIndex: 5,
+          props: {
+            kpiLabel: 'Win Rate', kpiValue: '34%',
+            kpiTrend: -3, kpiTrendLabel: 'vs last quarter',
+            background: '#fef3c7', borderRadius: 10,
+            borderSides: ['top','right','bottom','left'], borderColor: '#fcd34d', borderWidth: 1, borderStyle: 'solid',
+          },
+        },
+        // Deal stages table
+        {
+          id: uid7(), type: 'table', x: 40, y: 228, w: 714, h: 220, rotation: 0, zIndex: 6,
+          props: {
+            headerBg: '#1e293b', headerColor: '#f8fafc',
+            fontSize: 12, stripedRows: true,
+            columns: ['Deal', 'Company', 'Stage', 'Value', 'Close Date', 'Owner'],
+            rows: [
+              { Deal: 'Enterprise License', Company: 'Acme Corp',    Stage: 'Proposal Sent', Value: '$480,000', 'Close Date': '2025-06-30', Owner: 'Sam Rivera' },
+              { Deal: 'SaaS Annual Plan',   Company: 'TechFlow Inc', Stage: 'Active Deal',   Value: '$124,000', 'Close Date': '2025-06-15', Owner: 'Michael Wong' },
+              { Deal: 'Team Seats ×50',     Company: 'StartUp Hub',  Stage: 'Active Deal',   Value: '$60,000',  'Close Date': '2025-07-01', Owner: 'Priya Sharma' },
+              { Deal: 'Consulting Package', Company: 'Global Media', Stage: 'Closed Won',    Value: '$95,000',  'Close Date': '2025-05-20', Owner: 'Sam Rivera' },
+              { Deal: 'API Access Tier 3',  Company: 'DataBridge',   Stage: 'Prospecting',   Value: '$36,000',  'Close Date': '2025-07-31', Owner: 'Michael Wong' },
+              { Deal: 'Custom Integration', Company: 'BankFirst',    Stage: 'Proposal Sent', Value: '$220,000', 'Close Date': '2025-06-28', Owner: 'Sam Rivera' },
+            ],
+          },
+        },
+        // Win-rate pie / bar chart
+        {
+          id: uid7(), type: 'chart', x: 40, y: 462, w: 340, h: 220, rotation: 0, zIndex: 7,
+          props: {
+            chartType: 'pie',
+            seriesData: [
+              { name: 'Closed Won',   value: 13, color: '#22c55e' },
+              { name: 'In Progress',  value: 18, color: '#6366f1' },
+              { name: 'Prospecting',  value: 7,  color: '#f59e0b' },
+            ],
+            background: '#f9fafb', borderRadius: 8,
+            borderSides: ['top','right','bottom','left'], borderColor: '#e5e7eb', borderWidth: 1, borderStyle: 'solid',
+            paddingX: 12, paddingY: 12,
+          },
+        },
+        // Revenue by owner bar chart
+        {
+          id: uid7(), type: 'chart', x: 400, y: 462, w: 354, h: 220, rotation: 0, zIndex: 8,
+          props: {
+            chartType: 'bar',
+            seriesData: [
+              { name: 'Sam Rivera',    value: 795000, color: '#6366f1' },
+              { name: 'Michael Wong',  value: 160000, color: '#f59e0b' },
+              { name: 'Priya Sharma',  value: 60000,  color: '#22c55e' },
+            ],
+            background: '#f9fafb', borderRadius: 8,
+            borderSides: ['top','right','bottom','left'], borderColor: '#e5e7eb', borderWidth: 1, borderStyle: 'solid',
+            paddingX: 12, paddingY: 12,
+          },
+        },
+        {
+          id: uid7(), type: 'page-number', x: 40, y: 1090, w: 714, h: 24, rotation: 0, zIndex: 9,
+          props: { fontSize: 10, color: '#9ca3af', format: 'page', align: 'center' },
+        },
+      ],
+    },
+  ]);
+
+  console.log('✓ Report templates seeded');
+  console.log('\n🌱 Seed complete — users, projects, issues, kanban, MRs, wiki, notes, files, workbooks (6), reports (2) created.\n');
   await app.close();
   process.exit(0);
 }

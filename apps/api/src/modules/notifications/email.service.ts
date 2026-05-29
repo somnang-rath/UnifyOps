@@ -112,6 +112,43 @@ export class EmailService implements OnModuleInit {
     return { subject: `[UnifyOps] ${opts.title}: ${opts.subject}`, text, html };
   }
 
+  async sendReportEmail(opts: {
+    templateName: string;
+    frequency: string;
+    pdfBuffer: Buffer;
+    recipientEmails: string[];
+  }): Promise<void> {
+    if (!opts.recipientEmails.length) {
+      this.logger.debug(`sendReportEmail: "${opts.templateName}" — no recipient emails, skipping`);
+      return;
+    }
+    const subject = `[Report] ${opts.templateName}`;
+    const period = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const html = `
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:560px;margin:0 auto">
+        <tr><td style="padding:16px 0;font-size:12px;letter-spacing:.08em;color:#888;text-transform:uppercase">UnifyOps Reports</td></tr>
+        <tr><td style="padding-bottom:8px;font-size:18px;font-weight:600">${escapeHtml(opts.templateName)}</td></tr>
+        <tr><td style="padding-bottom:20px;font-size:14px;color:#444;line-height:1.55">Your ${opts.frequency} report for <strong>${escapeHtml(period)}</strong> is attached.</td></tr>
+        <tr><td style="border-top:1px solid #eee;padding-top:12px;font-size:11px;color:#888">This is an automated report from UnifyOps.</td></tr>
+      </table>
+    `.trim();
+    const text = `${opts.templateName}\n\nYour ${opts.frequency} report for ${period} is attached.\n\nThis is an automated report from UnifyOps.`;
+    const attachment = {
+      filename: `${opts.templateName.replace(/[^a-z0-9]/gi, '_')}.pdf`,
+      content: opts.pdfBuffer,
+      cid: 'report-pdf',
+      contentType: 'application/pdf',
+    };
+
+    this.logger.log(
+      `sendReportEmail: "${opts.templateName}" (${opts.frequency}) → ${opts.recipientEmails.join(', ')}`,
+    );
+
+    for (const to of opts.recipientEmails) {
+      await this.send({ to, subject, text, html, attachments: [attachment] });
+    }
+  }
+
   buildInviteEmail(opts: {
     name: string;
     email: string;

@@ -16,6 +16,7 @@ export const BUILTIN_ROLES: { key: string; name: string; color: string }[] = [
   { key: 'marketing', name: 'Marketing', color: 'amber' },
   { key: 'sales', name: 'Sales', color: 'emerald' },
   { key: 'dev', name: 'Developer', color: 'slate' },
+  { key: 'user', name: 'User', color: 'slate' },
 ];
 
 @Injectable()

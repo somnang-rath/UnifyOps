@@ -40,7 +40,12 @@ export function Select<T extends string = string>({
   const computePos = React.useCallback(() => {
     if (!btnRef.current) return;
     const r = btnRef.current.getBoundingClientRect();
-    setDropPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    const maxDropH = Math.min(280, window.innerHeight * 0.5);
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const top = spaceBelow >= maxDropH
+      ? r.bottom + 6
+      : Math.max(8, r.top - maxDropH - 6);
+    setDropPos({ top, left: r.left, width: r.width });
   }, []);
 
   const handleOpen = () => {

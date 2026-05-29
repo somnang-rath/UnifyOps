@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono, Kantumruy_Pro } from 'next/font/google';
+import { Inter, JetBrains_Mono, Kantumruy_Pro, Koh_Santepheap } from 'next/font/google';
 import { ThemeBootScript } from '@/components/layout/theme-boot-script';
 import { Providers } from '@/components/providers';
 import '@/styles/globals.css';
@@ -19,6 +19,11 @@ const kantumruy = Kantumruy_Pro({
   weight: ['300', '400', '500', '600', '700'],
   variable: '--font-khmer',
 });
+const kohSantepheap = Koh_Santepheap({
+  subsets: ['khmer', 'latin'],
+  weight: ['300', '400', '700'],
+  variable: '--font-koh-santepheap',
+});
 
 export const metadata: Metadata = {
   title: 'UnifyOps',
@@ -36,7 +41,7 @@ export default function RootLayout({
       <head>
         <ThemeBootScript />
       </head>
-      <body className={`${inter.variable} ${mono.variable} ${kantumruy.variable} font-sans`}>
+      <body className={`${inter.variable} ${mono.variable} ${kantumruy.variable} ${kohSantepheap.variable} font-sans`}>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -325,7 +325,7 @@ function ActionsDropdown({
   onResendInvite: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, right: 0 });
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number }>({ right: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -346,7 +346,14 @@ function ActionsDropdown({
   function handleOpen() {
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
-    setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    const menuHeight = 160; // approximate height of the dropdown
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const right = window.innerWidth - rect.right;
+    if (spaceBelow < menuHeight) {
+      setPos({ bottom: window.innerHeight - rect.top + 4, right });
+    } else {
+      setPos({ top: rect.bottom + 4, right });
+    }
     setOpen((v) => !v);
   }
 
@@ -374,7 +381,7 @@ function ActionsDropdown({
       {open && (
         <div
           ref={menuRef}
-          style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 9999 }}
+          style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, right: pos.right, zIndex: 9999 }}
           className={cn(
             'w-44 rounded-lg border border-border bg-bg-card shadow-lg p-1',
             'animate-fade-in',

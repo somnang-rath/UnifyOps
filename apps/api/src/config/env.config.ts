@@ -13,7 +13,7 @@ export const envSchema = z.object({
   SMTP_PORT: z.coerce.number().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  SMTP_SECURE: z.coerce.boolean().optional(),
+  SMTP_SECURE: z.string().transform(v => v.toLowerCase() === 'true').optional(),
   SMTP_FROM: z.string().optional(),
   ALLOW_PUBLIC_REGISTER: z.coerce.boolean().default(false),
   API_URL: z.string().url().optional(),
