@@ -8,4 +8,5 @@ export const useDashboard = () =>
     queryKey: ['dashboard'],
     queryFn: () =>
       api.get<DashboardOverview>('/dashboard').then((r) => r.data),
+    refetchInterval: 60_000,
   });

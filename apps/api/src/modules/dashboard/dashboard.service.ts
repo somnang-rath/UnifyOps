@@ -46,6 +46,15 @@ export interface DashActivity {
   createdAt: string;
 }
 
+export interface AdminTeamStat {
+  id: string;
+  name: string;
+  avatar?: string;
+  open: number;
+  overdue: number;
+  done: number;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -88,7 +97,8 @@ export class DashboardService {
     };
   }
 
-  async overview(userId: string) {
+  async overview(userId: string, role = 'user') {
+    const isAdmin = role === 'admin';
     const meOid = new Types.ObjectId(userId);
 
     const startOfDay = new Date();
@@ -189,7 +199,8 @@ export class DashboardService {
     const inProgress = issues.filter((i) => i.status === 'inprogress').length;
     const todo = issues.filter((i) => i.status === 'todo').length;
 
-    const projectStats = projects.slice(0, 5).map((p) => {
+    const projectsToStat = isAdmin ? projects : projects.slice(0, 5);
+    const projectStats = projectsToStat.map((p) => {
       const pissues = issues.filter(
         (i) => i.projectId && String(i.projectId) === String(p._id),
       );
@@ -205,6 +216,87 @@ export class DashboardService {
         overdue: pover,
       };
     });
+
+    // Admin-only: per-user task distribution via a single aggregation pass
+    let adminStats:
+      | { totalUsers: number; teamStats: AdminTeamStat[] }
+      | undefined;
+    if (isAdmin) {
+      const [allUsers, taskAgg] = await Promise.all([
+        this.userModel.find({}, { name: 1, avatar: 1 }).lean(),
+        this.issueModel.aggregate<{
+          _id: Types.ObjectId | null;
+          open: number;
+          overdue: number;
+          done: number;
+        }>([
+          {
+            $group: {
+              _id: '$assigneeId',
+              open: {
+                $sum: { $cond: [{ $ne: ['$status', 'done'] }, 1, 0] },
+              },
+              overdue: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $ne: ['$status', 'done'] },
+                        { $lt: ['$dueDate', startOfDay] },
+                        { $ne: [{ $type: '$dueDate' }, 'missing'] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+              done: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ['$status', 'done'] },
+                        { $gte: ['$updatedAt', weekAgo] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          { $match: { _id: { $ne: null } } },
+        ]),
+      ]);
+
+      const taskByUserId = new Map(
+        taskAgg.map((t) => [String(t._id), t]),
+      );
+
+      adminStats = {
+        totalUsers: allUsers.length,
+        teamStats: allUsers
+          .map((u) => {
+            const t = taskByUserId.get(String(u._id)) ?? {
+              open: 0,
+              overdue: 0,
+              done: 0,
+            };
+            return {
+              id: String(u._id),
+              name: u.name as string,
+              avatar: u.avatar as string | undefined,
+              open: t.open,
+              overdue: t.overdue,
+              done: t.done,
+            };
+          })
+          .filter((t) => t.open + t.overdue + t.done > 0)
+          .sort((a, b) => b.open - a.open),
+      };
+    }
 
     const activity: DashActivity[] = recentActivity.map((a) => {
       const actor = actorById.get(String(a.actorId));
@@ -235,6 +327,7 @@ export class DashboardService {
       progress: { done, inProgress, todo, total },
       projectStats,
       activity,
+      adminStats,
     };
   }
 }

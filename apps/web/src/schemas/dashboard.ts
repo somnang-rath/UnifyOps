@@ -22,6 +22,15 @@ export interface DashboardActivity {
   createdAt: string;
 }
 
+export interface AdminTeamStat {
+  id: string;
+  name: string;
+  avatar?: string;
+  open: number;
+  overdue: number;
+  done: number;
+}
+
 export interface DashboardOverview {
   kpi: {
     myOpen: number;
@@ -49,4 +58,8 @@ export interface DashboardOverview {
     overdue: number;
   }>;
   activity: DashboardActivity[];
+  adminStats?: {
+    totalUsers: number;
+    teamStats: AdminTeamStat[];
+  };
 }

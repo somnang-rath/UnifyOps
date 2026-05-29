@@ -22,6 +22,7 @@ import type { ElementDef } from '@/components/feature/reports/elements-sidebar';
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3];
 const SNAP_GRID_PX = 8;
+const HISTORY_CAP = 50;
 
 function snapToGrid(v: number): number {
   return Math.round(v / SNAP_GRID_PX) * SNAP_GRID_PX;
@@ -121,6 +122,16 @@ export interface ReportControllerResult {
 
   // Props change proxy (maps _x/_y/_w/_h/_rotation → element fields)
   onPropsChange: (props: Record<string, unknown>) => void;
+
+  // History (undo / redo)
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+  /** onChange wrapper that pushes a history snapshot before applying. Use this
+   *  for all user-initiated template changes that bypass the controller's
+   *  internal mutations (e.g. PropertiesPanel, PageSetupPanel, page ops). */
+  onChangeTracked: (patch: Partial<ReportTemplate>) => void;
 }
 
 // ── hook ─────────────────────────────────────────────────────────────────────
@@ -188,6 +199,49 @@ export function useReportController({
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
+  // ── history ──────────────────────────────────────────────────────────────
+
+  const historyRef = useRef<{ past: ReportTemplate[]; future: ReportTemplate[] }>({
+    past: [], future: [],
+  });
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const pushHistory = useCallback(() => {
+    historyRef.current.past.push(structuredClone(templateRef.current));
+    if (historyRef.current.past.length > HISTORY_CAP) historyRef.current.past.shift();
+    historyRef.current.future = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, []);
+
+  const historyOnChange = useCallback((patch: Partial<ReportTemplate>) => {
+    pushHistory();
+    onChange(patch);
+  }, [pushHistory, onChange]);
+
+  const undo = useCallback(() => {
+    const { past, future } = historyRef.current;
+    if (past.length === 0) return;
+    const prev = past.pop()!;
+    future.push(structuredClone(templateRef.current));
+    if (future.length > HISTORY_CAP) future.shift();
+    setCanUndo(past.length > 0);
+    setCanRedo(true);
+    onChange(prev);
+  }, [onChange]);
+
+  const redo = useCallback(() => {
+    const { past, future } = historyRef.current;
+    if (future.length === 0) return;
+    const next = future.pop()!;
+    past.push(structuredClone(templateRef.current));
+    if (past.length > HISTORY_CAP) past.shift();
+    setCanUndo(true);
+    setCanRedo(future.length > 0);
+    onChange(next);
+  }, [onChange]);
+
   // ── derived ─────────────────────────────────────────────────────────────
 
   const allElements = template.elements ?? [];
@@ -195,8 +249,8 @@ export function useReportController({
   const currentGroups = allGroups.filter((g) => g.page === currentPage);
 
   const setAllElements = useCallback(
-    (els: ReportElement[]) => onChange({ elements: els }),
-    [onChange],
+    (els: ReportElement[]) => historyOnChange({ elements: els }),
+    [historyOnChange],
   );
 
   // ── zoom ────────────────────────────────────────────────────────────────
@@ -258,7 +312,7 @@ export function useReportController({
           const newPages = allPages.filter((_, i) => !autoPageIdxs.has(i));
           nextElements = nextElements.map((e) => ({ ...e, page: oldToNew.get(e.page ?? 0) ?? (e.page ?? 0) }));
           autoLayoutSigRef.current = '';
-          onChange({ pages: newPages as ReportPage[], elements: nextElements });
+          historyOnChange({ pages: newPages as ReportPage[], elements: nextElements });
           if (selectedId === id) setSelectedId(null);
           return;
         }
@@ -370,18 +424,18 @@ export function useReportController({
       ...e, id: uid(), x: e.x + 20, y: e.y + 20,
       groupId: newGroupId, zIndex: allElements.length + i,
     }));
-    onChange({ groups: [...allGroups, newGroup], elements: [...allElements, ...newEls] });
+    historyOnChange({ groups: [...allGroups, newGroup], elements: [...allElements, ...newEls] });
     setSelectedIds(newEls.map((e) => e.id));
-  }, [allElements, allGroups, onChange, setSelectedIds]);
+  }, [allElements, allGroups, historyOnChange, setSelectedIds]);
 
   const ungroupGroup = useCallback((groupId: string) => {
-    onChange({
+    historyOnChange({
       groups: allGroups.filter((g) => g.id !== groupId),
       elements: allElements.map((e) =>
         e.groupId === groupId ? { ...e, groupId: undefined } : e,
       ),
     });
-  }, [allElements, allGroups, onChange]);
+  }, [allElements, allGroups, historyOnChange]);
 
   /** Apply a patch to multiple elements atomically — used for group drag-end. */
   const updateElementBatch = useCallback(
@@ -469,12 +523,12 @@ export function useReportController({
       if (ids.length < 2) return;
       const count = allGroups.filter((g) => g.page === currentPage).length;
       const newGroup: ReportGroup = { id: uid(), name: `Group ${count + 1}`, page: currentPage };
-      onChange({
+      historyOnChange({
         groups: [...allGroups, newGroup],
         elements: allElements.map((e) => (ids.includes(e.id) ? { ...e, groupId: newGroup.id } : e)),
       });
     },
-    [allGroups, allElements, currentPage, onChange],
+    [allGroups, allElements, currentPage, historyOnChange],
   );
 
   // ── groups ────────────────────────────────────────────────────────────────
@@ -482,19 +536,23 @@ export function useReportController({
   const createGroup = useCallback(() => {
     const count = allGroups.filter((g) => g.page === currentPage).length;
     const newGroup: ReportGroup = { id: uid(), name: `Group ${count + 1}`, page: currentPage };
-    onChange({ groups: [...allGroups, newGroup] });
-  }, [allGroups, currentPage, onChange]);
+    historyOnChange({ groups: [...allGroups, newGroup] });
+  }, [allGroups, currentPage, historyOnChange]);
 
   const deleteGroup = useCallback((groupId: string) => {
-    onChange({
-      groups: allGroups.filter((g) => g.id !== groupId),
-      elements: allElements.map((e) => e.groupId === groupId ? { ...e, groupId: undefined } : e),
+    historyOnChange({
+      groups:   allGroups.filter((g) => g.id !== groupId),
+      elements: allElements.filter((e) => e.groupId !== groupId),
     });
-  }, [allGroups, allElements, onChange]);
+    // Clear selection when the selected element was inside the deleted group
+    if (allElements.find((e) => e.id === selectedId)?.groupId === groupId) {
+      setSelectedId(null);
+    }
+  }, [allGroups, allElements, historyOnChange, selectedId, setSelectedId]);
 
   const renameGroup = useCallback((groupId: string, name: string) => {
-    onChange({ groups: allGroups.map((g) => (g.id === groupId ? { ...g, name } : g)) });
-  }, [allGroups, onChange]);
+    historyOnChange({ groups: allGroups.map((g) => (g.id === groupId ? { ...g, name } : g)) });
+  }, [allGroups, historyOnChange]);
 
   const toggleGroupCollapse = useCallback((groupId: string) => {
     onChange({ groups: allGroups.map((g) => (g.id === groupId ? { ...g, collapsed: !g.collapsed } : g)) });
@@ -646,6 +704,13 @@ export function useReportController({
   const nudgeSelectedRef = useRef(nudgeSelected);
   nudgeSelectedRef.current = nudgeSelected;
 
+  // Stable refs for undo/redo — prevents the keyboard listener from
+  // re-registering every render just because onChange changed.
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  const redoRef = useRef(redo);
+  redoRef.current = redo;
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -653,14 +718,22 @@ export function useReportController({
       if (tag === 'INPUT' || tag === 'TEXTAREA' || isEditable) return;
 
       const ctrlKey = e.ctrlKey || e.metaKey;
+      // Normalise to lowercase — Shift changes e.key to uppercase ('Z','C'…)
+      // which would break Ctrl+Shift+Z and similar combos.
+      const key = e.key.toLowerCase();
       // Use ref so the handler always sees the latest selection without
       // needing to re-create the effect on every selection change.
       const ids = selectedIdsRef.current;
 
+      // ── undo / redo ───────────────────────────────────────────────────
+      if (ctrlKey && !e.shiftKey && key === 'z') { e.preventDefault(); undoRef.current(); }
+      if (ctrlKey && e.shiftKey  && key === 'z') { e.preventDefault(); redoRef.current(); }
+      if (ctrlKey && key === 'y')                 { e.preventDefault(); redoRef.current(); }
+
       // ── copy / paste / duplicate / delete / escape ───────────────────
-      if (ctrlKey && e.key === 'c' && selectedId)    { e.preventDefault(); copyElement(selectedId); }
-      if (ctrlKey && e.key === 'v')                   { e.preventDefault(); pasteElement(); }
-      if (ctrlKey && e.key === 'd' && ids.length > 0) { e.preventDefault(); duplicateSelected(ids); }
+      if (ctrlKey && key === 'c' && selectedId)    { e.preventDefault(); copyElement(selectedId); }
+      if (ctrlKey && key === 'v')                   { e.preventDefault(); pasteElement(); }
+      if (ctrlKey && key === 'd' && ids.length > 0) { e.preventDefault(); duplicateSelected(ids); }
       if (e.key === 'Delete' && ids.length > 0) {
         e.preventDefault();
         if (ids.length === 1) deleteElement(ids[0]);
@@ -711,6 +784,7 @@ export function useReportController({
     return () => window.removeEventListener('keydown', onKey);
   }, [
     selectedId,
+    // undo/redo accessed via undoRef/redoRef — omitted to keep the listener stable
     copyElement, pasteElement, duplicateSelected, deleteElement, deleteSelected,
     zoomIn, zoomOut, setSelectedId,
     // nudgeSelected intentionally omitted — accessed via nudgeSelectedRef above
@@ -749,5 +823,8 @@ export function useReportController({
     handleAutoPaginate, handleActualFit,
     // add & props
     addElement, onPropsChange,
+    // history
+    canUndo, canRedo, undo, redo,
+    onChangeTracked: historyOnChange,
   };
 }

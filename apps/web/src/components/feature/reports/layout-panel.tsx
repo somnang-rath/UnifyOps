@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -183,7 +183,18 @@ export function LayoutPanel({
 
   // ── Context menu ────────────────────────────────────────────────────────────
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const [ctxPos, setCtxPos]   = useState({ left: 0, top: 0 });
   const ctxRef = useRef<HTMLDivElement>(null);
+
+  // useLayoutEffect fires before the browser paints — measure the rendered menu
+  // and flip it up/left so it never overflows the viewport.
+  useLayoutEffect(() => {
+    if (!ctxMenu || !ctxRef.current) return;
+    const { offsetWidth: w, offsetHeight: h } = ctxRef.current;
+    const left = ctxMenu.x + w > window.innerWidth  ? ctxMenu.x - w : ctxMenu.x;
+    const top  = ctxMenu.y + h > window.innerHeight ? ctxMenu.y - h : ctxMenu.y;
+    setCtxPos({ left: Math.max(0, left), top: Math.max(0, top) });
+  }, [ctxMenu]);
 
   // ── Rename state ────────────────────────────────────────────────────────────
   // kind 'element' → uses onRename; kind 'group' → uses onRenameGroup
@@ -593,8 +604,8 @@ export function LayoutPanel({
       {ctxMenu && (
         <div
           ref={ctxRef}
-          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="bg-bg-card border border-border rounded-lg shadow-lg py-1 min-w-[168px] animate-fade-in"
+          style={{ position: 'fixed', left: ctxPos.left, top: ctxPos.top, zIndex: 9999 }}
+          className="bg-bg-card border border-border rounded-lg shadow-lg py-1 min-w-[168px] max-h-[calc(100vh-16px)] overflow-y-auto animate-fade-in"
         >
           {ctxMenu.target.kind === 'element' && (() => {
             const id = ctxMenu.target.id;
