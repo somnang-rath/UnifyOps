@@ -708,19 +708,55 @@ export function useReportController({
   }, [selectedId, allElements, updateElement]);
 
   // ── keyboard shortcuts ───────────────────────────────────────────────────
-  // nudgeSelected is now stable (no allElements dep), so we access it via a
-  // ref to avoid re-registering the window listener on every nudge.
 
   const nudgeSelectedRef = useRef(nudgeSelected);
   nudgeSelectedRef.current = nudgeSelected;
 
-  // Stable refs for undo/redo — prevents the keyboard listener from
-  // re-registering every render just because onChange changed.
   const undoRef = useRef(undo);
   undoRef.current = undo;
   const redoRef = useRef(redo);
   redoRef.current = redo;
 
+  // ── Arrow-key nudge — capture phase ────────────────────────────────────
+  // Must run in the capture phase (before Moveable's own keydown handlers)
+  // because Moveable calls stopPropagation on keyboard events on its handles,
+  // which would silently swallow arrow keys in the bubble-phase listener.
+  // Also fixes snap-to-grid: when grid is on, 1 px step snaps back to the
+  // same grid position, so we use SNAP_GRID_PX as the step instead.
+  // All state is read via refs so this effect is registered exactly once.
+  useEffect(() => {
+    const onArrow = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      const isEditable = (e.target as HTMLElement).isContentEditable;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || isEditable) return;
+      if (e.ctrlKey || e.metaKey) return;
+      const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+                      e.key === 'ArrowUp'   || e.key === 'ArrowDown';
+      if (!isArrow) return;
+      const ids = selectedIdsRef.current;
+      if (ids.length === 0) return;
+
+      e.preventDefault();
+      e.stopPropagation(); // prevent Moveable / scroll handlers from also reacting
+
+      const step = e.shiftKey ? 10 : (snapGridRef.current ? SNAP_GRID_PX : 1);
+      let nudgeIds = ids;
+      if (ids.length === 1) {
+        const elems = templateRef.current.elements ?? [];
+        const el = elems.find((elem) => elem.id === ids[0]);
+        if (el?.groupId) {
+          nudgeIds = elems.filter((elem) => elem.groupId === el.groupId).map((elem) => elem.id);
+        }
+      }
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+      const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0;
+      nudgeSelectedRef.current(nudgeIds, dx, dy);
+    };
+    window.addEventListener('keydown', onArrow, true);
+    return () => window.removeEventListener('keydown', onArrow, true);
+  }, []); // stable — all state accessed via refs
+
+  // ── Other keyboard shortcuts (bubble phase) ─────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -728,11 +764,7 @@ export function useReportController({
       if (tag === 'INPUT' || tag === 'TEXTAREA' || isEditable) return;
 
       const ctrlKey = e.ctrlKey || e.metaKey;
-      // Normalise to lowercase — Shift changes e.key to uppercase ('Z','C'…)
-      // which would break Ctrl+Shift+Z and similar combos.
       const key = e.key.toLowerCase();
-      // Use ref so the handler always sees the latest selection without
-      // needing to re-create the effect on every selection change.
       const ids = selectedIdsRef.current;
 
       // ── undo / redo ───────────────────────────────────────────────────
@@ -760,29 +792,6 @@ export function useReportController({
       if (ctrlKey && e.key === '-')                     { e.preventDefault(); zoomOut(); }
       if (ctrlKey && e.key === '0')                     { e.preventDefault(); setScale(1); }
 
-      // ── arrow-key nudge — works for single OR multi selection ────────
-      //   Arrow → 1 px, Shift+Arrow → 10 px
-      //   Single grouped element → nudges the entire group together.
-      if (ids.length > 0 && !ctrlKey) {
-        const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
-                        e.key === 'ArrowUp'   || e.key === 'ArrowDown';
-        if (isArrow) {
-          e.preventDefault();
-          const step = e.shiftKey ? 10 : 1;
-          let nudgeIds = ids;
-          if (ids.length === 1) {
-            const elems = templateRef.current.elements ?? [];
-            const el = elems.find((elem) => elem.id === ids[0]);
-            if (el?.groupId) {
-              nudgeIds = elems.filter((elem) => elem.groupId === el.groupId).map((elem) => elem.id);
-            }
-          }
-          const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
-          const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0;
-          nudgeSelectedRef.current(nudgeIds, dx, dy);
-        }
-      }
-
       // ── shortcut cheatsheet ──────────────────────────────────────────
       if (e.key === '?' && !ctrlKey) {
         e.preventDefault();
@@ -794,10 +803,8 @@ export function useReportController({
     return () => window.removeEventListener('keydown', onKey);
   }, [
     selectedId,
-    // undo/redo accessed via undoRef/redoRef — omitted to keep the listener stable
     copyElement, pasteElement, duplicateSelected, deleteElement, deleteSelected,
     zoomIn, zoomOut, setSelectedId,
-    // nudgeSelected intentionally omitted — accessed via nudgeSelectedRef above
   ]);
 
   // ── return ────────────────────────────────────────────────────────────────

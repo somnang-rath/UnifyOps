@@ -174,31 +174,41 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, element.h]);
 
-  // ── Auto-height: resize element to fit all rows ───────────────────────────
-  // Measures the natural DOM height of thead + tbody (not constrained by the
-  // outer div's fixed height) and reports it via onHeightChange so the canvas
-  // editor can persist it as el.h.  Fires whenever row count or typography
-  // props change so the element always wraps its content exactly.
+  // ── Auto-height: resize element to exactly fit its rendered rows ─────────
+  // Fires for:
+  //  • autoHeight tables (user setting)
+  //  • ALL auto-paginated tables (source + continuation) once computeAutoLayout
+  //    has run (autoOriginalH is set).  Shrinks each segment to its exact DOM
+  //    content height, eliminating the blank gap between the last row and the
+  //    element bottom.  autoLayoutSig uses autoOriginalH (not el.h), so this
+  //    never re-triggers auto-layout.
   const prevAutoH = useRef(0);
+  const shouldAutoSize =
+    p.autoPageBreak !== false &&
+    !p.autoHeight &&
+    !!(element.props as Record<string, unknown>).autoOriginalH;
+
   useLayoutEffect(() => {
-    if (!p.autoHeight || !onHeightChange) return;
+    if (!(p.autoHeight || shouldAutoSize) || !onHeightChange) return;
     const thead = theadRef.current;
     const tbody = tbodyRef.current;
     if (!thead || !tbody) return;
     const measured = Math.ceil(
-      (p.dataSource?.url ? 22 : 0) +   // datasource URL badge
+      contBadgeH +                       // "Continued from previous page" badge (0 on source)
+      (p.dataSource?.url ? 22 : 0) +     // datasource URL badge
       thead.offsetHeight +
       tbody.offsetHeight +
-      (outerB ? 2 : 0),                // outer border
+      (outerB ? 2 : 0) +                 // outer border
+      INDICATOR_H,                       // overflow indicator (0 when no overflow)
     );
     if (measured > 0 && Math.abs(measured - prevAutoH.current) > 1) {
       prevAutoH.current = measured;
       onHeightChange(measured);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.autoHeight, rows.length, p.fontSize, p.cellPaddingY, p.cellPaddingX,
-      p.headerFontSize, p.headerPaddingY, p.showRowNumbers, p.outerBorder,
-      p.dataSource?.url]);
+  }, [p.autoHeight, shouldAutoSize, rows.length, overflowCount, p.fontSize, p.cellPaddingY,
+      p.cellPaddingX, p.headerFontSize, p.headerPaddingY, p.showRowNumbers, p.outerBorder,
+      p.dataSource?.url, p.isContinuation]);
 
   // Auto-trigger pagination when overflow is detected and autoPageBreak has never been set.
   // Fires once per data-load cycle; resets whenever the row count changes (API refresh).
@@ -213,6 +223,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   useEffect(() => {
     if (!onAutoPaginate) return;
     if (p.autoPageBreak === false) return;     // user explicitly disabled — respect their choice
+    if (p.autoHeight) return;                  // autoHeight takes precedence; no pagination needed
     if (p.endRow !== undefined) return;        // already processed by a previous layout pass
     if (p.isContinuation) return;              // continuation tables are managed by auto-layout
     if (overflowCount <= 0) return;
@@ -222,7 +233,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     const t = setTimeout(() => onAutoPaginate(), 80);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overflowCount, p.autoPageBreak, p.endRow, p.isContinuation]);
+  }, [overflowCount, p.autoPageBreak, p.autoHeight, p.endRow, p.isContinuation]);
 
   // Continuation pages created: use actual rows/page when pagination has already run
   // (endRow defined), otherwise fall back to formula estimate. This prevents the
@@ -243,27 +254,10 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   // Indicator height when shown
   const INDICATOR_H = overflowCount > 0 && onAutoPaginate ? 24 : 0;
 
-  // ── Row stretching ─────────────────────────────────────────────────────────
-  // Distribute available vertical space evenly across rows so the table fills
-  // its element height with NO blank gap — applies to BOTH the original
-  // auto-paginated table AND continuation tables.
-  //
-  // Guard: only stretch after computeAutoLayout has run (autoOriginalH is set).
-  // Before that, rows haven't been paginated yet and stretching would interfere
-  // with the initial DOM measurement that fires onActualFit.
-  //
-  // Safety: `height` on a <tr> acts as min-height in browsers — if a row's
-  // content is naturally taller than perRowH, it won't be clipped.  In that case
-  // the DOM measurement finds overflow and reduces endRow until the rows can be
-  // stretched without clipping, giving a stable layout.
-  const hasBeenStretched = !!(element.props as Record<string, unknown>).autoOriginalH;
-  const contBadgeH  = p.isContinuation ? 20 : 0;
-  // Never stretch rows when autoHeight is on — the element height follows content, not the other way around.
-  const isAutoPage  = !p.autoHeight && p.autoPageBreak !== false && hasBeenStretched;
-  const tableAreaH  = element.h - INDICATOR_H - headerH - urlBarH - contBadgeH;
-  const perRowH     = (isAutoPage && rows.length > 0 && tableAreaH > 0)
-    ? Math.floor(tableAreaH / rows.length)
-    : 0;
+  const contBadgeH = p.isContinuation ? 20 : 0;
+  // Row height is always natural (content-driven). The element height itself
+  // auto-sizes to fit rows via computeAutoLayout, so stretching is not needed.
+  const perRowH = 0;
 
   return (
     <div
