@@ -15,6 +15,7 @@ export function ElementImage({ element }: Props) {
     borderWidth?: number;
     opacity?: number;
     caption?: string;
+    removeBackground?: boolean;
   };
 
   const radius  = p.borderRadius ?? 0;
@@ -49,6 +50,7 @@ export function ElementImage({ element }: Props) {
             minHeight: 0,
             objectFit: p.objectFit ?? 'cover',
             display: 'block',
+            mixBlendMode: p.removeBackground ? 'multiply' : undefined,
           }}
         />
         <div className="text-[11px] text-center text-text-muted bg-bg-subtle px-2 py-1 flex-shrink-0 border-t border-border">
@@ -70,6 +72,7 @@ export function ElementImage({ element }: Props) {
         borderRadius: radius,
         border,
         opacity,
+        mixBlendMode: p.removeBackground ? 'multiply' : undefined,
       }}
     />
   );

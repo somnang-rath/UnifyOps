@@ -8,6 +8,7 @@ interface Props {
   element: ReportElement;
   onAutoPaginate?: () => void;
   onActualFit?: (rowsFit: number) => void;
+  onHeightChange?: (h: number) => void;
 }
 
 function resolveStatusStyle(value: string, statusColors?: Record<string, string>) {
@@ -25,7 +26,7 @@ function resolveStatusStyle(value: string, statusColors?: Record<string, string>
   return { bg: '#6b7280', fg: '#fff' };
 }
 
-export function ElementTable({ element, onAutoPaginate, onActualFit }: Props) {
+export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightChange }: Props) {
   const p = element.props as {
     columns?: string[];
     rows?: Record<string, string>[];
@@ -68,6 +69,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit }: Props) {
     dataSource?: StoredDatasource;
     repeatHeader?: boolean;
     autoPageBreak?: boolean;
+    autoHeight?: boolean;
   };
 
   const cols    = p.columns ?? ['Column 1', 'Column 2', 'Column 3'];
@@ -172,6 +174,32 @@ export function ElementTable({ element, onAutoPaginate, onActualFit }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, element.h]);
 
+  // ── Auto-height: resize element to fit all rows ───────────────────────────
+  // Measures the natural DOM height of thead + tbody (not constrained by the
+  // outer div's fixed height) and reports it via onHeightChange so the canvas
+  // editor can persist it as el.h.  Fires whenever row count or typography
+  // props change so the element always wraps its content exactly.
+  const prevAutoH = useRef(0);
+  useLayoutEffect(() => {
+    if (!p.autoHeight || !onHeightChange) return;
+    const thead = theadRef.current;
+    const tbody = tbodyRef.current;
+    if (!thead || !tbody) return;
+    const measured = Math.ceil(
+      (p.dataSource?.url ? 22 : 0) +   // datasource URL badge
+      thead.offsetHeight +
+      tbody.offsetHeight +
+      (outerB ? 2 : 0),                // outer border
+    );
+    if (measured > 0 && Math.abs(measured - prevAutoH.current) > 1) {
+      prevAutoH.current = measured;
+      onHeightChange(measured);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.autoHeight, rows.length, p.fontSize, p.cellPaddingY, p.cellPaddingX,
+      p.headerFontSize, p.headerPaddingY, p.showRowNumbers, p.outerBorder,
+      p.dataSource?.url]);
+
   // Auto-trigger pagination when overflow is detected and autoPageBreak has never been set.
   // Fires once per data-load cycle; resets whenever the row count changes (API refresh).
   const autoFiredRef = useRef(false);
@@ -229,10 +257,9 @@ export function ElementTable({ element, onAutoPaginate, onActualFit }: Props) {
   // the DOM measurement finds overflow and reduces endRow until the rows can be
   // stretched without clipping, giving a stable layout.
   const hasBeenStretched = !!(element.props as Record<string, unknown>).autoOriginalH;
-  // The "↩ Continued from previous page" badge (≈20 px) sits above the table area
-  // as a flex-shrink-0 sibling, so subtract it from the available row area.
   const contBadgeH  = p.isContinuation ? 20 : 0;
-  const isAutoPage  = p.autoPageBreak !== false && hasBeenStretched;
+  // Never stretch rows when autoHeight is on — the element height follows content, not the other way around.
+  const isAutoPage  = !p.autoHeight && p.autoPageBreak !== false && hasBeenStretched;
   const tableAreaH  = element.h - INDICATOR_H - headerH - urlBarH - contBadgeH;
   const perRowH     = (isAutoPage && rows.length > 0 && tableAreaH > 0)
     ? Math.floor(tableAreaH / rows.length)
@@ -273,11 +300,11 @@ export function ElementTable({ element, onAutoPaginate, onActualFit }: Props) {
         </div>
       )}
 
-      {/* Table area — clips when autoPageBreak is on so rows never scroll across pages */}
+      {/* Table area — clips when autoPageBreak is on; unconstrained when autoHeight is on */}
       <div
         ref={tableAreaRef}
-        className={p.autoPageBreak !== false ? 'overflow-hidden flex-1' : 'overflow-auto flex-1'}
-        style={{ maxHeight: INDICATOR_H > 0 ? `calc(100% - ${INDICATOR_H}px)` : undefined }}
+        className={p.autoHeight ? 'flex-1' : p.autoPageBreak !== false ? 'overflow-hidden flex-1' : 'overflow-auto flex-1'}
+        style={{ maxHeight: (!p.autoHeight && INDICATOR_H > 0) ? `calc(100% - ${INDICATOR_H}px)` : undefined }}
       >
         <table className="w-full border-collapse" style={{ fontSize: fs }}>
           <colgroup>

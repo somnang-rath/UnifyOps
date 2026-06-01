@@ -139,13 +139,15 @@ function Toggle({
   checked,
   onChange,
   label,
-}: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  disabled,
+}: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <label className="flex items-center gap-2 cursor-pointer select-none">
+    <label className={cn('flex items-center gap-2 select-none', disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer')}>
       <div
-        onClick={() => onChange(!checked)}
+        onClick={() => !disabled && onChange(!checked)}
         className={cn(
-          'w-8 h-4 rounded-full relative transition-colors cursor-pointer',
+          'w-8 h-4 rounded-full relative transition-colors',
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer',
           checked ? 'bg-accent-600' : 'bg-bg-subtle border border-border',
         )}
       >
@@ -619,6 +621,18 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                         </div>
                       </div>
                     )}
+
+                    <SectionHeader>Effects</SectionHeader>
+                    <Toggle
+                      checked={!!(p?.removeBackground)}
+                      onChange={(v) => set({ removeBackground: v })}
+                      label="Remove white background"
+                    />
+                    {p?.removeBackground && (
+                      <p className="text-[10px] text-text-muted leading-relaxed -mt-1">
+                        Blends the image with the page so white areas become transparent. Works best for logos and charts on white backgrounds.
+                      </p>
+                    )}
                   </>
                 )}
 
@@ -1003,12 +1017,30 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                         <p className="text-[10px] text-text-muted">Add columns first</p>
                       )}
 
-                      {/* Auto page break */}
+                      {/* Auto Layout */}
                       <SectionHeader>Auto Layout</SectionHeader>
+
+                      {/* Height follows row data */}
+                      <Toggle
+                        checked={!!(p?.autoHeight)}
+                        onChange={(v) => set({ autoHeight: v, ...(v ? { autoPageBreak: false } : {}) })}
+                        label="Height follows row data"
+                      />
+                      {!!(p?.autoHeight) && (
+                        <div className="rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 px-2.5 py-2 space-y-1">
+                          <p className="text-[10px] font-semibold text-green-700 dark:text-green-400">Active</p>
+                          <p className="text-[9px] text-green-600 dark:text-green-500 leading-relaxed">
+                            The table height resizes automatically to fit all rows. Disable to set a fixed height.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Auto page break — disabled when autoHeight is on */}
                       <Toggle
                         checked={!!(p?.autoPageBreak)}
-                        onChange={(v) => set({ autoPageBreak: v })}
+                        onChange={(v) => set({ autoPageBreak: v, ...(v ? { autoHeight: false } : {}) })}
                         label="Auto page break"
+                        disabled={!!(p?.autoHeight)}
                       />
                       {!!(p?.autoPageBreak) && (
                         <div className="rounded-md bg-accent-50 dark:bg-accent-950/20 border border-accent-200 dark:border-accent-800 px-2.5 py-2 space-y-1">
@@ -1177,6 +1209,63 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                 <Label>X-axis label</Label>
                                 <PanelInput value={(p?.xAxisLabel as string) ?? ''} onChange={(e) => set({ xAxisLabel: e.target.value })} placeholder="e.g. ម៉ោង" />
                               </div>
+
+                              {/* ── Bar-line Typography ── */}
+                              <SectionHeader>Title</SectionHeader>
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div>
+                                  <Label>Size</Label>
+                                  <PanelInput type="number" value={(p?.titleFontSize as number) ?? 12} onChange={(e) => set({ titleFontSize: Number(e.target.value) })} min={8} max={36} />
+                                </div>
+                                <div>
+                                  <Label>Color</Label>
+                                  <ColorInput value={(p?.titleColor as string) ?? '#111111'} onChange={(v) => set({ titleColor: v })} />
+                                </div>
+                              </div>
+                              <div>
+                                <Label>Align</Label>
+                                <div className="flex gap-1">
+                                  {([
+                                    { v: 'left',   Icon: AlignLeft },
+                                    { v: 'center', Icon: AlignCenter },
+                                    { v: 'right',  Icon: AlignRight },
+                                  ] as const).map(({ v, Icon }) => (
+                                    <button key={v} onClick={() => set({ titleAlign: v })}
+                                      className={cn('flex-1 py-1.5 flex items-center justify-center rounded-md border transition-colors',
+                                        (p?.titleAlign ?? 'left') === v ? 'border-accent-600 bg-accent-50 text-accent-700 dark:bg-accent-950/30 dark:text-accent-400' : 'border-border text-text-muted hover:text-text')}
+                                    ><Icon className="w-3.5 h-3.5" /></button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <SectionHeader>Typography</SectionHeader>
+                              <div>
+                                <Label>Font family</Label>
+                                <select value={(p?.labelFontFamily as string) ?? ''} onChange={(e) => set({ labelFontFamily: e.target.value || undefined })}
+                                  className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors">
+                                  <option value="">Default</option>
+                                  <optgroup label="Khmer">
+                                    <option value="var(--font-koh-santepheap), 'Koh Santepheap', sans-serif">Koh Santepheap</option>
+                                    <option value="var(--font-khmer), 'Kantumruy Pro', sans-serif">Kantumruy Pro</option>
+                                  </optgroup>
+                                  <optgroup label="Latin">
+                                    <option value="Arial, sans-serif">Arial</option>
+                                    <option value="Georgia, serif">Georgia</option>
+                                    <option value="'Times New Roman', serif">Times New Roman</option>
+                                    <option value="Verdana, sans-serif">Verdana</option>
+                                  </optgroup>
+                                </select>
+                              </div>
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div>
+                                  <Label>Tick size</Label>
+                                  <PanelInput type="number" value={(p?.labelFontSize as number) ?? 9} onChange={(e) => set({ labelFontSize: Number(e.target.value) })} min={6} max={20} />
+                                </div>
+                                <div>
+                                  <Label>Tick color</Label>
+                                  <ColorInput value={(p?.labelColor as string) ?? '#6b7280'} onChange={(v) => set({ labelColor: v })} />
+                                </div>
+                              </div>
                             </>
                           )}
 
@@ -1184,9 +1273,156 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                           {isHBar && (
                             <>
                               <SectionHeader>Horizontal Bar Options</SectionHeader>
-                              <Toggle checked={!!(p?.sortDesc)} onChange={(v) => set({ sortDesc: v })} label="Sort by value (desc)" />
+                              <Toggle checked={!!(p?.sortDesc)}      onChange={(v) => set({ sortDesc: v })}      label="Sort by value (desc)" />
                               <Toggle checked={!!(p?.showBarValues)} onChange={(v) => set({ showBarValues: v })} label="Show value labels" />
-                              <Toggle checked={!!(p?.singleColor)} onChange={(v) => set({ singleColor: v })} label="Single color for all bars" />
+                              <Toggle checked={!!(p?.singleColor)}   onChange={(v) => set({ singleColor: v })}   label="Single color for all bars" />
+                              <Toggle checked={!!(p?.showBarTrack)}  onChange={(v) => set({ showBarTrack: v })}  label="Show background track" />
+
+                              <SectionHeader>Title</SectionHeader>
+
+                              {/* Title alignment + size */}
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div>
+                                  <Label>Size</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={(p?.titleFontSize as number) ?? 12}
+                                    onChange={(e) => set({ titleFontSize: Number(e.target.value) })}
+                                    min={8} max={36}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Color</Label>
+                                  <ColorInput
+                                    value={(p?.titleColor as string) ?? '#111111'}
+                                    onChange={(v) => set({ titleColor: v })}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <Label>Align</Label>
+                                <div className="flex gap-1">
+                                  {([
+                                    { v: 'left',   Icon: AlignLeft },
+                                    { v: 'center', Icon: AlignCenter },
+                                    { v: 'right',  Icon: AlignRight },
+                                  ] as const).map(({ v, Icon }) => (
+                                    <button
+                                      key={v}
+                                      onClick={() => set({ titleAlign: v })}
+                                      className={cn(
+                                        'flex-1 py-1.5 flex items-center justify-center rounded-md border transition-colors',
+                                        (p?.titleAlign ?? 'left') === v
+                                          ? 'border-accent-600 bg-accent-50 text-accent-700 dark:bg-accent-950/30 dark:text-accent-400'
+                                          : 'border-border text-text-muted hover:text-text',
+                                      )}
+                                    >
+                                      <Icon className="w-3.5 h-3.5" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <SectionHeader>Typography</SectionHeader>
+
+                              {/* Font family */}
+                              <div>
+                                <Label>Font family</Label>
+                                <select
+                                  value={(p?.labelFontFamily as string) ?? ''}
+                                  onChange={(e) => set({ labelFontFamily: e.target.value || undefined })}
+                                  className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                                >
+                                  <option value="">Default</option>
+                                  <optgroup label="Khmer">
+                                    <option value="var(--font-koh-santepheap), 'Koh Santepheap', sans-serif">Koh Santepheap</option>
+                                    <option value="var(--font-khmer), 'Kantumruy Pro', sans-serif">Kantumruy Pro</option>
+                                  </optgroup>
+                                  <optgroup label="Latin">
+                                    <option value="Arial, sans-serif">Arial</option>
+                                    <option value="Georgia, serif">Georgia</option>
+                                    <option value="'Times New Roman', serif">Times New Roman</option>
+                                    <option value="Verdana, sans-serif">Verdana</option>
+                                    <option value="'Courier New', monospace">Courier New</option>
+                                  </optgroup>
+                                </select>
+                              </div>
+
+                              {/* Label size + label column width */}
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div>
+                                  <Label>Label size</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={(p?.labelFontSize as number) ?? 10}
+                                    onChange={(e) => set({ labelFontSize: Number(e.target.value) })}
+                                    min={7} max={28}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Label width</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={(p?.labelWidth as number) ?? 90}
+                                    onChange={(e) => set({ labelWidth: Number(e.target.value) })}
+                                    min={30} max={220}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Value label size + color */}
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div>
+                                  <Label>Value size</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={(p?.valueFontSize as number) ?? 10}
+                                    onChange={(e) => set({ valueFontSize: Number(e.target.value) })}
+                                    min={7} max={28}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Value color</Label>
+                                  <ColorInput
+                                    value={(p?.valueColor as string) ?? '#6b7280'}
+                                    onChange={(v) => set({ valueColor: v })}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Label color */}
+                              <div>
+                                <Label>Label color</Label>
+                                <ColorInput
+                                  value={(p?.labelColor as string) ?? '#374151'}
+                                  onChange={(v) => set({ labelColor: v })}
+                                />
+                              </div>
+
+                              {/* Label alignment */}
+                              <div>
+                                <Label>Label align</Label>
+                                <div className="flex gap-1">
+                                  {([
+                                    { v: 'left',   Icon: AlignLeft },
+                                    { v: 'center', Icon: AlignCenter },
+                                    { v: 'right',  Icon: AlignRight },
+                                  ] as const).map(({ v, Icon }) => (
+                                    <button
+                                      key={v}
+                                      onClick={() => set({ labelAlign: v })}
+                                      className={cn(
+                                        'flex-1 py-1.5 flex items-center justify-center rounded-md border transition-colors',
+                                        (p?.labelAlign ?? 'right') === v
+                                          ? 'border-accent-600 bg-accent-50 text-accent-700 dark:bg-accent-950/30 dark:text-accent-400'
+                                          : 'border-border text-text-muted hover:text-text',
+                                      )}
+                                    >
+                                      <Icon className="w-3.5 h-3.5" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                             </>
                           )}
 
@@ -1195,6 +1431,157 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                             <>
                               <SectionHeader>Bar Options</SectionHeader>
                               <Toggle checked={!!(p?.singleColor)} onChange={(v) => set({ singleColor: v })} label="Single color for all bars" />
+                            </>
+                          )}
+
+                          {/* ── Pie chart options ── */}
+                          {ct === 'pie' && (
+                            <>
+                              {/* Shape */}
+                              <SectionHeader>Shape</SectionHeader>
+                              <div>
+                                <Label>Style</Label>
+                                <div className="flex gap-1">
+                                  {(['solid', 'donut'] as const).map((s) => (
+                                    <button key={s} onClick={() => set({ pieStyle: s })}
+                                      className={cn('flex-1 py-1.5 text-xs rounded-md border capitalize transition-colors',
+                                        (p?.pieStyle ?? 'solid') === s ? 'border-accent-600 bg-accent-50 text-accent-700 dark:bg-accent-950/30 dark:text-accent-400' : 'border-border text-text-muted hover:text-text')}
+                                    >{s}</button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <Label>Slice gap (°)</Label>
+                                <PanelInput type="number" value={(p?.paddingAngle as number) ?? 2} onChange={(e) => set({ paddingAngle: Number(e.target.value) })} min={0} max={10} />
+                              </div>
+
+                              {/* Donut inner radius + center label */}
+                              {(p?.pieStyle as string) === 'donut' && (
+                                <>
+                                  <div>
+                                    <Label>Inner radius %</Label>
+                                    <PanelInput type="number" value={(p?.innerRadius as number) ?? 35} onChange={(e) => set({ innerRadius: Number(e.target.value) })} min={10} max={80} />
+                                  </div>
+
+                                  <SectionHeader>Center Label</SectionHeader>
+                                  <div>
+                                    <Label>Content</Label>
+                                    <select value={(p?.centerLabel as string) ?? 'none'} onChange={(e) => set({ centerLabel: e.target.value })}
+                                      className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors">
+                                      <option value="none">None</option>
+                                      <option value="total">Total count</option>
+                                      <option value="custom">Custom text</option>
+                                    </select>
+                                  </div>
+                                  {(p?.centerLabel as string) !== 'none' && (p?.centerLabel as string) && (
+                                    <>
+                                      {(p?.centerLabel as string) === 'custom' && (
+                                        <div>
+                                          <Label>Text</Label>
+                                          <PanelInput value={(p?.centerText as string) ?? ''} onChange={(e) => set({ centerText: e.target.value })} placeholder="e.g. Total" />
+                                        </div>
+                                      )}
+                                      <div className="grid grid-cols-2 gap-x-2">
+                                        <div>
+                                          <Label>Font size</Label>
+                                          <PanelInput type="number" value={(p?.centerFontSize as number) ?? 24} onChange={(e) => set({ centerFontSize: Number(e.target.value) })} min={10} max={72} />
+                                        </div>
+                                        <div>
+                                          <Label>Color</Label>
+                                          <ColorInput value={(p?.centerColor as string) ?? '#111111'} onChange={(v) => set({ centerColor: v })} />
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </>
+                              )}
+
+                              {/* Labels */}
+                              <SectionHeader>Labels</SectionHeader>
+                              <div>
+                                <Label>Position</Label>
+                                <select value={(p?.pieLabel as string) ?? 'outside'} onChange={(e) => set({ pieLabel: e.target.value })}
+                                  className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors">
+                                  <option value="none">None</option>
+                                  <option value="outside">Outside (with lines)</option>
+                                  <option value="inside">Inside slice</option>
+                                </select>
+                              </div>
+                              {(p?.pieLabel as string) !== 'none' && (
+                                <>
+                                  <div>
+                                    <Label>Show</Label>
+                                    <select value={(p?.labelContent as string) ?? 'name-percent'} onChange={(e) => set({ labelContent: e.target.value })}
+                                      className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors">
+                                      <option value="name">Name only</option>
+                                      <option value="percent">% only</option>
+                                      <option value="value">Value only</option>
+                                      <option value="name-percent">Name + %</option>
+                                      <option value="name-value">Name + value</option>
+                                    </select>
+                                  </div>
+                                  {(p?.pieLabel as string) === 'outside' && (
+                                    <Toggle checked={(p?.labelLine as boolean) !== false} onChange={(v) => set({ labelLine: v })} label="Show leader lines" />
+                                  )}
+                                  {/* Name suffix — appended after the name in the label */}
+                                  <div>
+                                    <Label>Name suffix</Label>
+                                    <PanelInput
+                                      type="text"
+                                      value={(p?.labelNameSuffix as string) ?? ''}
+                                      onChange={(e) => set({ labelNameSuffix: e.target.value || undefined })}
+                                      placeholder="e.g.  ស  or  $  (appended after name)"
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-x-2">
+                                    <div>
+                                      <Label>Font size</Label>
+                                      <PanelInput type="number" value={(p?.labelFontSize as number) ?? 10} onChange={(e) => set({ labelFontSize: Number(e.target.value) })} min={6} max={20} />
+                                    </div>
+                                    <div>
+                                      <Label>Color</Label>
+                                      <ColorInput value={(p?.labelColor as string) ?? '#374151'} onChange={(v) => set({ labelColor: v })} />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label>Font family</Label>
+                                    <select value={(p?.labelFontFamily as string) ?? ''} onChange={(e) => set({ labelFontFamily: e.target.value || undefined })}
+                                      className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors">
+                                      <option value="">Default</option>
+                                      <optgroup label="Khmer">
+                                        <option value="var(--font-koh-santepheap), 'Koh Santepheap', sans-serif">Koh Santepheap</option>
+                                        <option value="var(--font-khmer), 'Kantumruy Pro', sans-serif">Kantumruy Pro</option>
+                                      </optgroup>
+                                      <optgroup label="Latin">
+                                        <option value="Arial, sans-serif">Arial</option>
+                                        <option value="Georgia, serif">Georgia</option>
+                                        <option value="Verdana, sans-serif">Verdana</option>
+                                      </optgroup>
+                                    </select>
+                                  </div>
+                                </>
+                              )}
+
+                              {/* Title */}
+                              <SectionHeader>Title</SectionHeader>
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div><Label>Size</Label><PanelInput type="number" value={(p?.titleFontSize as number) ?? 12} onChange={(e) => set({ titleFontSize: Number(e.target.value) })} min={8} max={36} /></div>
+                                <div><Label>Color</Label><ColorInput value={(p?.titleColor as string) ?? '#111111'} onChange={(v) => set({ titleColor: v })} /></div>
+                              </div>
+                              <div>
+                                <Label>Align</Label>
+                                <div className="flex gap-1">
+                                  {([{ v: 'left', Icon: AlignLeft }, { v: 'center', Icon: AlignCenter }, { v: 'right', Icon: AlignRight }] as const).map(({ v, Icon }) => (
+                                    <button key={v} onClick={() => set({ titleAlign: v })}
+                                      className={cn('flex-1 py-1.5 flex items-center justify-center rounded-md border transition-colors',
+                                        (p?.titleAlign ?? 'left') === v ? 'border-accent-600 bg-accent-50 text-accent-700 dark:bg-accent-950/30 dark:text-accent-400' : 'border-border text-text-muted hover:text-text')}
+                                    ><Icon className="w-3.5 h-3.5" /></button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <SectionHeader>Legend</SectionHeader>
+                              <Toggle checked={!!(p?.showLegend)} onChange={(v) => set({ showLegend: v })} label="Show legend" />
                             </>
                           )}
 
@@ -1333,13 +1720,20 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
 
                     {/* ── Appearance ── */}
                     <SectionHeader>Appearance</SectionHeader>
-                    <div>
-                      <Label>Background</Label>
-                      <ColorInput
-                        value={(p?.background as string) || '#ffffff'}
-                        onChange={(v) => set({ background: v === '#ffffff' ? '' : v })}
-                      />
-                    </div>
+                    <Toggle
+                      checked={(p?.background as string) === 'transparent'}
+                      onChange={(v) => set({ background: v ? 'transparent' : '' })}
+                      label="No background (transparent)"
+                    />
+                    {(p?.background as string) !== 'transparent' && (
+                      <div>
+                        <Label>Background</Label>
+                        <ColorInput
+                          value={(p?.background as string) || '#ffffff'}
+                          onChange={(v) => set({ background: v === '#ffffff' ? '' : v })}
+                        />
+                      </div>
+                    )}
                     <div>
                       <Label>Opacity %</Label>
                       <PanelInput

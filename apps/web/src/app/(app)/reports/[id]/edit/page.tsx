@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useReport, useReportMutations, reportsApi } from '@/hooks/use-reports';
@@ -177,7 +177,7 @@ export default function ReportEditPage() {
     }
   }, [serverTemplate]);
 
-  const patch = (changes: Partial<ReportTemplate>) => {
+  const patch = useCallback((changes: Partial<ReportTemplate>) => {
     setLocal((prev) => {
       const next = prev ? { ...prev, ...changes } : prev;
       localRef.current = next;
@@ -190,7 +190,8 @@ export default function ReportEditPage() {
     debounceRef.current = setTimeout(() => {
       if (localRef.current) handleSave(localRef.current);
     }, 1500);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSave]);
 
   const closePdfPreview = () => {
     if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);

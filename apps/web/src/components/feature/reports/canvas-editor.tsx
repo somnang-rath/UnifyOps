@@ -276,6 +276,7 @@ function MultiSelectToolbar({
     <div
       className="sticky top-0 z-40 bg-accent-50 dark:bg-accent-950/20 border-b border-accent-200 dark:border-accent-800 flex items-center gap-0.5 px-3 h-9 flex-shrink-0 overflow-x-auto animate-fade-in"
       onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.preventDefault()}
     >
       {/* Count badge */}
       <div className="flex items-center gap-1.5 pr-3 mr-1 border-r border-accent-200 dark:border-accent-700 flex-shrink-0">
@@ -389,6 +390,7 @@ function SelectionToolbar({
     <div
       className="sticky top-0 z-40 bg-bg-card border-b border-border flex items-center gap-0.5 px-3 h-9 flex-shrink-0 overflow-x-auto animate-fade-in"
       onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.preventDefault()}
     >
       {/* ── Element type badge ──────────────────────────────────────────── */}
       <div className="flex items-center gap-1.5 pr-3 mr-1 border-r border-border flex-shrink-0 min-w-0">
@@ -872,6 +874,29 @@ export function CanvasEditor({ template, onChange }: Props) {
   const scaleRef = useRef(ctrl.scale);
   scaleRef.current = ctrl.scale;
 
+  // Keep a stable ref to setScale and canvasW so fitToWidth doesn't need them in deps.
+  const setScaleRef = useRef(ctrl.setScale);
+  setScaleRef.current = ctrl.setScale;
+  const canvasWRef = useRef(canvasW);
+  canvasWRef.current = canvasW;
+
+  // Fit the canvas to the available container width (leaves 80px margin for padding).
+  // Called on mount so the initial view matches PDF proportions, and exposed via a button.
+  const fitToWidth = useCallback(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const available = el.clientWidth - 80;
+    if (available <= 0) return;
+    setScaleRef.current(Math.max(0.25, Math.min(1, available / canvasWRef.current)));
+  }, []);
+
+  // Auto-fit once after the initial layout paint so the canvas starts at the correct scale.
+  useEffect(() => {
+    const raf = requestAnimationFrame(fitToWidth);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally run once on mount
+
   // ── Reclaim focus after selection ────────────────────────────────────────
   // Moveable mounts drag/resize handles (some with tabIndex) after an element
   // is selected, which can steal keyboard focus away from canvasWrapRef and
@@ -1134,6 +1159,14 @@ export function CanvasEditor({ template, onChange }: Props) {
             'bg-bg-card border-r border-border flex flex-col flex-shrink-0 overflow-hidden transition-[width] duration-300',
             showLeft ? (leftTab === 'page' ? 'w-[240px]' : 'w-[200px]') : 'w-0',
           )}
+          onMouseDown={(e) => {
+            // Prevent left panel buttons/tabs from stealing canvas focus,
+            // but allow inputs in Page Setup to focus normally.
+            const tag = (e.target as HTMLElement).tagName;
+            if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target as HTMLElement).isContentEditable) {
+              e.preventDefault();
+            }
+          }}
         >
           {/* Tab bar */}
           <div className={cn('flex border-b border-border flex-shrink-0', leftTab === 'page' ? 'min-w-[240px]' : 'min-w-[200px]')}>
@@ -1456,6 +1489,7 @@ export function CanvasEditor({ template, onChange }: Props) {
                               (props) => ctrl.updateElement(el.id, { props }),
                               () => ctrl.handleAutoPaginate(el.id),
                               (fit) => ctrl.handleActualFit(el.id, fit),
+                              (h) => ctrl.updateElement(el.id, { h }),
                             )}
                           </div>
                         );
@@ -1789,6 +1823,7 @@ export function CanvasEditor({ template, onChange }: Props) {
                             });
                           }}
                           onDragGroupEnd={() => {
+                            const updates: Array<{ id: string; patch: Partial<ReportElement> }> = [];
                             pageSelIds.forEach((id) => {
                               const node = targetRef.current.get(id);
                               if (!node) return;
@@ -1800,8 +1835,9 @@ export function CanvasEditor({ template, onChange }: Props) {
                                 node.style.left = `${x}px`;
                                 node.style.top  = `${y}px`;
                               }
-                              ctrl.updateElement(id, { x, y });
+                              updates.push({ id, patch: { x, y } });
                             });
+                            ctrl.updateElementBatch(updates);
                           }}
                         />
                       );
@@ -1850,7 +1886,7 @@ export function CanvasEditor({ template, onChange }: Props) {
       </div>
 
       {/* ── Bottom bar: Undo/Redo + Zoom + Snap + Shortcuts + Page tabs ─── */}
-      <div className="flex-shrink-0 flex border-t-2 border-border bg-bg-subtle">
+      <div className="flex-shrink-0 flex border-t-2 border-border bg-bg-subtle" onMouseDown={(e) => e.preventDefault()}>
 
         {/* Undo / Redo */}
         <div className="flex items-center gap-0.5 px-2 border-r border-border flex-shrink-0 h-10">
@@ -1884,7 +1920,7 @@ export function CanvasEditor({ template, onChange }: Props) {
           </button>
           <button
             onClick={() => ctrl.setScale(1)}
-            title="Reset zoom (Ctrl + 0)"
+            title="Reset zoom to 100% (Ctrl + 0)"
             className="px-1.5 h-6 text-[10px] font-semibold text-text-muted hover:text-text hover:bg-bg-hover rounded transition-colors min-w-[44px] text-center"
           >
             {Math.round(ctrl.scale * 100)}%
@@ -1896,6 +1932,13 @@ export function CanvasEditor({ template, onChange }: Props) {
             className="w-6 h-6 flex items-center justify-center rounded text-sm font-bold text-text-muted hover:text-text hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             +
+          </button>
+          <button
+            onClick={fitToWidth}
+            title="Fit page to window width"
+            className="px-1.5 h-6 text-[10px] font-semibold text-text-muted hover:text-text hover:bg-bg-hover rounded transition-colors border border-border"
+          >
+            Fit
           </button>
         </div>
 
@@ -2032,6 +2075,7 @@ function renderElement(
   onChange: (props: Record<string, unknown>) => void,
   onAutoPaginate: () => void,
   onActualFit?: (rowsFit: number) => void,
+  onHeightChange?: (h: number) => void,
 ) {
   switch (el.type) {
     case 'text':         return <ElementText element={el} isEditing={isEditing} onStartEdit={onStartEdit} onChange={onChange} />;
@@ -2039,7 +2083,7 @@ function renderElement(
     case 'image':        return <ElementImage element={el} />;
     case 'shape':        return <ElementShape element={el} />;
     case 'divider':      return <ElementDivider element={el} />;
-    case 'table':        return <ElementTable element={el} onAutoPaginate={onAutoPaginate} onActualFit={onActualFit} />;
+    case 'table':        return <ElementTable element={el} onAutoPaginate={onAutoPaginate} onActualFit={onActualFit} onHeightChange={onHeightChange} />;
     case 'data-widget':  return <ElementDataWidget element={el} />;
     case 'chart':        return <ElementChart element={el} />;
     case 'progress-bar': return <ElementProgressBar element={el} />;

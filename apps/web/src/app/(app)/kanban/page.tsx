@@ -68,9 +68,15 @@ export default function KanbanPage() {
   const me = useAuthStore((s) => s.user)!;
   const router = useRouter();
 
-  const [projectId, setProjectId] = useState('');
-  const [assignee, setAssignee] = useState<string>('me');
-  const [labelFilter, setLabelFilter] = useState<string>('');
+  const [projectId, setProjectId] = useState(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('prism_kb_project') ?? '') : '',
+  );
+  const [assignee, setAssignee] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('prism_kb_assignee') ?? 'me') : 'me',
+  );
+  const [labelFilter, setLabelFilter] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('prism_kb_label') ?? '') : '',
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [creating, setCreating] = useState<string | null>(null);
   const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
@@ -97,6 +103,11 @@ export default function KanbanPage() {
   const [bulkMoveAnchor, setBulkMoveAnchor] = useState<PopAnchor | null>(null);
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+
+  // Persist filter selections across navigation
+  useEffect(() => { localStorage.setItem('prism_kb_project', projectId); }, [projectId]);
+  useEffect(() => { localStorage.setItem('prism_kb_assignee', assignee); }, [assignee]);
+  useEffect(() => { localStorage.setItem('prism_kb_label', labelFilter); }, [labelFilter]);
 
   // _dragId / _listDragId mirrors of the demo's module-level vars
   const dragIssueId = useRef<string | null>(null);

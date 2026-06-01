@@ -349,6 +349,7 @@ export function useReportController({
     const newEl: ReportElement = {
       ...el, id: uid(), x: el.x + 20, y: el.y + 20,
       zIndex: allElements.length, page: currentPage,
+      groupId: undefined, // copy lands outside any group
     };
     setAllElements([...allElements, newEl]);
     setSelectedId(newEl.id);
@@ -487,7 +488,9 @@ export function useReportController({
       .map((id, i) => {
         const el = allElements.find((e) => e.id === id);
         if (!el) return null;
-        return { ...el, id: uid(), x: el.x + 20, y: el.y + 20, zIndex: allElements.length + i };
+        // Strip groupId so the copy doesn't silently join the original group
+        // (which breaks group-resize calculations that expect a fixed member count).
+        return { ...el, id: uid(), x: el.x + 20, y: el.y + 20, zIndex: allElements.length + i, groupId: undefined };
       })
       .filter(Boolean) as ReportElement[];
     const newIds = newEls.map((e) => e.id);
@@ -661,11 +664,18 @@ export function useReportController({
   const handleActualFit = useCallback((elementId: string, fitEnd: number) => {
     if (actualFitHintsRef.current[elementId] === fitEnd) return;
     actualFitHintsRef.current = { ...actualFitHintsRef.current, [elementId]: fitEnd };
-    autoLayoutSigRef.current = '';
     const result = computeAutoLayout(templateRef.current, actualFitHintsRef.current);
-    if (result) onChange({ pages: result.pages, elements: result.elements });
+    if (result) {
+      const mt = templateRef.current.margins?.top ?? 0;
+      const mb = templateRef.current.margins?.bottom ?? 0;
+      // Update sig so the canvas-editor useEffect doesn't redundantly re-run layout.
+      autoLayoutSigRef.current = autoLayoutSig(result.elements, canvasH, mt, mb);
+      // Defer the state update out of the useLayoutEffect synchronous flush to
+      // prevent React's "Maximum update depth exceeded" error.
+      requestAnimationFrame(() => onChange({ pages: result.pages, elements: result.elements }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onChange]);
+  }, [canvasH, onChange]);
 
   // ── add element ──────────────────────────────────────────────────────────
 

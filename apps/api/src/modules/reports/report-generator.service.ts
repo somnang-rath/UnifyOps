@@ -154,12 +154,16 @@ function normalizeFont(ff: string): string {
 function collectFontLinks(template: ReportTemplate): string {
   const families = new Set<string>(['Noto Sans Khmer:wght@400;600;700']);
   for (const el of template.elements ?? []) {
-    const ff = ((el.props as Record<string, unknown>)?.fontFamily as string | undefined);
-    if (!ff) continue;
-    const match = ff.match(/var\((--[\w-]+)\)/);
-    if (match) {
-      const family = CSS_VAR_FONT_MAP[match[1]];
-      if (family) families.add(family);
+    const props = el.props as Record<string, unknown>;
+    // Scan all font-family props: general (text/table) and bar-h specific
+    for (const key of ['fontFamily', 'labelFontFamily']) {
+      const ff = props?.[key] as string | undefined;
+      if (!ff) continue;
+      const match = ff.match(/var\((--[\w-]+)\)/);
+      if (match) {
+        const family = CSS_VAR_FONT_MAP[match[1]];
+        if (family) families.add(family);
+      }
     }
   }
   const query = [...families].map((f) => `family=${f.replace(/ /g, '+')}`).join('&');
@@ -648,7 +652,7 @@ function renderElement(
     case 'chart': {
       const widgetType = p.widgetType as string;
       const data = allData[widgetType];
-      return `<div class="el" style="${base}${borderWrapStyle(p)}overflow:hidden;display:flex;flex-direction:column;">${renderChartHtml(data, p)}</div>`;
+      return `<div class="el" style="${base}${borderWrapStyle(p)}overflow:hidden;display:flex;flex-direction:column;">${renderChartHtml(data, p, el.w, el.h)}</div>`;
     }
 
     case 'table': {
@@ -944,7 +948,7 @@ function renderWidgetHtml(data: WidgetData | undefined, p: Record<string, unknow
 
 type ChartSI = { name: string; value: number; value2?: number; color?: string };
 
-function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, barColor: string, title: string): string {
+function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, barColor: string, title: string, elW = 500, elH = 300): string {
   const lineColor      = (p.lineColor as string)      ?? '#f59e0b';
   const barLabel       = escapeHtml((p.barLabel  as string) ?? 'Count');
   const lineLabel      = escapeHtml((p.lineLabel  as string) ?? 'Value');
@@ -952,20 +956,39 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
   const leftAxisLabel  = (p.leftAxisLabel  as string) ?? '';
   const rightAxisLabel = (p.rightAxisLabel as string) ?? '';
 
+  // Typography — defaults match canvas element-chart.tsx exactly
+  const tSize      = (p.labelFontSize as number) ?? 9;
+  const tColor     = escapeHtml((p.labelColor as string) ?? '#6b7280');
+  const titleAlign = (p.titleAlign    as string) ?? 'left';
+  const titleSize  = (p.titleFontSize as number) ?? 12;
+  const titleClr   = escapeHtml((p.titleColor as string) ?? '#111111');
+  const rawFont    = p.labelFontFamily as string | undefined;
+  const svgFont    = rawFont ? ` font-family="${escapeHtml(normalizeFont(rawFont))}"` : '';
+  const divFont    = rawFont ? `font-family:${escapeHtml(normalizeFont(rawFont))};` : '';
+
   const maxBar  = Math.max(...series.map((s) => s.value), 1);
   const maxLine = Math.max(...series.map((s) => s.value2 ?? 0), 1);
   const hasLine = series.some((s) => s.value2 !== undefined);
 
-  const svgW = 500, svgH = 160;
+  // Title + legend are HTML divs — estimate their combined height to compute SVG space.
+  const titleH  = title ? titleSize + 8 : 0;
+  const legendH = tSize + 14; // legend HTML row height (computed again later for svgHAdj)
+
+  // SVG viewBox dimensions (1 SVG unit ≈ 1 CSS px, so font sizes match canvas).
+  const svgW = Math.max(100, elW - 12);
+  const svgH = Math.max(60,  elH - titleH - legendH - 16); // 16 = wrapper padding
+
+  // Internal SVG margins.
   const mL = leftAxisLabel  ? 50 : 32;
-  const mR = rightAxisLabel ? 50 : 32;
-  const mT = 28;
-  const mB = xAxisLabel ? 28 : 18;
+  const mR = rightAxisLabel ? 52 : 36;
+  const mT = 8;
+  const mB = xAxisLabel ? tSize + 18 : tSize + 8;
   const cW = svgW - mL - mR;
   const cH = svgH - mT - mB;
   const n  = series.length;
-  const barW = Math.min(18, (cW / n) * 0.45);
-  const step = cW / n;
+  // Bar width scales with the available chart width
+  const barW = Math.min(18, Math.max(2, (cW / Math.max(n, 1)) * 0.45));
+  const step = cW / Math.max(n, 1);
 
   const grid = [0.25, 0.5, 0.75, 1.0].map((f) => {
     const y = mT + cH * (1 - f);
@@ -981,12 +1004,12 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
 
   const xLabels = series.map((s, i) => {
     const x = mL + i * step + step / 2;
-    return `<text x="${x.toFixed(1)}" y="${(mT + cH + 12).toFixed(1)}" text-anchor="middle" font-size="8" fill="#6b7280">${escapeHtml(s.name)}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${(mT + cH + tSize + 4).toFixed(1)}" text-anchor="middle" font-size="${tSize}" fill="${tColor}"${svgFont}>${escapeHtml(s.name)}</text>`;
   }).join('');
 
   const leftTicks = [0, 0.5, 1.0].map((f) => {
     const y = mT + cH * (1 - f);
-    return `<text x="${(mL - 4).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="8" fill="#9ca3af">${Math.round(maxBar * f)}</text>`;
+    return `<text x="${(mL - 4).toFixed(1)}" y="${(y + tSize / 3).toFixed(1)}" text-anchor="end" font-size="${tSize}" fill="${tColor}"${svgFont}>${Math.round(maxBar * f)}</text>`;
   }).join('');
 
   let rightTicks = '';
@@ -994,7 +1017,7 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
   if (hasLine) {
     rightTicks = [0, 0.5, 1.0].map((f) => {
       const y = mT + cH * (1 - f);
-      return `<text x="${(mL + cW + 4).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="start" font-size="8" fill="#9ca3af">${Math.round(maxLine * f)}</text>`;
+      return `<text x="${(mL + cW + 4).toFixed(1)}" y="${(y + tSize / 3).toFixed(1)}" text-anchor="start" font-size="${tSize}" fill="${tColor}"${svgFont}>${Math.round(maxLine * f)}</text>`;
     }).join('');
 
     const pts = series.map((s, i) => {
@@ -1005,29 +1028,47 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
     const dots = series.map((s, i) => {
       const x = mL + i * step + step / 2;
       const y = mT + cH - ((s.value2 ?? 0) / maxLine) * cH;
-      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${lineColor}"/>`;
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${lineColor}"/>`;
     }).join('');
-    lineEl = `<polyline points="${pts}" fill="none" stroke="${lineColor}" stroke-width="1.8"/>${dots}`;
+    lineEl = `<polyline points="${pts}" fill="none" stroke="${lineColor}" stroke-width="2"/>${dots}`;
   }
 
-  const legX = svgW / 2;
-  const legend = `
-    <rect x="${(legX - 70).toFixed(0)}" y="6" width="10" height="9" fill="${barColor}"/>
-    <text x="${(legX - 56).toFixed(0)}" y="14" font-size="9" fill="#374151">${barLabel}</text>
-    ${hasLine ? `
-    <line x1="${(legX + 14).toFixed(0)}" y1="10" x2="${(legX + 26).toFixed(0)}" y2="10" stroke="${lineColor}" stroke-width="1.8"/>
-    <circle cx="${(legX + 20).toFixed(0)}" cy="10" r="2.5" fill="${lineColor}"/>
-    <text x="${(legX + 30).toFixed(0)}" y="14" font-size="9" fill="#374151">${lineLabel}</text>` : ''}`;
+  // ── Legend: HTML div above SVG so long Khmer text wraps naturally ───────
+  const legendHtml = `<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:14px;margin-bottom:4px;flex-shrink:0;${divFont}">
+    <span style="display:inline-flex;align-items:center;gap:5px;">
+      <span style="display:inline-block;width:11px;height:9px;background:${barColor};border-radius:2px;flex-shrink:0;"></span>
+      <span style="font-size:${tSize + 1}px;color:${tColor};">${barLabel}</span>
+    </span>
+    ${hasLine ? `<span style="display:inline-flex;align-items:center;gap:6px;">
+      <span style="display:inline-block;position:relative;width:22px;height:${tSize + 2}px;flex-shrink:0;">
+        <span style="position:absolute;top:50%;left:0;right:0;height:2px;margin-top:-1px;background:${lineColor};"></span>
+        <span style="position:absolute;top:50%;left:50%;width:6px;height:6px;margin-top:-3px;margin-left:-3px;background:${lineColor};border-radius:50%;"></span>
+      </span>
+      <span style="font-size:${tSize + 1}px;color:${tColor};">${lineLabel}</span>
+    </span>` : ''}
+  </div>`;
 
-  const leftLabelEl  = leftAxisLabel  ? `<text transform="rotate(-90)" x="${-(mT + cH / 2).toFixed(0)}" y="12" text-anchor="middle" font-size="9" fill="#9ca3af">${escapeHtml(leftAxisLabel)}</text>`  : '';
-  const rightLabelEl = rightAxisLabel ? `<text transform="rotate(90)" x="${(mT + cH / 2).toFixed(0)}" y="${-(svgW - 12)}" text-anchor="middle" font-size="9" fill="#9ca3af">${escapeHtml(rightAxisLabel)}</text>` : '';
-  const xLabelEl     = xAxisLabel     ? `<text x="${(mL + cW / 2).toFixed(1)}" y="${svgH - 2}" text-anchor="middle" font-size="9" fill="#9ca3af">${escapeHtml(xAxisLabel)}</text>` : '';
+  const svgHAdj = svgH; // already excludes legend height (computed in header)
 
-  return `<div style="width:100%;padding:6px;">
-    ${title ? `<div style="font-size:12px;font-weight:600;margin-bottom:2px;color:#111;">${title}</div>` : ''}
-    <svg width="100%" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible">
-      ${grid}${bars}${lineEl}${xLabels}${leftTicks}${rightTicks}${legend}${leftLabelEl}${rightLabelEl}${xLabelEl}
-    </svg>
+  // Rotated axis labels
+  const leftLabelEl  = leftAxisLabel
+    ? `<text transform="rotate(-90)" x="${-(mT + cH / 2).toFixed(0)}" y="${(tSize).toFixed(0)}" text-anchor="middle" font-size="${tSize}" fill="${tColor}"${svgFont}>${escapeHtml(leftAxisLabel)}</text>`
+    : '';
+  const rightLabelEl = rightAxisLabel
+    ? `<text transform="rotate(90)" x="${(mT + cH / 2).toFixed(0)}" y="${-(svgW - tSize).toFixed(0)}" text-anchor="middle" font-size="${tSize}" fill="${tColor}"${svgFont}>${escapeHtml(rightAxisLabel)}</text>`
+    : '';
+  const xLabelEl = xAxisLabel
+    ? `<text x="${(mL + cW / 2).toFixed(1)}" y="${(svgHAdj - 2).toFixed(1)}" text-anchor="middle" font-size="${tSize}" fill="${tColor}"${svgFont}>${escapeHtml(xAxisLabel)}</text>`
+    : '';
+
+  return `<div style="width:100%;height:100%;padding:6px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;">
+    ${title ? `<div style="font-size:${titleSize}px;font-weight:600;${divFont}color:${titleClr};text-align:${titleAlign};margin-bottom:4px;flex-shrink:0;">${title}</div>` : ''}
+    ${legendHtml}
+    <div style="flex:1;min-height:0;">
+      <svg width="100%" height="100%" viewBox="0 0 ${svgW} ${svgHAdj}" xmlns="http://www.w3.org/2000/svg" overflow="visible" preserveAspectRatio="none">
+        ${grid}${bars}${lineEl}${xLabels}${leftTicks}${rightTicks}${leftLabelEl}${rightLabelEl}${xLabelEl}
+      </svg>
+    </div>
   </div>`;
 }
 
@@ -1035,8 +1076,23 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
   const sortDesc    = !!(p.sortDesc);
   const showValues  = !!(p.showBarValues);
   const singleColor = !!(p.singleColor);
-  const sorted      = sortDesc ? [...series].sort((a, b) => b.value - a.value) : series;
-  const dataMax     = Math.max(...sorted.map((s) => s.value), 1);
+  const showTrack   = !!(p.showBarTrack);
+
+  // Typography
+  const lSize      = (p.labelFontSize  as number) ?? 10;
+  const vSize      = (p.valueFontSize  as number) ?? 10;
+  const lColor     = escapeHtml((p.labelColor  as string) ?? '#374151');
+  const vColor     = escapeHtml((p.valueColor  as string) ?? '#6b7280');
+  const lAlign     = (p.labelAlign    as string) ?? 'right';
+  const titleAlign = (p.titleAlign    as string) ?? 'left';
+  const titleSize  = (p.titleFontSize as number) ?? 12;
+  const titleClr   = escapeHtml((p.titleColor as string) ?? '#111111');
+  // normalizeFont strips var(--xxx) CSS variable prefixes — they don't work in Puppeteer HTML
+  const rawFont    = p.labelFontFamily as string | undefined;
+  const fontFam    = rawFont ? `font-family:${escapeHtml(normalizeFont(rawFont))};` : '';
+
+  const sorted   = sortDesc ? [...series].sort((a, b) => b.value - a.value) : series;
+  const dataMax  = Math.max(...sorted.map((s) => s.value), 1);
 
   // Round up to a "nice" axis max the same way Recharts does
   const magnitude = Math.pow(10, Math.floor(Math.log10(dataMax)));
@@ -1044,19 +1100,24 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
   const axisMax   = Math.ceil(dataMax / step) * step || 1;
 
   const ticks  = [0, 0.25, 0.5, 0.75, 1.0].map((f) => Math.round(axisMax * f));
-  const labelW = 90;
-  const valueW = showValues ? 36 : 0;
+  const labelW = (p.labelWidth as number) ?? 90;
+  const valueW = showValues ? 42 : 0;
 
   // Each row uses flex:1 so bars fill the container height naturally — no fixed px height
   const rows = sorted.map((s) => {
     const pct   = Math.min(100, Math.round((s.value / axisMax) * 100));
     const color = escapeHtml(singleColor ? accent : (s.color ?? accent));
+    const barArea = showTrack
+      ? `<div style="flex:1;height:70%;background:#f3f4f6;border-radius:0 3px 3px 0;overflow:hidden;">
+           <div style="height:100%;width:${pct}%;background:${color};border-radius:0 3px 3px 0;"></div>
+         </div>`
+      : `<div style="flex:1;height:70%;display:flex;align-items:stretch;">
+           <div style="height:100%;width:${pct}%;background:${color};border-radius:0 3px 3px 0;min-height:1px;"></div>
+         </div>`;
     return `<div style="flex:1;min-height:12px;display:flex;align-items:center;gap:8px;">
-      <div style="width:${labelW}px;font-size:10px;color:#374151;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.name)}</div>
-      <div style="flex:1;height:70%;background:#f3f4f6;border-radius:0 3px 3px 0;overflow:hidden;">
-        <div style="height:100%;width:${pct}%;background:${color};border-radius:0 3px 3px 0;"></div>
-      </div>
-      ${showValues ? `<div style="width:${valueW}px;font-size:10px;color:#6b7280;flex-shrink:0;text-align:right;">${escapeHtml(String(s.value))}</div>` : ''}
+      <div style="width:${labelW}px;font-size:${lSize}px;${fontFam}color:${lColor};text-align:${lAlign};flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.name)}</div>
+      ${barArea}
+      ${showValues ? `<div style="width:${valueW}px;font-size:${vSize}px;${fontFam}color:${vColor};flex-shrink:0;text-align:right;">${escapeHtml(String(s.value))}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -1066,14 +1127,14 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
     <div style="flex:1;position:relative;height:14px;">
       ${ticks.map((t) => {
         const left = Math.round((t / axisMax) * 100);
-        return `<span style="position:absolute;left:${left}%;transform:translateX(-50%);font-size:9px;color:#9ca3af;">${t}</span>`;
+        return `<span style="position:absolute;left:${left}%;transform:translateX(-50%);font-size:${Math.max(8, lSize - 1)}px;${fontFam}color:#9ca3af;">${t}</span>`;
       }).join('')}
     </div>
     ${showValues ? `<div style="width:${valueW}px;flex-shrink:0;"></div>` : ''}
   </div>`;
 
   return `<div style="width:100%;height:100%;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;">
-    ${title ? `<div style="font-size:12px;font-weight:600;margin-bottom:6px;color:#111;flex-shrink:0;">${title}</div>` : ''}
+    ${title ? `<div style="font-size:${titleSize}px;font-weight:600;${fontFam}color:${titleClr};text-align:${titleAlign};margin-bottom:6px;flex-shrink:0;">${title}</div>` : ''}
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;">
       ${rows}
     </div>
@@ -1083,84 +1144,178 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
 
 // ── SVG pie / donut chart ─────────────────────────────────────────────────────
 
-function renderPieChartHtml(series: ChartSI[], title: string): string {
+function pdfPieLabelText(name: string, value: number, pct: number, type: string): string {
+  const ps = `${pct.toFixed(0)}%`;
+  if (type === 'name')        return name;
+  if (type === 'percent')     return ps;
+  if (type === 'value')       return String(value);
+  if (type === 'name-value')  return `${name}: ${value}`;
+  return `${name} ${ps}`; // name-percent (default)
+}
+
+function renderPieChartHtml(series: ChartSI[], title: string, p: Record<string, unknown> = {}): string {
   const PALETTE = ['#6366f1','#f59e0b','#22c55e','#ef4444','#06b6d4','#ec4899','#8b5cf6','#14b8a6','#f97316','#64748b'];
   const total = series.reduce((s, item) => s + item.value, 0);
   if (!total) return `<div style="padding:10px;color:#9ca3af;font-size:11px;">No data</div>`;
 
-  // Single-location fallback — a pie with 1 slice is meaningless; show a stat card instead
+  // Typography / style props
+  const rawFont    = p.labelFontFamily as string | undefined;
+  const svgFont    = rawFont ? ` font-family="${escapeHtml(normalizeFont(rawFont))}"` : '';
+  const fontFam    = rawFont ? `font-family:${escapeHtml(normalizeFont(rawFont))};` : '';
+  const titleAlign = (p.titleAlign    as string) ?? 'left';
+  const titleSize  = (p.titleFontSize as number) ?? 12;
+  const titleClr   = escapeHtml((p.titleColor  as string) ?? '#111111');
+  const lSize      = (p.labelFontSize as number) ?? 10;
+  const lColor     = escapeHtml((p.labelColor  as string) ?? '#374151');
+  const pieStyle   = (p.pieStyle      as string) ?? 'solid';
+  const innerPct   = (p.innerRadius   as number) ?? 35;
+  const pieLabelP  = (p.pieLabel      as string) ?? 'outside';
+  const labelType  = (p.labelContent  as string) ?? 'name-percent';
+  const showLine   = (p.labelLine as boolean) !== false && pieLabelP === 'outside';
+  const showLegend = !!(p.showLegend) || pieLabelP !== 'outside';
+
+  // Single-slice fallback
   if (series.length === 1) {
     const s = series[0];
     const color = s.color ?? PALETTE[0];
-    const val   = s.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return `<div style="width:100%;padding:12px;">
-      ${title ? `<div style="font-size:12px;font-weight:600;margin-bottom:10px;">${title}</div>` : ''}
+      ${title ? `<div style="font-size:${titleSize}px;font-weight:600;${fontFam}color:${titleClr};text-align:${titleAlign};margin-bottom:10px;">${title}</div>` : ''}
       <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;border:1.5px solid ${escapeHtml(color)}20;background:${escapeHtml(color)}08;">
         <div style="width:44px;height:44px;border-radius:50%;background:${escapeHtml(color)};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <span style="font-size:16px;font-weight:700;color:white;">100%</span>
         </div>
         <div>
           <div style="font-size:13px;font-weight:600;color:#111;">${escapeHtml(s.name)}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px;">Income: <strong style="color:${escapeHtml(color)};">$${val}</strong></div>
-          <div style="font-size:10px;color:#9ca3af;margin-top:1px;">Single location — 100% of revenue</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px;">Value: ${escapeHtml(String(s.value))}</div>
         </div>
       </div>
     </div>`;
   }
 
-  const cx = 80, cy = 80, r = 70, ir = 30;
-  const paths: string[] = [];
+  // ── SVG geometry ──────────────────────────────────────────────────────────
+  // Leave a margin for outside labels. viewBox is 320×320 to give more room.
+  const vb = 320;
+  const cx = vb / 2, cy = vb / 2;
+  // Outer radius: smaller when we have outside labels so they fit in the viewBox
+  const r  = pieLabelP === 'outside' ? 88 : 110;
+  const ir = pieStyle === 'donut' ? Math.round(r * (innerPct / 100)) : 0;
+
+  const slices: string[] = [];
+  const labels: string[] = [];
+  const lines:  string[] = [];
   let cur = -Math.PI / 2;
 
   for (let i = 0; i < series.length; i++) {
-    const s = series[i];
+    const s     = series[i];
+    const pct   = (s.value / total) * 100;
     const slice = (s.value / total) * 2 * Math.PI;
     const end   = cur + slice;
     const color = s.color ?? PALETTE[i % PALETTE.length];
     const large = slice > Math.PI ? 1 : 0;
+    const mid   = cur + slice / 2;
 
+    // ── Slice path ───────────────────────────────────────────────────────
     const x1 = cx + r  * Math.cos(cur), y1 = cy + r  * Math.sin(cur);
     const x2 = cx + r  * Math.cos(end), y2 = cy + r  * Math.sin(end);
-    const i1 = cx + ir * Math.cos(cur), j1 = cy + ir * Math.sin(cur);
-    const i2 = cx + ir * Math.cos(end), j2 = cy + ir * Math.sin(end);
 
-    const d = `M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r},0,${large},1,${x2.toFixed(1)},${y2.toFixed(1)}`
-            + ` L${i2.toFixed(1)},${j2.toFixed(1)} A${ir},${ir},0,${large},0,${i1.toFixed(1)},${j1.toFixed(1)} Z`;
-    paths.push(`<path d="${escapeHtml(d)}" fill="${escapeHtml(color)}" stroke="white" stroke-width="1.5"/>`);
-
-    // Percentage label for slices ≥ 5%
-    const pct = (s.value / total) * 100;
-    if (pct >= 5) {
-      const mid = cur + slice / 2;
-      const lr  = (r + ir) / 2;
-      paths.push(`<text x="${(cx + lr * Math.cos(mid)).toFixed(1)}" y="${(cy + lr * Math.sin(mid)).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="600" fill="white">${Math.round(pct)}%</text>`);
+    let d: string;
+    if (ir > 0) {
+      // Donut: arc on outer rim + arc back on inner rim
+      const i1 = cx + ir * Math.cos(cur), j1 = cy + ir * Math.sin(cur);
+      const i2 = cx + ir * Math.cos(end), j2 = cy + ir * Math.sin(end);
+      d = `M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r},0,${large},1,${x2.toFixed(1)},${y2.toFixed(1)}`
+        + ` L${i2.toFixed(1)},${j2.toFixed(1)} A${ir},${ir},0,${large},0,${i1.toFixed(1)},${j1.toFixed(1)} Z`;
+    } else {
+      // Solid pie: fan from center
+      d = `M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r},0,${large},1,${x2.toFixed(1)},${y2.toFixed(1)} Z`;
     }
+    slices.push(`<path d="${escapeHtml(d)}" fill="${escapeHtml(color)}" stroke="white" stroke-width="1.5"/>`);
+
+    // ── Inside label (% in slice) ─────────────────────────────────────────
+    if (pieLabelP === 'inside' && pct >= 5) {
+      const lr = ir > 0 ? (ir + r) / 2 : r * 0.6;
+      const lx = cx + lr * Math.cos(mid);
+      const ly = cy + lr * Math.sin(mid);
+      labels.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="${lSize}" font-weight="600" fill="white"${svgFont}>${escapeHtml(pdfPieLabelText(s.name, s.value, pct, labelType))}</text>`);
+    }
+
+    // ── Outside label with leader line ────────────────────────────────────
+    if (pieLabelP === 'outside' && pct >= 1) {
+      const labelR  = r + 28;
+      const kinkR   = r + 14;
+      const kinkX   = cx + kinkR  * Math.cos(mid);
+      const kinkY   = cy + kinkR  * Math.sin(mid);
+      const rimX    = cx + r      * Math.cos(mid);
+      const rimY    = cy + r      * Math.sin(mid);
+      const lx      = cx + labelR * Math.cos(mid);
+      const ly      = cy + labelR * Math.sin(mid);
+      const onRight = Math.cos(mid) >= 0;
+      const hLen    = 10;
+      const endX    = lx + (onRight ? hLen : -hLen);
+      const anchor  = onRight ? 'start' : 'end';
+      const textX   = (endX + (onRight ? 3 : -3)).toFixed(1);
+
+      if (showLine) {
+        lines.push(`<polyline points="${rimX.toFixed(1)},${rimY.toFixed(1)} ${kinkX.toFixed(1)},${kinkY.toFixed(1)} ${endX.toFixed(1)},${ly.toFixed(1)}" fill="none" stroke="#9ca3af" stroke-width="0.8"/>`);
+      }
+
+      // Name + optional suffix
+      const suffix = (p.labelNameSuffix as string) ?? '';
+      const nameT  = escapeHtml(suffix ? `${s.name}${suffix}` : s.name);
+      const pctStr = `${pct.toFixed(0)}%`;
+      const lineH  = (lSize * 1.3).toFixed(1);
+
+      if (labelType === 'name-percent' || labelType === 'name-value') {
+        // Two lines: name on top, value/% below
+        const line2 = escapeHtml(labelType === 'name-percent' ? pctStr : String(s.value));
+        const topY  = (ly - lSize * 0.65).toFixed(1);
+        labels.push(`<text x="${textX}" y="${topY}" text-anchor="${anchor}" font-size="${lSize}" fill="${lColor}"${svgFont}><tspan x="${textX}" dy="0">${nameT}</tspan><tspan x="${textX}" dy="${lineH}">${line2}</tspan></text>`);
+      } else {
+        // Single line
+        const raw = pdfPieLabelText(s.name, s.value, pct, labelType);
+        const content = escapeHtml(labelType === 'name' && suffix ? `${raw}${suffix}` : raw);
+        labels.push(`<text x="${textX}" y="${ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" font-size="${lSize}" fill="${lColor}"${svgFont}>${content}</text>`);
+      }
+    }
+
     cur = end;
   }
 
-  const legend = series.map((s, i) => {
-    const color = s.color ?? PALETTE[i % PALETTE.length];
-    const pct   = Math.round((s.value / total) * 100);
-    const val   = s.value.toLocaleString('en-US');
-    return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
-      <div style="width:9px;height:9px;border-radius:50%;background:${escapeHtml(color)};flex-shrink:0;"></div>
-      <span style="font-size:9px;color:#374151;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${escapeHtml(s.name)}</span>
-      <span style="font-size:9px;color:#6b7280;flex-shrink:0;">${val} (${pct}%)</span>
-    </div>`;
-  }).join('');
+  // ── Center label (donut) ──────────────────────────────────────────────
+  const centerLabelProp = (p.centerLabel as string) ?? 'none';
+  let centerEl = '';
+  if (ir > 0 && centerLabelProp !== 'none') {
+    const cv = centerLabelProp === 'total' ? String(total) : escapeHtml((p.centerText as string) ?? '');
+    const cfs = (p.centerFontSize as number) ?? 24;
+    const cfc = escapeHtml((p.centerColor as string) ?? '#111111');
+    centerEl = `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="${cfs}" font-weight="700" fill="${cfc}"${svgFont}>${cv}</text>`;
+  }
 
-  return `<div style="width:100%;padding:10px;">
-    ${title ? `<div style="font-size:12px;font-weight:600;margin-bottom:8px;">${title}</div>` : ''}
-    <div style="display:flex;align-items:flex-start;gap:14px;">
-      <svg width="160" height="160" viewBox="0 0 160 160" style="flex-shrink:0;">${paths.join('')}</svg>
-      <div style="flex:1;padding-top:6px;">${legend}</div>
+  // ── Bottom legend ─────────────────────────────────────────────────────
+  const legendHtml = showLegend ? `<div style="display:flex;flex-wrap:wrap;justify-content:center;padding-top:4px;flex-shrink:0;">
+    ${series.map((s, i) => {
+      const color = s.color ?? PALETTE[i % PALETTE.length];
+      return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px;margin-bottom:3px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${escapeHtml(color)};flex-shrink:0;"></span>
+        <span style="font-size:9px;${fontFam}color:#374151;">${escapeHtml(s.name)}</span>
+      </span>`;
+    }).join('')}
+  </div>` : '';
+
+  return `<div style="width:100%;height:100%;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;">
+    ${title ? `<div style="font-size:${titleSize}px;font-weight:600;${fontFam}color:${titleClr};text-align:${titleAlign};margin-bottom:6px;flex-shrink:0;">${title}</div>` : ''}
+    <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+      <svg viewBox="0 0 ${vb} ${vb}" style="width:auto;height:auto;max-width:100%;max-height:100%;">
+        ${slices.join('')}${lines.join('')}${labels.join('')}${centerEl}
+      </svg>
     </div>
+    ${legendHtml}
   </div>`;
 }
 
 // ── Main chart dispatcher ─────────────────────────────────────────────────────
 
-function renderChartHtml(data: WidgetData | undefined, p: Record<string, unknown>): string {
+function renderChartHtml(data: WidgetData | undefined, p: Record<string, unknown>, elW = 500, elH = 300): string {
   const chartType = (p.chartType as string) ?? 'bar';
   const accent    = (p.colorScheme as string) ?? (chartType === 'bar-line' ? '#5b9bd5' : '#6366f1');
   const title     = escapeHtml((p.title as string) ?? '');
@@ -1169,9 +1324,9 @@ function renderChartHtml(data: WidgetData | undefined, p: Record<string, unknown
   if (Array.isArray(p.seriesData) && (p.seriesData as unknown[]).length > 0) {
     const series = p.seriesData as ChartSI[];
 
-    if (chartType === 'bar-line') return renderBarLineChartHtml(series, p, accent, title);
+    if (chartType === 'bar-line') return renderBarLineChartHtml(series, p, accent, title, elW, elH);
     if (chartType === 'bar-h')    return renderBarHChartHtml(series, p, accent, title);
-    if (chartType === 'pie')      return renderPieChartHtml(series, title);
+    if (chartType === 'pie')      return renderPieChartHtml(series, title, p);
 
     // bar / line / pie → vertical bar representation in PDF
     const hasValue2  = series.some((s) => s.value2 != null);
