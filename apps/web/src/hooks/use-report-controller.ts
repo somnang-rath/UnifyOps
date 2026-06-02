@@ -21,12 +21,9 @@ import type { ElementDef } from '@/components/feature/reports/elements-sidebar';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3];
-const SNAP_GRID_PX = 8;
 const HISTORY_CAP = 50;
 
-function snapToGrid(v: number): number {
-  return Math.round(v / SNAP_GRID_PX) * SNAP_GRID_PX;
-}
+
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -394,22 +391,14 @@ export function useReportController({
   }, [allElements, updateElement]);
 
   /**
-   * Nudge one element by (dx, dy) canvas-pixels.
-   * When snap-to-grid is on the final position is rounded to the 8px grid.
-   * Calls Moveable.updateRect() so handles stay aligned.
+   * Nudge one element by (dx, dy) canvas-pixels (arrow-key movement).
+   * Does NOT snap to grid — snap only applies during mouse drag/resize.
    */
   const nudgeElement = useCallback((id: string, dx: number, dy: number) => {
     const el = allElements.find((e) => e.id === id);
     if (!el || el.props?.locked) return;
-
-    let newX = Math.max(0, Math.min(canvasW - el.w, el.x + dx));
-    let newY = Math.max(0, Math.min(canvasH - el.h, el.y + dy));
-
-    if (snapGridRef.current) {
-      newX = snapToGrid(newX);
-      newY = snapToGrid(newY);
-    }
-
+    const newX = Math.max(0, Math.min(canvasW - el.w, el.x + dx));
+    const newY = Math.max(0, Math.min(canvasH - el.h, el.y + dy));
     updateElement(id, { x: newX, y: newY });
     requestAnimationFrame(() => moveableRef.current?.updateRect());
   }, [allElements, canvasW, canvasH, updateElement]);
@@ -454,17 +443,16 @@ export function useReportController({
   );
 
   /**
-   * Nudge all elements in ids by (dx, dy) — used for Arrow-key multi-select.
-   * Uses templateRef so this callback is stable and never closed over stale allElements.
+   * Nudge all elements in ids by (dx, dy) — used for Arrow-key movement.
+   * Does NOT snap to grid — snap only applies during mouse drag/resize.
    */
   const nudgeSelected = useCallback((ids: string[], dx: number, dy: number) => {
     if (ids.length === 0) return;
     const elems = templateRef.current.elements ?? [];
     const updated = elems.map((el) => {
       if (!ids.includes(el.id) || el.props?.locked) return el;
-      let newX = Math.max(0, Math.min(canvasW - el.w, el.x + dx));
-      let newY = Math.max(0, Math.min(canvasH - el.h, el.y + dy));
-      if (snapGridRef.current) { newX = snapToGrid(newX); newY = snapToGrid(newY); }
+      const newX = Math.max(0, Math.min(canvasW - el.w, el.x + dx));
+      const newY = Math.max(0, Math.min(canvasH - el.h, el.y + dy));
       return { ...el, x: newX, y: newY };
     });
     setAllElements(updated);
@@ -721,8 +709,6 @@ export function useReportController({
   // Must run in the capture phase (before Moveable's own keydown handlers)
   // because Moveable calls stopPropagation on keyboard events on its handles,
   // which would silently swallow arrow keys in the bubble-phase listener.
-  // Also fixes snap-to-grid: when grid is on, 1 px step snaps back to the
-  // same grid position, so we use SNAP_GRID_PX as the step instead.
   // All state is read via refs so this effect is registered exactly once.
   useEffect(() => {
     const onArrow = (e: KeyboardEvent) => {
@@ -739,7 +725,7 @@ export function useReportController({
       e.preventDefault();
       e.stopPropagation(); // prevent Moveable / scroll handlers from also reacting
 
-      const step = e.shiftKey ? 10 : (snapGridRef.current ? SNAP_GRID_PX : 1);
+      const step = e.shiftKey ? 10 : 1;
       let nudgeIds = ids;
       if (ids.length === 1) {
         const elems = templateRef.current.elements ?? [];

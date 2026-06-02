@@ -8,7 +8,7 @@ import { WidgetDataSourcePanel } from './widget-datasource-panel';
 import { ChartDataSourcePanel } from './chart-datasource-panel';
 import { TextDataSourcePanel } from './text-datasource-panel';
 import { runScript } from '@/lib/reports/script-runner';
-import { AlignCenter, AlignLeft, AlignRight, MousePointer2, Play, Plus, Trash2, Upload } from 'lucide-react';
+import { AlignCenter, AlignLeft, AlignRight, MousePointer2, PanelRightClose, PanelRightOpen, Play, Plus, Trash2, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Table style presets ───────────────────────────────────────────────────────
@@ -91,6 +91,8 @@ interface Props {
   template: ReportTemplate;
   onElementChange: (props: Record<string, unknown>) => void;
   onTemplateChange: (patch: Partial<ReportTemplate>) => void;
+  wide?: boolean;
+  onToggleWide?: () => void;
 }
 
 // ── Shared micro-components ───────────────────────────────────────────────────
@@ -165,7 +167,7 @@ function Toggle({
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export function PropertiesPanel({ selected, template, onElementChange, onTemplateChange }: Props) {
+export function PropertiesPanel({ selected, template, onElementChange, onTemplateChange, wide, onToggleWide }: Props) {
   const [tab, setTab] = useState<Tab>('element');
   const [scriptOutput, setScriptOutput] = useState<string | null>(null);
   const p = selected?.props as Record<string, unknown> | undefined;
@@ -188,9 +190,9 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
   ];
 
   return (
-    <div className="w-64 h-full bg-bg-card border-l border-border flex flex-col text-sm overflow-hidden">
+    <div className="w-full h-full bg-bg-card border-l border-border flex flex-col text-sm overflow-hidden">
       {/* Tabs */}
-      <div className="flex border-b border-border flex-shrink-0">
+      <div className="flex border-b border-border flex-shrink-0 items-stretch">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -205,6 +207,17 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
             <span className="block truncate">{t.label}</span>
           </button>
         ))}
+        {onToggleWide && (
+          <button
+            onClick={onToggleWide}
+            title={wide ? 'Narrow panel' : 'Widen panel'}
+            className="flex-shrink-0 px-2 border-b-2 border-transparent text-text-muted hover:text-accent-600 transition-colors"
+          >
+            {wide
+              ? <PanelRightClose className="w-3.5 h-3.5" />
+              : <PanelRightOpen className="w-3.5 h-3.5" />}
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">

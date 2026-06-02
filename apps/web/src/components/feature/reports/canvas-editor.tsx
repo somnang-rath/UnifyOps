@@ -48,6 +48,8 @@ import {
   Lock,
   MoreHorizontal,
   MousePointer2,
+  PanelRightClose,
+  PanelRightOpen,
   Pin,
   PinOff,
   Plus,
@@ -99,7 +101,7 @@ interface Props {
 const SHORTCUTS = [
   { keys: ['Ctrl', '+', 'Z'],             desc: 'Undo' },
   { keys: ['Ctrl', '+', 'Shift', '+', 'Z'], desc: 'Redo' },
-  { keys: ['Arrow', 'keys'],              desc: 'Nudge 1px (8px with grid)' },
+  { keys: ['Arrow', 'keys'],              desc: 'Nudge 1px' },
   { keys: ['Shift', '+', 'Arrow'],        desc: 'Nudge 10px' },
   { keys: ['Ctrl', '+', 'C'],            desc: 'Copy element' },
   { keys: ['Ctrl', '+', 'V'],            desc: 'Paste element' },
@@ -810,6 +812,14 @@ export function CanvasEditor({ template, onChange }: Props) {
   const [leftTab, setLeftTab]   = useState<'add' | 'layout' | 'page'>('add');
   const [showLeft, setShowLeft] = useState(true);
   const [showRight, setShowRight] = useState(true);
+  const [rightWide, setRightWide] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('rpt:rightWide') === '1',
+  );
+  const toggleRightWide = () => setRightWide((v) => {
+    const next = !v;
+    try { localStorage.setItem('rpt:rightWide', next ? '1' : '0'); } catch { /* quota */ }
+    return next;
+  });
   const [showGuide, setShowGuide] = useState(false);
   const [ctxMenu, setCtxMenu]   = useState<CtxMenu>(null);
   const [canvasFocused, setCanvasFocused] = useState(false);
@@ -1937,7 +1947,7 @@ export function CanvasEditor({ template, onChange }: Props) {
         <div
           className={cn(
             'flex-shrink-0 overflow-hidden transition-[width] duration-300 h-full',
-            showRight ? 'w-64' : 'w-0',
+            showRight ? (rightWide ? 'w-[360px]' : 'w-64') : 'w-0',
           )}
         >
           <PropertiesPanel
@@ -1945,6 +1955,8 @@ export function CanvasEditor({ template, onChange }: Props) {
             template={template}
             onElementChange={ctrl.onPropsChange}
             onTemplateChange={ctrl.onChangeTracked}
+            wide={rightWide}
+            onToggleWide={toggleRightWide}
           />
         </div>
 

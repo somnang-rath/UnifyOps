@@ -8,22 +8,26 @@ import {
   ChevronRight,
   Copy,
   Folder,
+  FolderInput,
   FolderOpen,
   FolderPlus,
-  Ungroup,
   GaugeCircle,
   GripVertical,
   Hash,
   Heading1,
   ImageIcon,
   Lock,
+  LogOut,
   Minus,
+  MoreHorizontal,
   Pencil,
+  Plus,
   Square,
   Table2,
   Trash2,
   TrendingUp,
   Type,
+  Ungroup,
   Unlock,
 } from 'lucide-react';
 import type { ReportElement, ReportGroup } from '@/schemas/report';
@@ -111,16 +115,6 @@ function buildDisplayList(elements: ReportElement[], groups: ReportGroup[]): Dis
   return items.sort((a, b) => a.yAnchor - b.yAnchor);
 }
 
-// ── Context menu type ─────────────────────────────────────────────────────────
-
-type CtxTarget = { kind: 'element'; id: string } | { kind: 'group'; id: string };
-
-interface CtxMenu {
-  x: number;
-  y: number;
-  target: CtxTarget;
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -128,9 +122,7 @@ interface Props {
   groups: ReportGroup[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  /** Reorder ungrouped elements by their y-sorted index */
   onReorder: (fromIdx: number, toIdx: number) => void;
-  /** Reorder elements within a group by their y-sorted index */
   onReorderInGroup: (groupId: string, fromIdx: number, toIdx: number) => void;
   onToggleLock: (id: string) => void;
   onCopy: (id: string) => void;
@@ -171,8 +163,6 @@ export function LayoutPanel({
   onUngroupGroup,
 }: Props) {
   const displayItems = buildDisplayList(elements, groups);
-
-  // Ungrouped elements for drag indexing
   const ungrouped = elements.filter((e) => !e.groupId).sort((a, b) => (a.y ?? 0) - (b.y ?? 0));
 
   // ── Drag state (ungrouped only) ────────────────────────────────────────────
@@ -181,13 +171,25 @@ export function LayoutPanel({
   const longPressRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragActiveRef = useRef(false);
 
-  // ── Context menu ────────────────────────────────────────────────────────────
-  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  // ── Rename state ────────────────────────────────────────────────────────────
+  const [renaming, setRenaming]   = useState<{ kind: 'element' | 'group'; id: string } | null>(null);
+  const [renameVal, setRenameVal] = useState('');
+  const renameInputRef            = useRef<HTMLInputElement>(null);
+
+  // ── Group action dropdown ───────────────────────────────────────────────────
+  const [groupMenuId, setGroupMenuId] = useState<string | null>(null);
+  const groupMenuRef = useRef<HTMLDivElement>(null);
+
+  // ── Folder picker (add ungrouped element to a group) ───────────────────────
+  const [folderPickerId, setFolderPickerId] = useState<string | null>(null);
+  const folderPickerRef = useRef<HTMLDivElement>(null);
+
+  // ── Context menu (right-click fallback) ────────────────────────────────────
+  type CtxTarget = { kind: 'element'; id: string } | { kind: 'group'; id: string };
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; target: CtxTarget } | null>(null);
   const [ctxPos, setCtxPos]   = useState({ left: 0, top: 0 });
   const ctxRef = useRef<HTMLDivElement>(null);
 
-  // useLayoutEffect fires before the browser paints — measure the rendered menu
-  // and flip it up/left so it never overflows the viewport.
   useLayoutEffect(() => {
     if (!ctxMenu || !ctxRef.current) return;
     const { offsetWidth: w, offsetHeight: h } = ctxRef.current;
@@ -195,12 +197,6 @@ export function LayoutPanel({
     const top  = ctxMenu.y + h > window.innerHeight ? ctxMenu.y - h : ctxMenu.y;
     setCtxPos({ left: Math.max(0, left), top: Math.max(0, top) });
   }, [ctxMenu]);
-
-  // ── Rename state ────────────────────────────────────────────────────────────
-  // kind 'element' → uses onRename; kind 'group' → uses onRenameGroup
-  const [renaming, setRenaming]    = useState<{ kind: 'element' | 'group'; id: string } | null>(null);
-  const [renameVal, setRenameVal]  = useState('');
-  const renameInputRef             = useRef<HTMLInputElement>(null);
 
   // ── Effects ─────────────────────────────────────────────────────────────────
 
@@ -214,10 +210,27 @@ export function LayoutPanel({
   }, [ctxMenu]);
 
   useEffect(() => {
+    if (!groupMenuId) return;
+    const close = (e: MouseEvent) => {
+      if (groupMenuRef.current && !groupMenuRef.current.contains(e.target as Node)) setGroupMenuId(null);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [groupMenuId]);
+
+  useEffect(() => {
+    if (!folderPickerId) return;
+    const close = (e: MouseEvent) => {
+      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node)) setFolderPickerId(null);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [folderPickerId]);
+
+  useEffect(() => {
     if (renaming) renameInputRef.current?.focus();
   }, [renaming]);
 
-  // Global mouseup ends drag
   const handleGlobalMouseUp = useCallback(() => {
     if (longPressRef.current) clearTimeout(longPressRef.current);
     if (dragActiveRef.current && dragId !== null && dropIdx !== null) {
@@ -266,39 +279,76 @@ export function LayoutPanel({
     const g = groups.find((g) => g.id === id);
     if (!g) return;
     setCtxMenu(null);
+    setGroupMenuId(null);
     setRenaming({ kind: 'group', id });
     setRenameVal(g.name);
   };
 
-  // ── Render helpers ───────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────────
 
-  const elementContextMenu = (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    setCtxMenu({ x: e.clientX, y: e.clientY, target: { kind: 'element', id } });
-  };
-
-  const groupContextMenu = (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    setCtxMenu({ x: e.clientX, y: e.clientY, target: { kind: 'group', id } });
-  };
-
-  // ── Empty state ─────────────────────────────────────────────────────────────
-
+  const selectedEl = elements.find((e) => e.id === selectedId);
   const isEmpty = elements.length === 0 && groups.length === 0;
+
+  // ── Reusable inline input ─────────────────────────────────────────────────────
+
+  function RenameInput() {
+    return (
+      <input
+        ref={renameInputRef}
+        value={renameVal}
+        onChange={(e) => setRenameVal(e.target.value)}
+        onBlur={commitRename}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter')  commitRename();
+          if (e.key === 'Escape') setRenaming(null);
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="flex-1 text-[11px] font-medium bg-bg-input border border-accent-400 rounded px-1.5 py-0.5 outline-none min-w-0"
+      />
+    );
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* New Group button */}
-      <div className="px-2 pt-2 pb-1.5 border-b border-border flex-shrink-0">
+      {/* Toolbar */}
+      <div className="px-2 pt-2 pb-1.5 border-b border-border flex-shrink-0 flex gap-1.5">
         <button
           onClick={onCreateGroup}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 text-[11px] font-semibold text-text-muted hover:text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-950/30 border border-dashed border-border hover:border-accent-400 rounded-lg transition-all"
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-[11px] font-semibold text-text-muted hover:text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-950/30 border border-dashed border-border hover:border-accent-400 rounded-lg transition-all"
         >
           <FolderPlus className="w-3.5 h-3.5" />
           New Group
         </button>
+        {selectedEl && groups.length > 0 && !selectedEl.groupId && (
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); setFolderPickerId(folderPickerId === `toolbar-${selectedEl.id}` ? null : `toolbar-${selectedEl.id}`); }}
+              title="Add selected element to a group"
+              className="flex items-center gap-1.5 py-1.5 px-2.5 text-[11px] font-semibold text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-950/30 border border-accent-300 rounded-lg transition-all"
+            >
+              <FolderInput className="w-3.5 h-3.5" />
+              Add to group
+            </button>
+            {folderPickerId === `toolbar-${selectedEl.id}` && (
+              <div ref={folderPickerRef} className="absolute left-0 top-full mt-1 w-44 bg-bg-card border border-border rounded-lg shadow-xl z-50 py-1 animate-fade-in">
+                <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Move to group</p>
+                {groups.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => { onMoveToGroup(selectedEl.id, g.id); setFolderPickerId(null); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text hover:bg-bg-hover transition-colors"
+                  >
+                    <Folder className="w-3.5 h-3.5 text-accent-500 flex-shrink-0" />
+                    <span className="truncate">{g.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Item list */}
@@ -318,23 +368,29 @@ export function LayoutPanel({
         )}
 
         {displayItems.map((item, topIdx) => {
-          const isFirst = topIdx === 0;
-          const isLast  = topIdx === displayItems.length - 1;
+          const isFirstItem = topIdx === 0;
+          const isLastItem  = topIdx === displayItems.length - 1;
 
           // ── Group row ────────────────────────────────────────────────────
           if (item.kind === 'group') {
-            const g          = item.group;
+            const g           = item.group;
             const isCollapsed = !!g.collapsed;
-            const isEmpty     = item.elements.length === 0;
+            const groupEmpty  = item.elements.length === 0;
             const isRenaming  = renaming?.kind === 'group' && renaming.id === g.id;
-            const canMove     = !isEmpty; // empty groups have no y anchor
+            const canMove     = !groupEmpty;
+            const isMenuOpen  = groupMenuId === g.id;
+            // Show "add to group" button if selected element is NOT already in this group
+            const canAddSelected = selectedEl && selectedEl.groupId !== g.id;
 
             return (
               <div key={g.id}>
                 {/* Group header */}
                 <div
-                  onContextMenu={(e) => groupContextMenu(e, g.id)}
-                  className="group flex items-center gap-1 px-1.5 py-1.5 rounded-lg hover:bg-bg-hover cursor-default select-none"
+                  onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, target: { kind: 'group', id: g.id } }); }}
+                  className={cn(
+                    'group flex items-center gap-1 px-1.5 py-1.5 rounded-lg cursor-default select-none transition-colors',
+                    'bg-bg-subtle/60 hover:bg-bg-hover border border-transparent hover:border-border',
+                  )}
                 >
                   {/* Collapse toggle */}
                   <button
@@ -368,63 +424,133 @@ export function LayoutPanel({
                     />
                   ) : (
                     <span
-                      className="flex-1 truncate text-[11px] font-semibold text-text leading-none"
+                      className="flex-1 truncate text-[11px] font-semibold text-text leading-none min-w-0"
                       onDoubleClick={() => openRenameGroup(g.id)}
                       title="Double-click to rename"
                     >
                       {g.name}
-                      {isEmpty && (
+                      {groupEmpty && (
                         <span className="ml-1 text-[10px] font-normal text-text-muted">(empty)</span>
                       )}
                     </span>
                   )}
 
                   {/* Count badge */}
-                  {!isEmpty && (
-                    <span className="flex-shrink-0 text-[9px] font-medium text-text-muted bg-bg-subtle border border-border rounded-full px-1.5 py-0.5 leading-none">
+                  {!groupEmpty && (
+                    <span className="flex-shrink-0 text-[9px] font-medium text-text-muted bg-bg-card border border-border rounded-full px-1.5 py-0.5 leading-none">
                       {item.elements.length}
                     </span>
                   )}
 
-                  {/* Up / Down buttons */}
-                  <div className={cn('flex items-center gap-0.5 flex-shrink-0 transition-opacity opacity-0 group-hover:opacity-100')}>
+                  {/* Action buttons — always visible on hover */}
+                  <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Add selected element to this group */}
+                    {canAddSelected && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onMoveToGroup(selectedId!, g.id); }}
+                        title="Add selected element to this group"
+                        className="p-1 rounded-md text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    )}
+
+                    {/* Move up / down */}
                     <button
                       onClick={(e) => { e.stopPropagation(); onMoveGroupUp(g.id); }}
-                      disabled={isFirst || !canMove}
+                      disabled={isFirstItem || !canMove}
                       title="Move group up"
-                      className="p-1 rounded-md text-text-muted hover:bg-bg-subtle hover:text-text disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                      className="p-1 rounded-md text-text-muted hover:bg-bg-card hover:text-text disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                     >
                       <ArrowUp className="w-3 h-3" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onMoveGroupDown(g.id); }}
-                      disabled={isLast || !canMove}
+                      disabled={isLastItem || !canMove}
                       title="Move group down"
-                      className="p-1 rounded-md text-text-muted hover:bg-bg-subtle hover:text-text disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                      className="p-1 rounded-md text-text-muted hover:bg-bg-card hover:text-text disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                     >
                       <ArrowDown className="w-3 h-3" />
                     </button>
+
+                    {/* Group actions dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setGroupMenuId(isMenuOpen ? null : g.id); }}
+                        title="Group actions"
+                        className={cn(
+                          'p-1 rounded-md transition-colors',
+                          isMenuOpen
+                            ? 'bg-bg-hover text-text'
+                            : 'text-text-muted hover:bg-bg-card hover:text-text',
+                        )}
+                      >
+                        <MoreHorizontal className="w-3 h-3" />
+                      </button>
+
+                      {isMenuOpen && (
+                        <div
+                          ref={groupMenuRef}
+                          className="absolute right-0 top-full mt-0.5 w-44 bg-bg-card border border-border rounded-xl shadow-xl z-50 py-1 animate-fade-in"
+                        >
+                          <button
+                            onClick={() => openRenameGroup(g.id)}
+                            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text hover:bg-bg-hover transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                            Rename
+                          </button>
+                          <button
+                            onClick={() => { onDuplicateGroup(g.id); setGroupMenuId(null); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text hover:bg-bg-hover transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                            Duplicate group
+                          </button>
+                          <div className="my-1 border-t border-border" />
+                          <button
+                            onClick={() => { onUngroupGroup(g.id); setGroupMenuId(null); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text hover:bg-bg-hover transition-colors"
+                          >
+                            <Ungroup className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                            <span>Ungroup</span>
+                            <span className="ml-auto text-[10px] text-text-muted">keeps elements</span>
+                          </button>
+                          <div className="my-1 border-t border-border" />
+                          <button
+                            onClick={() => { onDeleteGroup(g.id); setGroupMenuId(null); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>Delete group</span>
+                            <span className="ml-auto text-[10px] text-red-400">+elements</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Group children */}
                 {!isCollapsed && (
-                  <div className="ml-4 flex flex-col gap-0.5 border-l-2 border-border pl-1.5 mb-0.5">
+                  <div className="ml-5 flex flex-col gap-0.5 border-l-2 border-accent-200 dark:border-accent-800 pl-1.5 mb-0.5 mt-0.5">
                     {item.elements.length === 0 && (
-                      <p className="text-[10px] text-text-muted px-2 py-1 italic">Drop elements here via right-click</p>
+                      <p className="text-[10px] text-text-muted px-2 py-1.5 italic">
+                        Use the <strong>+</strong> button above to add elements here
+                      </p>
                     )}
                     {item.elements.map((el, elIdx) => {
                       const isFirst    = elIdx === 0;
                       const isLast     = elIdx === item.elements.length - 1;
                       const isLocked   = !!el.props?.locked;
                       const isSelected = el.id === selectedId;
-                      const isRenaming = renaming?.kind === 'element' && renaming.id === el.id;
+                      const isRen      = renaming?.kind === 'element' && renaming.id === el.id;
 
                       return (
                         <div
                           key={el.id}
                           onClick={() => onSelect(el.id)}
-                          onContextMenu={(e) => elementContextMenu(e, el.id)}
+                          onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, target: { kind: 'element', id: el.id } }); }}
                           className={cn(
                             'group flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg cursor-default transition-colors select-none',
                             isSelected
@@ -436,30 +562,20 @@ export function LayoutPanel({
                             {TYPE_ICONS[el.type] ?? <Square className="w-3.5 h-3.5" />}
                           </span>
 
-                          {isRenaming ? (
-                            <input
-                              ref={renameInputRef}
-                              value={renameVal}
-                              onChange={(e) => setRenameVal(e.target.value)}
-                              onBlur={commitRename}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter')  commitRename();
-                                if (e.key === 'Escape') setRenaming(null);
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              className="flex-1 text-[11px] font-medium bg-bg-input border border-accent-400 rounded px-1.5 py-0.5 outline-none min-w-0"
-                            />
+                          {isRen ? (
+                            <RenameInput />
                           ) : (
                             <span
-                              className="flex-1 truncate text-[11px] font-medium leading-none"
+                              className="flex-1 truncate text-[11px] font-medium leading-none min-w-0"
                               onDoubleClick={(e) => { e.stopPropagation(); openRenameElement(el.id); }}
+                              title="Double-click to rename"
                             >
                               {elementLabel(el)}
                             </span>
                           )}
 
                           <div className={cn('flex items-center gap-0.5 flex-shrink-0 transition-opacity', isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>
+                            {/* Lock */}
                             <button
                               onClick={(e) => { e.stopPropagation(); onToggleLock(el.id); }}
                               title={isLocked ? 'Unlock' : 'Lock'}
@@ -467,6 +583,7 @@ export function LayoutPanel({
                             >
                               {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                             </button>
+                            {/* Move up/down within group */}
                             <button
                               onClick={(e) => { e.stopPropagation(); onReorderInGroup(g.id, elIdx, elIdx - 1); }}
                               disabled={isFirst}
@@ -482,6 +599,14 @@ export function LayoutPanel({
                               className="p-1 rounded-md text-text-muted hover:bg-bg-subtle hover:text-text disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                             >
                               <ArrowDown className="w-3 h-3" />
+                            </button>
+                            {/* Remove from group */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onMoveToGroup(el.id, null); }}
+                              title="Remove from group"
+                              className="p-1 rounded-md text-text-muted hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 transition-colors"
+                            >
+                              <LogOut className="w-3 h-3" />
                             </button>
                           </div>
                         </div>
@@ -502,7 +627,8 @@ export function LayoutPanel({
           const isSelected = el.id === selectedId;
           const isDragged  = el.id === dragId;
           const showDrop   = dragId !== null && dropIdx === uIdx && !isDragged;
-          const isRenaming = renaming?.kind === 'element' && renaming.id === el.id;
+          const isRen      = renaming?.kind === 'element' && renaming.id === el.id;
+          const isFolderOpen = folderPickerId === el.id;
 
           return (
             <div key={el.id}>
@@ -511,7 +637,7 @@ export function LayoutPanel({
                 onMouseDown={(e) => startDrag(e, el.id)}
                 onMouseEnter={() => { if (dragActiveRef.current) setDropIdx(uIdx); }}
                 onClick={() => { if (!dragActiveRef.current) onSelect(el.id); }}
-                onContextMenu={(e) => elementContextMenu(e, el.id)}
+                onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, target: { kind: 'element', id: el.id } }); }}
                 className={cn(
                   'group flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg transition-colors select-none',
                   dragId ? 'cursor-grabbing' : 'cursor-default',
@@ -532,23 +658,11 @@ export function LayoutPanel({
                   {TYPE_ICONS[el.type] ?? <Square className="w-3.5 h-3.5" />}
                 </span>
 
-                {isRenaming ? (
-                  <input
-                    ref={renameInputRef}
-                    value={renameVal}
-                    onChange={(e) => setRenameVal(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter')  commitRename();
-                      if (e.key === 'Escape') setRenaming(null);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="flex-1 text-[11px] font-medium bg-bg-input border border-accent-400 rounded px-1.5 py-0.5 outline-none min-w-0"
-                  />
+                {isRen ? (
+                  <RenameInput />
                 ) : (
                   <span
-                    className="flex-1 truncate text-[11px] font-medium leading-none"
+                    className="flex-1 truncate text-[11px] font-medium leading-none min-w-0"
                     onDoubleClick={(e) => { e.stopPropagation(); openRenameElement(el.id); }}
                     title="Double-click to rename"
                   >
@@ -557,6 +671,7 @@ export function LayoutPanel({
                 )}
 
                 <div className={cn('flex items-center gap-0.5 flex-shrink-0 transition-opacity', isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>
+                  {/* Lock */}
                   <button
                     onClick={(e) => { e.stopPropagation(); onToggleLock(el.id); }}
                     title={isLocked ? 'Unlock' : 'Lock'}
@@ -564,6 +679,7 @@ export function LayoutPanel({
                   >
                     {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                   </button>
+                  {/* Move up/down */}
                   <button
                     onClick={(e) => { e.stopPropagation(); onReorder(uIdx, uIdx - 1); }}
                     disabled={isUFirst}
@@ -580,13 +696,48 @@ export function LayoutPanel({
                   >
                     <ArrowDown className="w-3 h-3" />
                   </button>
+                  {/* Add to group (only if groups exist) */}
+                  {groups.length > 0 && (
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setFolderPickerId(isFolderOpen ? null : el.id); }}
+                        title="Add to group"
+                        className={cn(
+                          'p-1 rounded-md transition-colors',
+                          isFolderOpen
+                            ? 'bg-accent-100 text-accent-600 dark:bg-accent-900/30'
+                            : 'text-text-muted hover:bg-bg-subtle hover:text-accent-600',
+                        )}
+                      >
+                        <FolderInput className="w-3 h-3" />
+                      </button>
+                      {isFolderOpen && (
+                        <div
+                          ref={folderPickerRef}
+                          className="absolute right-0 top-full mt-0.5 w-44 bg-bg-card border border-border rounded-xl shadow-xl z-50 py-1 animate-fade-in"
+                        >
+                          <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Add to group</p>
+                          {groups.map((g) => (
+                            <button
+                              key={g.id}
+                              onClick={(e) => { e.stopPropagation(); onMoveToGroup(el.id, g.id); setFolderPickerId(null); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text hover:bg-bg-hover transition-colors"
+                            >
+                              <Folder className="w-3.5 h-3.5 text-accent-500 flex-shrink-0" />
+                              <span className="truncate">{g.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
 
-        {/* Drop zone after the last ungrouped element */}
+        {/* Drop zone after last ungrouped element */}
         {dragId !== null && (
           <>
             {dropIdx === ungrouped.length && (
@@ -600,12 +751,12 @@ export function LayoutPanel({
         )}
       </div>
 
-      {/* ── Context menu ──────────────────────────────────────────────────── */}
+      {/* ── Right-click context menu ──────────────────────────────────────────── */}
       {ctxMenu && (
         <div
           ref={ctxRef}
           style={{ position: 'fixed', left: ctxPos.left, top: ctxPos.top, zIndex: 9999 }}
-          className="bg-bg-card border border-border rounded-lg shadow-lg py-1 min-w-[168px] max-h-[calc(100vh-16px)] overflow-y-auto animate-fade-in"
+          className="bg-bg-card border border-border rounded-xl shadow-lg py-1 min-w-[168px] max-h-[calc(100vh-16px)] overflow-y-auto animate-fade-in"
         >
           {ctxMenu.target.kind === 'element' && (() => {
             const id = ctxMenu.target.id;
@@ -622,7 +773,6 @@ export function LayoutPanel({
                   <Copy className="w-3.5 h-3.5 text-text-muted" /> Copy
                 </button>
 
-                {/* Move to group sub-section */}
                 {groups.length > 0 && (
                   <>
                     <div className="my-1 border-t border-border" />
@@ -643,7 +793,7 @@ export function LayoutPanel({
                     {inGroup && (
                       <button onClick={() => { onMoveToGroup(id, null); setCtxMenu(null); }}
                         className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-muted hover:bg-bg-hover transition-colors">
-                        <Unlock className="w-3.5 h-3.5" /> Remove from group
+                        <LogOut className="w-3.5 h-3.5" /> Remove from group
                       </button>
                     )}
                   </>
