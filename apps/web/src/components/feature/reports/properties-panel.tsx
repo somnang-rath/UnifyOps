@@ -2185,11 +2185,13 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
               recipients={template.recipients}
               permissions={template.permissions}
               dataRecipientsConfig={template.dataRecipientsConfig}
+              perRecipientUrlConfig={template.perRecipientUrlConfig}
               blocklist={template.blocklist}
               templateId={template._id}
               onChangeRecipients={(r) => onTemplateChange({ recipients: r })}
               onChangePermissions={(pp) => onTemplateChange({ permissions: pp })}
               onChangeDataRecipientsConfig={(c) => onTemplateChange({ dataRecipientsConfig: c })}
+              onChangePerRecipientUrlConfig={(c) => onTemplateChange({ perRecipientUrlConfig: c })}
             />
           </div>
         )}

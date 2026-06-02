@@ -67,14 +67,31 @@ const reportsService = {
 
   // ── PDF ────────────────────────────────────────────────────────────────────
 
-  /** Build a preview URL with optional per-recipient filter. */
-  previewUrl(id: string, filterField?: string, filterValue?: string): string {
+  /** Build a preview URL with optional per-recipient filter or Mode C cpoId. */
+  previewUrl(id: string, filterField?: string, filterValue?: string, cpoId?: string): string {
     const base = `/reports/${id}/preview`;
+    const params = new URLSearchParams();
     if (filterField && filterValue) {
-      return `${base}?filterField=${encodeURIComponent(filterField)}&filterValue=${encodeURIComponent(filterValue)}`;
+      params.set('filterField', filterField);
+      params.set('filterValue', filterValue);
     }
-    return base;
+    if (cpoId) params.set('cpoId', cpoId);
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
   },
+
+  /** Fetch the CPO list URL and return count + first-5 preview entries. */
+  fetchCpoList: (templateId: string, body: {
+    listUrl: string;
+    listDataPath?: string;
+    idField?: string;
+    emailField?: string;
+    nameField?: string;
+  }) =>
+    api.post<{ count: number; preview: { id: unknown; email: unknown; name: unknown }[] }>(
+      `/reports/${templateId}/fetch-cpo-list`,
+      body,
+    ).then((r) => r.data),
 
   async downloadPdf(id: string, name: string): Promise<void> {
     const res = await api.get(`/reports/${id}/download`, { responseType: 'blob' });
@@ -199,6 +216,30 @@ export function useReportMutations() {
       onError: () => toast('Failed to queue test email', 'error'),
     }),
   };
+}
+
+// ── CPO list test hook ────────────────────────────────────────────────────────
+
+export interface CpoPreviewEntry {
+  id: unknown;
+  email: unknown;
+  name: unknown;
+}
+
+/**
+ * Mutation for the "Fetch CPO List" test button.
+ * POST /reports/:id/fetch-cpo-list → { count, preview[] }
+ */
+export function useFetchCpoList(templateId: string | undefined) {
+  return useMutation({
+    mutationFn: (body: {
+      listUrl: string;
+      listDataPath?: string;
+      idField?: string;
+      emailField?: string;
+      nameField?: string;
+    }) => reportsService.fetchCpoList(templateId!, body),
+  });
 }
 
 // ── Blocklist mutations ───────────────────────────────────────────────────────

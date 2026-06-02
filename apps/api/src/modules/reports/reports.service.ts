@@ -15,6 +15,7 @@ import {
   ReportBlocklistEntry,
   ReportRecipientDataFilter,
   ReportDataRecipientsConfig,
+  ReportPerRecipientUrlConfig,
 } from './schemas/report-template.schema';
 import { ReportRun, ReportRunDocument } from './schemas/report-run.schema';
 import {
@@ -54,6 +55,8 @@ interface ResolvedRecipient {
   email: string;
   userId?: string;
   filterValue?: string;
+  /** Mode C: fully-resolved URL for this recipient's private data. */
+  perRecipientDataUrl?: string;
   canDownload: boolean;
   formats: string[];
 }
@@ -238,28 +241,38 @@ export class ReportsService {
    * recipient run never times out the request.
    */
   async sendToRecipients(userId: string, templateId: string) {
-    const template          = await this.byId(userId, templateId);
-    const recipients        = (template.recipients ?? []) as ReportRecipient[];
-    const dataRecipientsCfg = (template.dataRecipientsConfig ?? { enabled: false, emailField: '' }) as ReportDataRecipientsConfig;
+    const template             = await this.byId(userId, templateId);
+    const recipients           = (template.recipients ?? []) as ReportRecipient[];
+    const dataRecipientsCfg    = (template.dataRecipientsConfig ?? { enabled: false, emailField: '' }) as ReportDataRecipientsConfig;
+    const perRecipientUrlCfg   = (template.perRecipientUrlConfig ?? { enabled: false }) as ReportPerRecipientUrlConfig;
 
-    // Validate: need either auto-recipients config OR at least one manual recipient
-    if (!dataRecipientsCfg.enabled && !recipients.length) {
+    // Validate Mode C
+    if (perRecipientUrlCfg.enabled) {
+      if (!perRecipientUrlCfg.listUrl) {
+        throw new BadRequestException('"Per-Recipient URL" is enabled but List URL is not set.');
+      }
+      if (!perRecipientUrlCfg.dataUrlTemplate || !perRecipientUrlCfg.dataUrlTemplate.includes('{id}')) {
+        throw new BadRequestException('"Per-Recipient URL" Data URL Template must contain {id} placeholder.');
+      }
+    }
+
+    // Validate Mode A
+    if (!perRecipientUrlCfg.enabled && !dataRecipientsCfg.enabled && !recipients.length) {
       throw new BadRequestException(
         'No recipients configured. ' +
         'Either enable "Auto-recipients from API data" and set an email field, ' +
-        'or add manual recipients.',
+        'or enable "Per-CPO URL mode", or add manual recipients.',
       );
     }
-    if (dataRecipientsCfg.enabled && !dataRecipientsCfg.emailField) {
+    if (!perRecipientUrlCfg.enabled && dataRecipientsCfg.enabled && !dataRecipientsCfg.emailField) {
       throw new BadRequestException(
         '"Auto-recipients" is enabled but no emailField is configured. ' +
         'Set the field path (e.g. "email") that contains the recipient address in each row.',
       );
     }
 
-    // When using auto-recipients the real count is discovered at dispatch time;
-    // use 0 as a placeholder — the background job updates it after extracting rows.
-    const estimatedTotal = dataRecipientsCfg.enabled ? 0 : recipients.length;
+    // Modes A and C discover the real recipient count at dispatch time; use 0 as placeholder.
+    const estimatedTotal = (dataRecipientsCfg.enabled || perRecipientUrlCfg.enabled) ? 0 : recipients.length;
 
     const run = await this.runModel.create({
       templateId: new Types.ObjectId(templateId),
@@ -299,12 +312,16 @@ export class ReportsService {
     const templateObjId = rawId ? new Types.ObjectId(String(rawId)) : undefined;
 
     try {
-      const blocklist          = (template.blocklist ?? []) as ReportBlocklistEntry[];
-      const dataRecipientsCfg  = (template.dataRecipientsConfig ?? { enabled: false, emailField: '' }) as ReportDataRecipientsConfig;
-      const manualDataFilter   = (template.recipientDataFilter ?? { enabled: false, fieldPath: '' }) as ReportRecipientDataFilter;
+      const blocklist            = (template.blocklist ?? []) as ReportBlocklistEntry[];
+      const dataRecipientsCfg    = (template.dataRecipientsConfig ?? { enabled: false, emailField: '' }) as ReportDataRecipientsConfig;
+      const manualDataFilter     = (template.recipientDataFilter ?? { enabled: false, fieldPath: '' }) as ReportRecipientDataFilter;
+      const perRecipientUrlCfg   = (template.perRecipientUrlConfig ?? { enabled: false }) as ReportPerRecipientUrlConfig;
 
-      // Step 1: pre-fetch all unique API URLs into memory ONCE (shared for all recipients)
-      const urlCache = await this.prefetchUrlCache(template);
+      // Step 1: pre-fetch all unique API URLs into memory ONCE (shared for all recipients).
+      // Skipped in Mode C — each recipient fetches their own URL individually.
+      const urlCache = perRecipientUrlCfg.enabled
+        ? new Map<string, unknown>()
+        : await this.prefetchUrlCache(template);
 
       // Step 2: load internal app data once
       const allData = await this.dataService.getAllData();
@@ -316,11 +333,35 @@ export class ReportsService {
       //
       // Mode B — Manual: use the template.recipients[] list as configured.
       //   Filter     = controlled by template.recipientDataFilter.
+      //
+      // Mode C — Per-Recipient URL: fetch a list of CPOs from listUrl, then build
+      //   a per-CPO resolved URL (dataUrlTemplate with {id} substituted). Each
+      //   recipient's PDF is generated from their own dedicated dataset.
 
-      let resolved: Array<{ email: string; userId?: string; filterValue?: string; canDownload: boolean; formats: string[] }>;
+      let resolved: ResolvedRecipient[];
       let effectiveDataFilter: ReportRecipientDataFilter;
 
-      if (dataRecipientsCfg.enabled && dataRecipientsCfg.emailField) {
+      if (perRecipientUrlCfg.enabled && perRecipientUrlCfg.listUrl && perRecipientUrlCfg.dataUrlTemplate) {
+        // ── MODE C: per-recipient URL ─────────────────────────────────────
+        resolved = await this.resolvePerRecipientUrlRecipients(perRecipientUrlCfg);
+
+        if (!resolved.length) {
+          await this.runModel.findByIdAndUpdate(runId, {
+            status: 'error',
+            error:
+              `No CPOs found at list URL. ` +
+              `Check that listUrl is reachable and emailField="${perRecipientUrlCfg.emailField}" exists in each row.`,
+          });
+          return;
+        }
+
+        await this.runModel.findByIdAndUpdate(runId, { totalRecipients: resolved.length });
+        effectiveDataFilter = { enabled: false, fieldPath: '' };
+
+        this.logger.log(
+          `[${template.name}] PER-RECIPIENT URL: found ${resolved.length} CPO(s)`,
+        );
+      } else if (dataRecipientsCfg.enabled && dataRecipientsCfg.emailField) {
         // ── MODE A: auto-recipients from API data ─────────────────────────
         resolved = await this.resolveDataRecipients(dataRecipientsCfg, urlCache, template);
 
@@ -335,10 +376,7 @@ export class ReportsService {
           return;
         }
 
-        // Update run with actual count (now known)
         await this.runModel.findByIdAndUpdate(runId, { totalRecipients: resolved.length });
-
-        // Filter uses the same emailField automatically
         effectiveDataFilter = { enabled: true, fieldPath: dataRecipientsCfg.emailField };
 
         this.logger.log(
@@ -456,7 +494,25 @@ export class ReportsService {
     let filteredRows: number | null = null;
 
     try {
-      const refreshed = await this.refreshDatasourcesWithCache(template, filter, urlCache);
+      // Mode C: fetch this CPO's dedicated URL and inject as override data
+      let overrideData: unknown | null = null;
+      if (r.perRecipientDataUrl) {
+        const normalizedUrl = normalizeLocalUrl(r.perRecipientDataUrl);
+        try {
+          validateExternalUrl(normalizedUrl);
+          const res = await fetch(normalizedUrl, {
+            signal: AbortSignal.timeout(15_000),
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (res.ok) {
+            overrideData = await res.json();
+          }
+        } catch (err) {
+          this.logger.warn(`[report] Failed to fetch per-recipient URL ${normalizedUrl}: ${(err as Error).message}`);
+        }
+      }
+
+      const refreshed = await this.refreshDatasourcesWithCache(template, filter, urlCache, overrideData);
 
       // Count filtered rows for audit trail
       filteredRows = filter
@@ -541,11 +597,64 @@ export class ReportsService {
     userId: string,
     templateId: string,
     recipientFilter: RecipientFilter | null = null,
+    cpoId: string | null = null,
   ): Promise<Buffer> {
     const template = await this.byId(userId, templateId);
+    let tpl = template as ReportTemplate;
+    const perRecipientUrlCfg = (tpl.perRecipientUrlConfig ?? { enabled: false }) as ReportPerRecipientUrlConfig;
+
+    let overrideData: unknown | null = null;
+
+    if (cpoId) {
+      // Strategy 1: Per-CPO URL Mode — fetch dataUrlTemplate with {id} replaced
+      if (perRecipientUrlCfg.enabled && perRecipientUrlCfg.dataUrlTemplate) {
+        const concreteUrl = normalizeLocalUrl(
+          perRecipientUrlCfg.dataUrlTemplate.replace('{id}', cpoId),
+        );
+        try {
+          validateExternalUrl(concreteUrl);
+          const res = await fetch(concreteUrl, {
+            signal: AbortSignal.timeout(15_000),
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (res.ok) {
+            overrideData = await res.json();
+            this.logger.log(`[preview] Per-CPO Mode fetch OK: ${concreteUrl}`);
+          }
+        } catch (err) {
+          this.logger.warn(`[preview] Per-CPO Mode fetch failed: ${(err as Error).message}`);
+        }
+      }
+
+      // Strategy 2 (fallback): replace ?id=xxx in every element URL automatically.
+      // Works even when Per-CPO URL Mode is not configured — the user just enters
+      // the CPO ID and all element URLs have their id query param swapped.
+      if (overrideData === null) {
+        tpl = {
+          ...tpl,
+          elements: (tpl.elements ?? []).map((el) => {
+            const p = el.props as Record<string, unknown>;
+            const ds  = p.dataSource      as Record<string, unknown> | undefined;
+            const tds = p.textDataSource  as Record<string, unknown> | undefined;
+            const newProps = { ...p };
+            if (ds?.url) {
+              const newUrl = normalizeLocalUrl(replaceIdInUrl(ds.url as string, cpoId));
+              newProps.dataSource = { ...ds, url: newUrl };
+            }
+            if (tds?.url) {
+              const newUrl = normalizeLocalUrl(replaceIdInUrl(tds.url as string, cpoId));
+              newProps.textDataSource = { ...tds, url: newUrl };
+            }
+            return { ...el, props: newProps };
+          }),
+        } as ReportTemplate;
+        this.logger.log(`[preview] Fallback: replaced id in element URLs → cpoId=${cpoId}`);
+      }
+    }
+
     const [allData, refreshed] = await Promise.all([
       this.dataService.getAllData(),
-      this.refreshDatasources(template as ReportTemplate, recipientFilter),
+      this.refreshDatasources(tpl, recipientFilter, new Map(), overrideData),
     ]);
     return this.generator.generatePdf(refreshed, allData as Record<string, WidgetData>);
   }
@@ -566,6 +675,47 @@ export class ReportsService {
       this.logger.warn(`Cleaned up ${result.modifiedCount} stale run(s)`);
     }
     return result.modifiedCount;
+  }
+
+  // ── CPO list test fetch (public — used by recipients panel "Test" button) ──
+
+  /**
+   * Fetch the CPO list URL and return a count + preview of the first 5 rows.
+   * Used by the frontend "Fetch CPO List" button so the user can verify their config.
+   */
+  async fetchCpoList(dto: {
+    listUrl: string;
+    listDataPath: string;
+    idField: string;
+    emailField: string;
+    nameField?: string;
+  }): Promise<{ count: number; preview: Record<string, unknown>[] }> {
+    const listUrl = normalizeLocalUrl(dto.listUrl);
+    validateExternalUrl(listUrl);
+    let res: Response;
+    try {
+      res = await fetch(listUrl, {
+        signal: AbortSignal.timeout(15_000),
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (err) {
+      throw new BadRequestException(`Could not reach the URL: ${(err as Error).message}`);
+    }
+    if (!res.ok) {
+      throw new BadRequestException(`CPO list URL responded with status ${res.status}`);
+    }
+    let rawData: unknown;
+    try { rawData = await res.json(); }
+    catch { throw new BadRequestException('Response is not valid JSON'); }
+
+    const rows = extractAtPath(rawData, dto.listDataPath ?? '');
+    const preview = rows.slice(0, 5).map((row) => ({
+      id:    getNestedValue(row, dto.idField    ?? 'id')    ?? null,
+      email: getNestedValue(row, dto.emailField ?? 'email') ?? null,
+      name:  dto.nameField ? getNestedValue(row, dto.nameField) ?? null : null,
+    })) as Record<string, unknown>[];
+
+    return { count: rows.length, preview };
   }
 
   // ── Datasource fetch (public — used by controller) ────────────────────────
@@ -729,6 +879,61 @@ export class ReportsService {
     return recipients;
   }
 
+  /**
+   * Mode C — Per-Recipient URL:
+   * Fetch the CPO list from `cfg.listUrl`, extract id + email from every row,
+   * then build a ResolvedRecipient with `perRecipientDataUrl` set to
+   * `cfg.dataUrlTemplate.replace('{id}', cpoId)`.
+   */
+  private async resolvePerRecipientUrlRecipients(
+    cfg: ReportPerRecipientUrlConfig,
+  ): Promise<ResolvedRecipient[]> {
+    let rawData: unknown = null;
+    const listUrl = normalizeLocalUrl(cfg.listUrl);
+    try {
+      validateExternalUrl(listUrl);
+      const res = await fetch(listUrl, {
+        signal: AbortSignal.timeout(15_000),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) rawData = await res.json();
+    } catch (err) {
+      this.logger.warn(`[report] Failed to fetch CPO list URL ${listUrl}: ${(err as Error).message}`);
+      return [];
+    }
+
+    if (!rawData) return [];
+    const rows = extractAtPath(rawData, cfg.listDataPath ?? '');
+    if (!rows.length) return [];
+
+    const seen = new Set<string>();
+    const recipients: ResolvedRecipient[] = [];
+
+    for (const row of rows) {
+      const rawEmail = getNestedValue(row, cfg.emailField);
+      const rawId    = getNestedValue(row, cfg.idField ?? 'id');
+      if (rawEmail == null || rawId == null) continue;
+
+      const email = String(rawEmail).trim().toLowerCase();
+      if (!email || !email.includes('@') || !email.includes('.')) continue;
+      if (seen.has(email)) continue;
+      seen.add(email);
+
+      const cpoId = String(rawId).trim();
+      const perRecipientDataUrl = cfg.dataUrlTemplate.replace('{id}', cpoId);
+
+      recipients.push({
+        email,
+        filterValue: email,
+        perRecipientDataUrl,
+        canDownload: true,
+        formats: ['pdf'],
+      });
+    }
+
+    return recipients;
+  }
+
   private isBlocked(
     email: string | undefined,
     userId: string | undefined,
@@ -794,14 +999,16 @@ export class ReportsService {
     template: ReportTemplate,
     recipientFilter: RecipientFilter | null,
     urlCache: Map<string, unknown>,
+    overrideData: unknown | null = null,
   ): Promise<ReportTemplate> {
-    return this.refreshDatasources(template, recipientFilter, urlCache);
+    return this.refreshDatasources(template, recipientFilter, urlCache, overrideData);
   }
 
   private async refreshDatasources(
     template: ReportTemplate,
     recipientFilter: RecipientFilter | null = null,
     urlCache: Map<string, unknown> = new Map(),
+    overrideData: unknown | null = null,
   ): Promise<ReportTemplate> {
     const elements = template.elements ?? [];
     const hasDs = elements.some((el) => {
@@ -816,6 +1023,8 @@ export class ReportsService {
       headers?: Record<string, string>,
       body?: string,
     ): Promise<unknown> => {
+      // Mode C: override ALL element data sources with the per-recipient dataset
+      if (overrideData !== null) return overrideData;
       if (urlCache.has(url)) return urlCache.get(url);
       const result = await this.fetchDatasource({ url, method, headers, body });
       urlCache.set(url, result.data);
@@ -1032,6 +1241,29 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 /** Simple async sleep helper. */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Node.js fetch on Windows cannot connect to 0.0.0.0 as a client destination.
+ * Replace it with 127.0.0.1 so local dev APIs are always reachable.
+ */
+function normalizeLocalUrl(rawUrl: string): string {
+  return rawUrl.replace(/^(https?:\/\/)0\.0\.0\.0([:\/]|$)/, '$1127.0.0.1$2');
+}
+
+/**
+ * Replace the value of an `id` query-param in a URL with a new CPO ID.
+ * e.g. "http://api.com/cpo-reports?id=2" + "4" → "http://api.com/cpo-reports?id=4"
+ * Also replaces path segments: "/api/operators/2" + "4" → "/api/operators/4"
+ */
+function replaceIdInUrl(url: string, newId: string): string {
+  // Replace ?id=xxx or &id=xxx
+  let result = url.replace(/([?&]id=)[^&#]*/g, `$1${encodeURIComponent(newId)}`);
+  // If no query-param id found, try replacing last numeric/alphanumeric path segment
+  if (result === url) {
+    result = url.replace(/(\/)[^/?#]+([/?#]|$)(?!.*\/[^/?#]+[/?#])/, `$1${newId}$2`);
+  }
+  return result;
 }
 
 function validateExternalUrl(rawUrl: string): void {

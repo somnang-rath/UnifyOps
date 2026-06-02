@@ -174,6 +174,27 @@ export interface ReportDataRecipientsConfig {
   url?: string;
 }
 
+/**
+ * Per-Recipient URL mode:
+ * Fetch a dedicated URL per CPO using their unique ID from a list endpoint.
+ * dataUrlTemplate must contain {id} which is replaced per CPO at send time.
+ */
+export interface ReportPerRecipientUrlConfig {
+  enabled: boolean;
+  /** URL returning all CPOs. E.g. https://api.example.com/cpos */
+  listUrl: string;
+  /** Dot-notation path to array in list response. Empty = root is array. */
+  listDataPath: string;
+  /** Field in each CPO row containing their unique ID. E.g. "id" */
+  idField: string;
+  /** Field in each CPO row containing their email. E.g. "email" */
+  emailField: string;
+  /** Optional display-name field. E.g. "name" */
+  nameField: string;
+  /** URL template with {id} placeholder. E.g. https://api.example.com/cpos/{id} */
+  dataUrlTemplate: string;
+}
+
 /** An entry in the report send blocklist. */
 export interface ReportBlocklistEntry {
   id: string;
@@ -212,6 +233,8 @@ export interface ReportTemplate {
   dataRecipientsConfig?: ReportDataRecipientsConfig;
   /** Per-recipient data filtering settings (manual mode). */
   recipientDataFilter?: ReportRecipientDataFilter;
+  /** Per-Recipient URL mode — fetch a dedicated URL per CPO using their ID. */
+  perRecipientUrlConfig?: ReportPerRecipientUrlConfig;
   /** List of users/emails that must never receive this report. */
   blocklist?: ReportBlocklistEntry[];
   permissions: ReportPermissions;

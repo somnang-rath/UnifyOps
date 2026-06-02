@@ -9,8 +9,9 @@ import { cn } from '@/lib/utils';
 import type { ReportTemplate } from '@/schemas/report';
 import {
   ArrowLeft, CheckCircle2, Circle, Download, Eye, Filter,
-  History, Loader2, Play, RefreshCw, Save, X,
+  History, Link2, Loader2, Play, RefreshCw, Save, X,
 } from 'lucide-react';
+import type { ReportPerRecipientUrlConfig } from '@/schemas/report';
 import { api } from '@/lib/api';
 
 /* ── Filtered-preview popover ────────────────────────────────────────────── */
@@ -19,11 +20,13 @@ const FILTER_LS_KEY = 'report_preview_filter';
 
 function PreviewFilterPopover({
   templateId,
+  perRecipientUrlConfig,
   onClose,
   onPreviewReady,
   onBeforePreview,
 }: {
   templateId: string;
+  perRecipientUrlConfig?: ReportPerRecipientUrlConfig;
   onClose: () => void;
   onPreviewReady: (url: string) => void;
   onBeforePreview?: () => Promise<void>;
@@ -32,8 +35,11 @@ function PreviewFilterPopover({
     ? (() => { try { return JSON.parse(localStorage.getItem(FILTER_LS_KEY) ?? '{}'); } catch { return {}; } })()
     : {};
 
+  const cpoMode = !!(perRecipientUrlConfig?.enabled && perRecipientUrlConfig?.dataUrlTemplate);
+
   const [field, setField]     = useState<string>(saved.field ?? 'email');
   const [value, setValue]     = useState<string>(saved.value ?? '');
+  const [cpoId, setCpoId]     = useState<string>('');
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -49,11 +55,11 @@ function PreviewFilterPopover({
     return () => document.removeEventListener('mousedown', h);
   }, [onClose]);
 
-  const openPreview = async (filterField?: string, filterValue?: string) => {
+  const openPreview = async (filterField?: string, filterValue?: string, previewCpoId?: string) => {
     setLoading(true);
     try {
       await onBeforePreview?.();
-      const path = reportsApi.previewUrl(templateId, filterField, filterValue);
+      const path = reportsApi.previewUrl(templateId, filterField, filterValue, previewCpoId);
       const res = await api.get(path, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       onPreviewReady(url);
@@ -80,7 +86,8 @@ function PreviewFilterPopover({
       </div>
 
       <div className="p-4 space-y-3">
-        {/* Unfiltered preview */}
+
+        {/* Full preview */}
         <button
           onClick={() => openPreview()}
           disabled={loading}
@@ -95,55 +102,108 @@ function PreviewFilterPopover({
           </div>
         </button>
 
-        {/* Divider */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 border-t border-border" />
-          <span className="text-[10px] text-text-muted">or filter by recipient</span>
-          <div className="flex-1 border-t border-border" />
-        </div>
+        {/* ── Per-CPO URL preview (Mode C) ── */}
+        {cpoMode && (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-[10px] text-text-muted">or preview per CPO</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
 
-        {/* Filter field */}
-        <div>
-          <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide mb-1.5 block">
-            Filter Field
-          </label>
-          <input
-            type="text"
-            value={field}
-            onChange={(e) => setField(e.target.value)}
-            placeholder="email"
-            className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors font-mono"
-          />
-          <p className="text-[10px] text-text-muted mt-1">Field name in JSON row — e.g. <code className="bg-bg-subtle rounded px-1">email</code> or <code className="bg-bg-subtle rounded px-1">cpo_id</code></p>
-        </div>
+            {/* CPO ID hint */}
+            <div className="px-3 py-2 rounded-xl bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Link2 className="w-3 h-3 text-violet-600 dark:text-violet-400 flex-shrink-0" />
+                <span className="text-[10px] font-semibold text-violet-700 dark:text-violet-300">Per-CPO URL Mode active</span>
+              </div>
+              <p className="text-[10px] text-violet-600 dark:text-violet-400 leading-relaxed font-mono truncate">
+                {perRecipientUrlConfig?.dataUrlTemplate}
+              </p>
+            </div>
 
-        {/* Filter value */}
-        <div>
-          <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide mb-1.5 block">
-            Value
-          </label>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && value.trim() && openPreview(field, value)}
-            placeholder="somnang.rath12@gmail.com"
-            className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
-          />
-        </div>
+            <div>
+              <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide mb-1.5 block">
+                CPO ID
+              </label>
+              <input
+                type="text"
+                value={cpoId}
+                onChange={(e) => setCpoId(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && cpoId.trim() && openPreview(undefined, undefined, cpoId.trim())}
+                placeholder="CPO001"
+                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-violet-400 transition-colors font-mono"
+              />
+              <p className="text-[10px] text-text-muted mt-1">
+                ID field: <code className="bg-bg-subtle rounded px-1">{perRecipientUrlConfig?.idField || 'id'}</code>
+              </p>
+            </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => openPreview(field, value)}
-          disabled={loading || !value.trim() || !field.trim()}
-          className="w-full gap-1.5"
-        >
-          {loading
-            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            : <Eye className="w-3.5 h-3.5" />}
-          {loading ? 'Generating…' : 'Preview filtered PDF'}
-        </Button>
+            <Button
+              size="sm"
+              onClick={() => openPreview(undefined, undefined, cpoId.trim())}
+              disabled={loading || !cpoId.trim()}
+              className="w-full gap-1.5 bg-violet-600 hover:bg-violet-700 text-black border-0"
+            >
+              {loading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Eye className="w-3.5 h-3.5" />}
+              {loading ? 'Generating…' : 'Preview this CPO'}
+            </Button>
+          </>
+        )}
+
+        {/* ── Standard filter (Mode A / B) ── */}
+        {!cpoMode && (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-[10px] text-text-muted">or filter by recipient</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide mb-1.5 block">
+                Filter Field
+              </label>
+              <input
+                type="text"
+                value={field}
+                onChange={(e) => setField(e.target.value)}
+                placeholder="email"
+                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors font-mono"
+              />
+              <p className="text-[10px] text-text-muted mt-1">e.g. <code className="bg-bg-subtle rounded px-1">email</code> or <code className="bg-bg-subtle rounded px-1">cpo_id</code></p>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide mb-1.5 block">
+                Value
+              </label>
+              <input
+                type="text"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && value.trim() && openPreview(field, value)}
+                placeholder="cpo@example.com"
+                className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+              />
+            </div>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => openPreview(field, value)}
+              disabled={loading || !value.trim() || !field.trim()}
+              className="w-full gap-1.5"
+            >
+              {loading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Eye className="w-3.5 h-3.5" />}
+              {loading ? 'Generating…' : 'Preview filtered PDF'}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -372,6 +432,7 @@ export default function ReportEditPage() {
             {filterOpen && (
               <PreviewFilterPopover
                 templateId={id}
+                perRecipientUrlConfig={local.perRecipientUrlConfig}
                 onClose={() => setFilterOpen(false)}
                 onPreviewReady={setPdfPreviewUrl}
                 onBeforePreview={dirty && local ? async () => { await update.mutateAsync({ id, body: local }); } : undefined}

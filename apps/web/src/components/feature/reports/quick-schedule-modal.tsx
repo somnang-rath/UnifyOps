@@ -6,6 +6,7 @@ import type {
   ReportRecipient,
   ReportPermissions,
   ReportDataRecipientsConfig,
+  ReportPerRecipientUrlConfig,
 } from '@/schemas/report';
 import { useReportMutations } from '@/hooks/use-reports';
 import { Modal } from '@/components/ui/modal';
@@ -33,6 +34,9 @@ export function QuickScheduleModal({ open, onClose, template }: Props) {
   const [dataRecipientsConfig, setDataRecipientsConfig] = useState<ReportDataRecipientsConfig>(
     template.dataRecipientsConfig ?? { enabled: false, emailField: '', nameField: '', dataPath: '', url: '' },
   );
+  const [perRecipientUrlConfig, setPerRecipientUrlConfig] = useState<ReportPerRecipientUrlConfig>(
+    template.perRecipientUrlConfig ?? { enabled: false, listUrl: '', listDataPath: '', idField: 'id', emailField: 'email', nameField: '', dataUrlTemplate: '' },
+  );
   const [testResult, setTestResult] = useState<{ sent: number } | null>(null);
 
   // Sync from template only when the modal transitions from closed → open.
@@ -44,6 +48,9 @@ export function QuickScheduleModal({ open, onClose, template }: Props) {
     setDataRecipientsConfig(
       template.dataRecipientsConfig ?? { enabled: false, emailField: '', nameField: '', dataPath: '', url: '' },
     );
+    setPerRecipientUrlConfig(
+      template.perRecipientUrlConfig ?? { enabled: false, listUrl: '', listDataPath: '', idField: 'id', emailField: 'email', nameField: '', dataUrlTemplate: '' },
+    );
     setTestResult(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -54,18 +61,17 @@ export function QuickScheduleModal({ open, onClose, template }: Props) {
   const handleSave = async () => {
     await update.mutateAsync({
       id: template._id,
-      body: { schedule, recipients, permissions, dataRecipientsConfig },
+      body: { schedule, recipients, permissions, dataRecipientsConfig, perRecipientUrlConfig },
     });
     toast(schedule.enabled ? 'Auto-send schedule saved' : 'Schedule disabled');
     onClose();
   };
 
   const handleSendTest = async () => {
-    // Save any unsaved recipient / config changes first
     if (hasUnsavedRecipients || recipients.length !== (template.recipients?.length ?? 0)) {
       await update.mutateAsync({
         id: template._id,
-        body: { schedule, recipients, permissions, dataRecipientsConfig },
+        body: { schedule, recipients, permissions, dataRecipientsConfig, perRecipientUrlConfig },
       });
     }
     const result = await sendTest.mutateAsync(template._id);
@@ -73,19 +79,18 @@ export function QuickScheduleModal({ open, onClose, template }: Props) {
     toast(`Test email sent to ${result.sent} recipient${result.sent !== 1 ? 's' : ''}`);
   };
 
-  // "Send Now" — fire async send, returns immediately with run object
   const handleSendNow = async () => {
-    // Always save config changes before sending
     await update.mutateAsync({
       id: template._id,
-      body: { schedule, recipients, permissions, dataRecipientsConfig },
+      body: { schedule, recipients, permissions, dataRecipientsConfig, perRecipientUrlConfig },
     });
     sendToRecipients.mutate(template._id);
     onClose();
   };
 
-  const autoMode      = dataRecipientsConfig.enabled && !!dataRecipientsConfig.emailField;
-  const recipientCount = autoMode ? null : recipients.length;  // null = auto (count unknown)
+  const cpoMode       = perRecipientUrlConfig.enabled && !!perRecipientUrlConfig.listUrl;
+  const autoMode      = !cpoMode && dataRecipientsConfig.enabled && !!dataRecipientsConfig.emailField;
+  const recipientCount = (autoMode || cpoMode) ? null : recipients.length;
   const isBusy        = update.isPending || sendTest.isPending || sendToRecipients.isPending;
 
   return (
@@ -108,11 +113,13 @@ export function QuickScheduleModal({ open, onClose, template }: Props) {
             onClick={handleSendNow}
             disabled={isBusy || (!autoMode && recipientCount === 0)}
             title={
-              !autoMode && recipientCount === 0
+              !autoMode && !cpoMode && recipientCount === 0
                 ? 'Add recipients first'
-                : autoMode
-                  ? 'Send to all recipients extracted from API data'
-                  : `Send to ${recipientCount} recipient(s) now`
+                : cpoMode
+                  ? 'Fetch CPO list and send each a personalised PDF'
+                  : autoMode
+                    ? 'Send to all recipients extracted from API data'
+                    : `Send to ${recipientCount} recipient(s) now`
             }
             className={cn(
               'gap-1.5 mr-auto',
@@ -120,12 +127,12 @@ export function QuickScheduleModal({ open, onClose, template }: Props) {
           >
             {sendToRecipients.isPending ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : autoMode ? (
+            ) : cpoMode || autoMode ? (
               <Zap className="w-3.5 h-3.5" />
             ) : (
               <SendHorizonal className="w-3.5 h-3.5" />
             )}
-            {autoMode ? 'Send Now (auto)' : 'Send Now'}
+            {cpoMode ? 'Send Now (per CPO)' : autoMode ? 'Send Now (auto)' : 'Send Now'}
           </Button>
 
           {/* Test send (only in manual mode) */}
@@ -175,11 +182,13 @@ export function QuickScheduleModal({ open, onClose, template }: Props) {
           recipients={recipients}
           permissions={permissions}
           dataRecipientsConfig={dataRecipientsConfig}
+          perRecipientUrlConfig={perRecipientUrlConfig}
           blocklist={template.blocklist}
           templateId={template._id}
           onChangeRecipients={setRecipients}
           onChangePermissions={setPermissions}
           onChangeDataRecipientsConfig={setDataRecipientsConfig}
+          onChangePerRecipientUrlConfig={setPerRecipientUrlConfig}
         />
       </div>
     </Modal>

@@ -38,6 +38,31 @@ function getVal(row: Record<string, unknown>, key: string): unknown {
   return cur;
 }
 
+function applyRowFilters(
+  rows: Record<string, unknown>[],
+  filters: { field: string; op: string; value: string }[],
+): Record<string, unknown>[] {
+  const active = filters.filter((f) => f.field && f.value !== '');
+  if (!active.length) return rows;
+  return rows.filter((row) =>
+    active.every(({ field, op, value }) => {
+      const rv = String(getVal(row, field) ?? '');
+      switch (op) {
+        case 'eq':         return rv === value;
+        case 'neq':        return rv !== value;
+        case 'contains':   return rv.toLowerCase().includes(value.toLowerCase());
+        case 'startsWith': return rv.toLowerCase().startsWith(value.toLowerCase());
+        case 'endsWith':   return rv.toLowerCase().endsWith(value.toLowerCase());
+        case 'gt':  { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) > n; }
+        case 'lt':  { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) < n; }
+        case 'gte': { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) >= n; }
+        case 'lte': { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) <= n; }
+        default: return true;
+      }
+    }),
+  );
+}
+
 function renderRowTpl(tpl: string, row: Record<string, unknown>): string {
   return tpl.replace(/\{([^|}]+)(\|round)?\}/g, (match, key, mod) => {
     const val = getVal(row, key.trim());
@@ -73,7 +98,7 @@ function applyMainTpl(tpl: string, value: string, firstRow?: Record<string, unkn
 // always reflects live API data.
 
 async function resolveTableDatasources(elements: ReportElement[]): Promise<ReportElement[]> {
-  type DS = { url: string; method?: string; headers?: Record<string, string>; dataPath?: string; columnDefs?: { key: string; label: string; prefix?: string; suffix?: string }[] };
+  type DS = { url: string; method?: string; headers?: Record<string, string>; dataPath?: string; columnDefs?: { key: string; label: string; prefix?: string; suffix?: string }[]; rowFilters?: { field: string; op: string; value: string }[] };
 
   // Only fetch for source (non-generated) tables; continuation tables inherit rows.
   const freshRows = new Map<string, Record<string, string>[]>(); // sourceId → rows
@@ -95,7 +120,8 @@ async function resolveTableDatasources(elements: ReportElement[]): Promise<Repor
         if (!res.ok) return;
         const data = await res.json();
         const rawRows = extractAtPath(data, ds.dataPath ?? '');
-        const rows = rawRows.slice(0, 500).map((row) => {
+        const filtered = applyRowFilters(rawRows, ds.rowFilters ?? []);
+        const rows = filtered.slice(0, 500).map((row) => {
           const mapped: Record<string, string> = {};
           (ds.columnDefs ?? []).forEach(({ key, label, prefix, suffix }) => {
             const v = getVal(row, key);
@@ -783,23 +809,28 @@ function renderElement(
       const rowNumLabel = escapeHtml((p.rowNumberLabel as string) ?? '#');
       const colWidths   = (p.colWidths as Record<string, number> | undefined) ?? {};
 
-      const urlBarH    = p.dataSource ? 22 : 0;
+      const urlBarH    = 0; // URL badge hidden in PDF — no longer contributes to height
       const contBadgeH = isCont ? 20 : 0;
       // Row height is always natural — the element height itself is sized to fit
       // rows via computeAutoLayout, so explicit row stretching is not needed.
       const perRowH = 0;
 
-      const tableBase = base;
+      // computeAutoLayout stretches auto-paginated source tables to fill the page so
+      // the canvas can DOM-measure actual row heights. The PDF has no DOM measurement,
+      // so for auto-layout tables we drop the fixed height and let the table size to
+      // its content. This eliminates the blank space without risking row clipping (the
+      // row slice is already correct; the page <div> provides the outer overflow:hidden).
+      const isAutoLayout = p.autoOriginalH !== undefined || isCont;
+      const heightStyle  = isAutoLayout ? '' : `height:${el.h}px;`;
+
+      const tableBase = `left:${el.x}px;top:${el.y}px;width:${el.w}px;${heightStyle}transform:rotate(${el.rotation ?? 0}deg);z-index:${el.zIndex ?? 0};`;
 
       const contBadge = isCont
         ? `<div style="padding:2px 8px;background:rgba(99,102,241,0.08);border-bottom:1px dashed #6366f1;font-size:9px;color:#6366f1;font-weight:600;">&#8617; Continued from previous page</div>`
         : '';
 
-      // URL datasource badge — mirrors the canvas element-table.tsx URL bar (22 px)
-      // so el.h (which includes this 22 px) matches the actual rendered height in the PDF.
-      const urlBadge = (p.dataSource as { url?: string } | undefined)?.url
-        ? `<div style="display:flex;align-items:center;gap:4px;padding:2px 8px;border-bottom:1px solid #bfdbfe;background:#eff6ff;flex-shrink:0;height:22px;overflow:hidden;"><span style="font-size:9px;color:#2563eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml((p.dataSource as { url: string }).url)}</span></div>`
-        : '';
+      // URL badge is editor-only — hidden in PDF output
+      const urlBadge = '';
 
       // Header bottom border — matches element-table.tsx logic
       const headerBottomBorder = p.headerBottomBorder

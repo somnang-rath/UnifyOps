@@ -1094,7 +1094,8 @@ export function CanvasEditor({ template, onChange }: Props) {
 
   const deletePage = useCallback((idx: number) => {
     if (pages.length <= 1) return;
-    const pg = pages[idx] as ReportPage & { sourceTableId?: string };
+    const pg = pages[idx] as (ReportPage & { sourceTableId?: string }) | undefined;
+    if (!pg) return;
     if (pg.sourceTableId) {
       const tableId = pg.sourceTableId;
       let nextElements = allElements.map((e) => {

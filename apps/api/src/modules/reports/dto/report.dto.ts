@@ -80,6 +80,22 @@ const ReportRecipientDataFilterSchema = z.object({
   fieldPath: z.string().max(200).default(''),
 });
 
+// ── Per-Recipient URL mode ────────────────────────────────────────────────────
+
+/**
+ * Fetch a dedicated URL per CPO using their unique ID extracted from a list endpoint.
+ * dataUrlTemplate must contain the literal {id} placeholder.
+ */
+const ReportPerRecipientUrlConfigSchema = z.object({
+  enabled:         z.boolean().default(false),
+  listUrl:         z.string().url().optional().or(z.literal('')).default(''),
+  listDataPath:    z.string().max(200).default(''),
+  idField:         z.string().max(200).default('id'),
+  emailField:      z.string().max(200).default('email'),
+  nameField:       z.string().max(200).default(''),
+  dataUrlTemplate: z.string().max(2000).default(''),
+});
+
 // ── Blocklist ─────────────────────────────────────────────────────────────────
 
 /** A stored blocklist entry inside the template (includes server-assigned id + timestamp). */
@@ -178,6 +194,7 @@ export const CreateReportTemplateSchema = z.object({
   recipients: z.array(ReportRecipientSchema).default([]),
   dataRecipientsConfig: ReportDataRecipientsConfigSchema.default({}),
   recipientDataFilter: ReportRecipientDataFilterSchema.default({}),
+  perRecipientUrlConfig: ReportPerRecipientUrlConfigSchema.default({}),
   blocklist: z.array(ReportBlocklistEntrySchema).default([]),
   permissions: ReportPermissionsSchema.default({}),
   margins: ReportMarginsSchema.default({}),

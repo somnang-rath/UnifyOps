@@ -4,15 +4,16 @@ import type {
   ReportRecipient,
   ReportPermissions,
   ReportDataRecipientsConfig,
+  ReportPerRecipientUrlConfig,
   ReportBlocklistEntry,
 } from '@/schemas/report';
 import { useUsers } from '@/hooks/use-users';
-import { useBlocklistMutations } from '@/hooks/use-reports';
+import { useBlocklistMutations, useFetchCpoList, type CpoPreviewEntry } from '@/hooks/use-reports';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   AtSign, Ban, Check, ChevronDown, ChevronRight, ChevronUp,
-  Download, FileText, Link2, Mail, Shield,
+  Download, FileText, Link2, Loader2, Mail, RefreshCw, Shield,
   Trash2, UserPlus, Users, Zap,
 } from 'lucide-react';
 
@@ -21,15 +22,18 @@ import {
 interface Props {
   recipients:     ReportRecipient[];
   permissions:    ReportPermissions;
-  /** Full config for auto-recipients-from-API-data mode */
+  /** Full config for auto-recipients-from-API-data mode (Mode A) */
   dataRecipientsConfig?: ReportDataRecipientsConfig;
+  /** Per-Recipient URL mode config (Mode C) */
+  perRecipientUrlConfig?: ReportPerRecipientUrlConfig;
   /** Current blocklist entries (from template) */
   blocklist?: ReportBlocklistEntry[];
   /** MongoDB _id of the saved template — needed for server-side blocklist mutations */
   templateId?: string;
-  onChangeRecipients:            (r: ReportRecipient[]) => void;
-  onChangePermissions:           (p: ReportPermissions) => void;
-  onChangeDataRecipientsConfig?: (c: ReportDataRecipientsConfig) => void;
+  onChangeRecipients:               (r: ReportRecipient[]) => void;
+  onChangePermissions:              (p: ReportPermissions) => void;
+  onChangeDataRecipientsConfig?:    (c: ReportDataRecipientsConfig) => void;
+  onChangePerRecipientUrlConfig?:   (c: ReportPerRecipientUrlConfig) => void;
 }
 
 type RecipientTab = 'team' | 'external';
@@ -328,6 +332,330 @@ function AutoRecipientsSection({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Per-Recipient URL section (Mode C)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DEFAULT_PER_RECIPIENT_URL_CONFIG: ReportPerRecipientUrlConfig = {
+  enabled: false,
+  listUrl: '',
+  listDataPath: '',
+  idField: 'id',
+  emailField: 'email',
+  nameField: '',
+  dataUrlTemplate: '',
+};
+
+function PerRecipientUrlSection({
+  config,
+  templateId,
+  onChange,
+}: {
+  config: ReportPerRecipientUrlConfig;
+  templateId?: string;
+  onChange: (c: ReportPerRecipientUrlConfig) => void;
+}) {
+  const [advancedOpen, setAdvancedOpen]         = useState(false);
+  const [cpoPreview, setCpoPreview]             = useState<CpoPreviewEntry[] | null>(null);
+  const [cpoCount, setCpoCount]                 = useState<number | null>(null);
+  const [fetchError, setFetchError]             = useState<string | null>(null);
+  const fetchMutation                           = useFetchCpoList(templateId);
+
+  const patch = (partial: Partial<ReportPerRecipientUrlConfig>) =>
+    onChange({ ...config, ...partial });
+
+  const hasAdvanced = !!(config.nameField || config.listDataPath);
+
+  const handleFetchList = () => {
+    if (!config.listUrl) return;
+    setFetchError(null);
+    setCpoPreview(null);
+    setCpoCount(null);
+    fetchMutation.mutate(
+      {
+        listUrl:      config.listUrl,
+        listDataPath: config.listDataPath || undefined,
+        idField:      config.idField      || 'id',
+        emailField:   config.emailField   || 'email',
+        nameField:    config.nameField    || undefined,
+      },
+      {
+        onSuccess: (data) => {
+          setCpoCount(data.count);
+          setCpoPreview(data.preview);
+        },
+        onError: (err) => {
+          setFetchError((err as Error).message ?? 'Failed to fetch CPO list');
+        },
+      },
+    );
+  };
+
+  const hasTemplateId = !!(templateId && templateId !== 'new');
+
+  return (
+    <div className={cn(
+      'rounded-2xl border transition-all duration-200 overflow-hidden',
+      config.enabled
+        ? 'border-violet-400 dark:border-violet-600'
+        : 'border-border',
+    )}>
+      {/* ── Toggle header ── */}
+      <div className={cn(
+        'flex items-center justify-between px-4 py-3 transition-colors',
+        config.enabled
+          ? 'bg-violet-600 dark:bg-violet-700'
+          : 'bg-bg-subtle',
+      )}>
+        <div className="flex items-center gap-2.5">
+          <div className={cn(
+            'w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0',
+            config.enabled ? 'bg-white/20' : 'bg-bg-hover',
+          )}>
+            <Link2 className={cn('w-4 h-4', config.enabled ? 'text-white' : 'text-text-muted')} />
+          </div>
+          <div>
+            <p className={cn('text-xs font-semibold leading-tight', config.enabled ? 'text-white' : 'text-text')}>
+              Per-CPO URL Mode
+            </p>
+            <p className={cn('text-[10px] leading-tight mt-0.5', config.enabled ? 'text-white/70' : 'text-text-muted')}>
+              {config.enabled ? 'Fetches a dedicated URL per CPO at send time' : 'Off — using auto or manual mode'}
+            </p>
+          </div>
+        </div>
+        <Toggle checked={config.enabled} onChange={(v) => patch({ enabled: v })} />
+      </div>
+
+      {/* ── Config fields ── */}
+      {config.enabled && (
+        <div className="bg-bg-card">
+          {/* How it works */}
+          <div className="flex items-center gap-0 px-4 pt-4 pb-3 border-b border-border">
+            {[
+              { icon: Link2,   label: 'Fetch list' },
+              { icon: AtSign,  label: 'Extract CPOs' },
+              { icon: RefreshCw, label: 'Fetch per-CPO' },
+              { icon: Mail,    label: 'Send PDF' },
+            ].map(({ icon: Icon, label }, i, arr) => (
+              <div key={label} className="flex items-center gap-0 flex-1 min-w-0">
+                <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                  <div className="w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-700 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <span className="text-[9px] font-medium text-text-muted text-center leading-tight whitespace-nowrap">{label}</span>
+                </div>
+                {i < arr.length - 1 && (
+                  <ChevronRight className="w-3 h-3 text-border flex-shrink-0 mb-4" />
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="px-4 py-4 space-y-4">
+            {/* List URL */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-text">List URL</label>
+                <span className="text-[9px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">required</span>
+              </div>
+              <div className="relative">
+                <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+                <input
+                  type="url"
+                  value={config.listUrl}
+                  onChange={(e) => { patch({ listUrl: e.target.value }); setCpoPreview(null); setCpoCount(null); setFetchError(null); }}
+                  placeholder="https://api.example.com/cpos"
+                  className={cn(
+                    'w-full text-xs pl-8 pr-3 py-2 rounded-lg border bg-bg-input focus:outline-none transition-colors',
+                    config.listUrl
+                      ? 'border-violet-300 dark:border-violet-600 focus:border-violet-500'
+                      : 'border-border focus:border-violet-400',
+                  )}
+                />
+              </div>
+              <p className="text-[10px] text-text-muted mt-1.5">Returns the array of all CPOs (list endpoint).</p>
+            </div>
+
+            {/* ID Field + Email Field — two column */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide mb-1 block">ID Field</label>
+                <input
+                  type="text"
+                  value={config.idField}
+                  onChange={(e) => patch({ idField: e.target.value })}
+                  placeholder="id"
+                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-violet-400 transition-colors font-mono placeholder:font-sans placeholder:text-text-muted"
+                />
+                <p className="text-[10px] text-text-muted mt-1">Unique CPO ID field</p>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide mb-1 block">Email Field</label>
+                <input
+                  type="text"
+                  value={config.emailField}
+                  onChange={(e) => patch({ emailField: e.target.value })}
+                  placeholder="email"
+                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-violet-400 transition-colors font-mono placeholder:font-sans placeholder:text-text-muted"
+                />
+                <p className="text-[10px] text-text-muted mt-1">CPO email field</p>
+              </div>
+            </div>
+
+            {/* Data URL Template */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-text">Data URL Template</label>
+                <span className="text-[9px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">required</span>
+              </div>
+              <input
+                type="text"
+                value={config.dataUrlTemplate}
+                onChange={(e) => patch({ dataUrlTemplate: e.target.value })}
+                placeholder="https://api.example.com/cpos/{id}"
+                className={cn(
+                  'w-full text-xs px-3 py-2 rounded-lg border bg-bg-input focus:outline-none transition-colors',
+                  config.dataUrlTemplate && !config.dataUrlTemplate.includes('{id}')
+                    ? 'border-amber-400 focus:border-amber-500'
+                    : config.dataUrlTemplate
+                      ? 'border-violet-300 dark:border-violet-600 focus:border-violet-500'
+                      : 'border-border focus:border-violet-400',
+                )}
+              />
+              {config.dataUrlTemplate && !config.dataUrlTemplate.includes('{id}') && (
+                <p className="text-[10px] text-amber-500 mt-1 font-medium">Must contain <code className="bg-amber-50 dark:bg-amber-950/30 rounded px-1">{'{id}'}</code> placeholder</p>
+              )}
+              {(!config.dataUrlTemplate || config.dataUrlTemplate.includes('{id}')) && (
+                <p className="text-[10px] text-text-muted mt-1">
+                  <code className="bg-bg-subtle border border-border rounded px-1 text-violet-600">{'{id}'}</code> is replaced with each CPO&apos;s ID at send time.
+                </p>
+              )}
+            </div>
+
+            {/* Advanced toggle */}
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="w-full flex items-center justify-between py-2 px-3 rounded-lg border border-dashed border-border hover:border-violet-300 hover:bg-violet-50/50 dark:hover:bg-violet-950/20 transition-all group"
+            >
+              <span className="text-[10px] font-semibold text-text-muted group-hover:text-text-sub transition-colors uppercase tracking-wider">
+                Advanced options
+                {hasAdvanced && !advancedOpen && (
+                  <span className="ml-1.5 text-[9px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40 px-1.5 py-0.5 rounded-full">configured</span>
+                )}
+              </span>
+              {advancedOpen
+                ? <ChevronUp className="w-3.5 h-3.5 text-text-muted" />
+                : <ChevronDown className="w-3.5 h-3.5 text-text-muted" />}
+            </button>
+
+            {advancedOpen && (
+              <div className="space-y-3 pl-3 border-l-2 border-violet-200 dark:border-violet-800 animate-fade-in">
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide">Name Field</label>
+                    <span className="text-[9px] text-text-muted bg-bg-subtle border border-border rounded px-1">optional</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={config.nameField}
+                    onChange={(e) => patch({ nameField: e.target.value })}
+                    placeholder="name"
+                    className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-violet-400 transition-colors font-mono placeholder:font-sans placeholder:text-text-muted"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">Used in email subject — e.g. <code className="bg-bg-subtle rounded px-1">company_name</code></p>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <label className="text-[10px] font-semibold text-text-sub uppercase tracking-wide">List Data Path</label>
+                    <span className="text-[9px] text-text-muted bg-bg-subtle border border-border rounded px-1">optional</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={config.listDataPath}
+                    onChange={(e) => patch({ listDataPath: e.target.value })}
+                    placeholder="data.cpos"
+                    className="w-full text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-input focus:outline-none focus:border-violet-400 transition-colors font-mono placeholder:font-sans placeholder:text-text-muted"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">
+                    Path to array inside list response. Leave empty when root <em>is</em> the array.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Test / Fetch button */}
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchList}
+                disabled={!config.listUrl || fetchMutation.isPending || !hasTemplateId}
+                className="w-full gap-2 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+              >
+                {fetchMutation.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <RefreshCw className="w-3.5 h-3.5" />}
+                {fetchMutation.isPending ? 'Fetching…' : !hasTemplateId ? 'Save template first to test' : 'Fetch CPO List'}
+              </Button>
+
+              {/* Error state */}
+              {fetchError && (
+                <div className="mt-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-[10px] text-red-600 dark:text-red-400 animate-fade-in">
+                  {fetchError}
+                </div>
+              )}
+
+              {/* Success: count badge + preview */}
+              {cpoCount !== null && cpoPreview && (
+                <div className="mt-3 animate-fade-in">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-semibold text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-700 px-2 py-0.5 rounded-full">
+                      {cpoCount} CPO{cpoCount !== 1 ? 's' : ''} found
+                    </span>
+                    {cpoCount > 5 && (
+                      <span className="text-[10px] text-text-muted">showing first 5</span>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    {cpoPreview.map((cpo, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/20"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300 text-[9px] font-bold flex items-center justify-center flex-shrink-0">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-semibold text-text truncate">
+                              {String(cpo.email ?? '–')}
+                            </span>
+                            {cpo.name != null && (
+                              <span className="text-[10px] text-text-muted truncate">
+                                · {String(cpo.name)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[9px] text-text-muted font-mono truncate mt-0.5">
+                            ID: {String(cpo.id ?? '–')}
+                          </div>
+                        </div>
+                        <Check className="w-3 h-3 text-violet-500 flex-shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Blocklist section
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -464,11 +792,13 @@ export function RecipientsPanel({
   recipients,
   permissions,
   dataRecipientsConfig,
+  perRecipientUrlConfig,
   blocklist,
   templateId,
   onChangeRecipients,
   onChangePermissions,
   onChangeDataRecipientsConfig,
+  onChangePerRecipientUrlConfig,
 }: Props) {
   const { data: users } = useUsers();
   const [tab, setTab]               = useState<RecipientTab>('team');
@@ -490,7 +820,11 @@ export function RecipientsPanel({
     setTimeout(() => setJustAdded(null), 2000);
   };
 
-  const cfg = dataRecipientsConfig ?? DEFAULT_DATA_RECIPIENTS_CONFIG;
+  const cfg    = dataRecipientsConfig     ?? DEFAULT_DATA_RECIPIENTS_CONFIG;
+  const cpoUrl = perRecipientUrlConfig    ?? DEFAULT_PER_RECIPIENT_URL_CONFIG;
+
+  // Mode C takes priority: when enabled, grey out auto + manual
+  const modeCActive = cpoUrl.enabled && !!onChangePerRecipientUrlConfig;
 
   const teamRecipients     = recipients.filter((r) => r.userId);
   const externalRecipients = recipients.filter((r) => r.email);
@@ -576,16 +910,31 @@ export function RecipientsPanel({
         </div>
       </div>
 
-      {/* ── Auto-recipients from API data ──────────────────────────────── */}
-      {onChangeDataRecipientsConfig && (
+      {/* ── Per-CPO URL mode (Mode C) — shown first, highest priority ─── */}
+      {onChangePerRecipientUrlConfig && (
         <div>
-          <SectionLabel icon={<Zap className="w-3.5 h-3.5" />} label="Auto-recipients" />
-          <AutoRecipientsSection config={cfg} onChange={onChangeDataRecipientsConfig} />
+          <SectionLabel icon={<Link2 className="w-3.5 h-3.5" />} label="Per-CPO URL" />
+          <PerRecipientUrlSection
+            config={cpoUrl}
+            templateId={templateId}
+            onChange={onChangePerRecipientUrlConfig}
+          />
         </div>
       )}
 
-      {/* ── Manual recipients (shown always; greyed when auto-mode on) ── */}
-      <div className={cn('transition-opacity', cfg.enabled && onChangeDataRecipientsConfig ? 'opacity-40 pointer-events-none select-none' : '')}>
+      {/* ── Auto-recipients from API data (Mode A) — greyed when Mode C on ── */}
+      {onChangeDataRecipientsConfig && (
+        <div className={cn('transition-opacity', modeCActive ? 'opacity-40 pointer-events-none select-none' : '')}>
+          <SectionLabel icon={<Zap className="w-3.5 h-3.5" />} label="Auto-recipients" />
+          <AutoRecipientsSection config={cfg} onChange={onChangeDataRecipientsConfig} />
+          {modeCActive && (
+            <p className="text-[10px] text-text-muted mt-1.5 text-center">Overridden by Per-CPO URL Mode</p>
+          )}
+        </div>
+      )}
+
+      {/* ── Manual recipients (shown always; greyed when auto-mode or Mode C on) ── */}
+      <div className={cn('transition-opacity', (cfg.enabled && onChangeDataRecipientsConfig) || modeCActive ? 'opacity-40 pointer-events-none select-none' : '')}>
         <div className="flex items-center gap-1.5 mb-2">
           <Mail className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
           <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
@@ -596,9 +945,9 @@ export function RecipientsPanel({
               {recipients.length}
             </span>
           )}
-          {cfg.enabled && onChangeDataRecipientsConfig && (
+          {(modeCActive || (cfg.enabled && onChangeDataRecipientsConfig)) && (
             <span className="ml-auto text-[9px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-700 px-1.5 py-0.5 rounded-full font-semibold">
-              Overridden by auto-mode
+              {modeCActive ? 'Overridden by Per-CPO URL' : 'Overridden by auto-mode'}
             </span>
           )}
         </div>

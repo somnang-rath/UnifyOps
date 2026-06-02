@@ -8,7 +8,7 @@ import {
 import { cn } from '@/lib/utils';
 import {
   BarChart2, Braces, ChevronsUpDown,
-  ChevronDown, ChevronRight, Database, Eye, KeyRound, Loader2, Maximize2,
+  ChevronDown, ChevronRight, Database, Eye, Filter, KeyRound, Loader2, Maximize2,
   Plus, RefreshCw, Search, Table2, Trash2, Wifi, X,
 } from 'lucide-react';
 import {
@@ -19,12 +19,19 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export type RowFilter = {
+  field: string;
+  op: 'eq' | 'neq' | 'contains' | 'startsWith' | 'endsWith' | 'gt' | 'lt' | 'gte' | 'lte';
+  value: string;
+};
+
 export type StoredDatasource = {
   url: string;
   method: 'GET' | 'POST';
   headers?: Record<string, string>;
   dataPath?: string;
   columnDefs: { key: string; label: string; prefix?: string; suffix?: string }[];
+  rowFilters?: RowFilter[];
 };
 
 type ColDef    = { key: string; label: string; selected: boolean; prefix?: string; suffix?: string };
@@ -51,6 +58,28 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
     cur = (cur as Record<string, unknown>)[part];
   }
   return cur;
+}
+
+function applyRowFilters(rows: Record<string, unknown>[], filters: RowFilter[]): Record<string, unknown>[] {
+  const active = filters.filter((f) => f.field && f.value !== '');
+  if (!active.length) return rows;
+  return rows.filter((row) =>
+    active.every(({ field, op, value }) => {
+      const rv = String(getNestedValue(row, field) ?? '');
+      switch (op) {
+        case 'eq':         return rv === value;
+        case 'neq':        return rv !== value;
+        case 'contains':   return rv.toLowerCase().includes(value.toLowerCase());
+        case 'startsWith': return rv.toLowerCase().startsWith(value.toLowerCase());
+        case 'endsWith':   return rv.toLowerCase().endsWith(value.toLowerCase());
+        case 'gt':  { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) > n; }
+        case 'lt':  { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) < n; }
+        case 'gte': { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) >= n; }
+        case 'lte': { const n = parseFloat(value); return !isNaN(n) && parseFloat(rv) <= n; }
+        default: return true;
+      }
+    }),
+  );
 }
 
 // ── Micro-components ──────────────────────────────────────────────────────────
@@ -138,6 +167,8 @@ export function DataSourcePanel({ props, onApply }: Props) {
   const [headers, setHeaders] = useState<HeaderRow[]>(
     Object.entries(stored?.headers ?? {}).map(([key, value]) => ({ key, value })),
   );
+  const [rowFilters, setRowFilters] = useState<RowFilter[]>(stored?.rowFilters ?? []);
+  const [showFilters, setShowFilters] = useState((stored?.rowFilters ?? []).length > 0);
   const [bearerToken, setBearerToken] = useState('');
   const [showAuth,    setShowAuth]    = useState(false);
   const [showHeaders, setShowHeaders] = useState(false);
@@ -222,7 +253,8 @@ export function DataSourcePanel({ props, onApply }: Props) {
   const setColPrefix = (key: string, prefix: string) => setColDefs((p) => p.map((c) => c.key === key ? { ...c, prefix } : c));
   const setColSuffix = (key: string, suffix: string) => setColDefs((p) => p.map((c) => c.key === key ? { ...c, suffix } : c));
 
-  const liveRows = result ? extractArrayAtPath(result.data, selectedPath) : [];
+  const liveRows         = result ? extractArrayAtPath(result.data, selectedPath) : [];
+  const filteredLiveRows = applyRowFilters(liveRows, rowFilters.filter((f) => f.field));
 
   // ── Fullscreen viewer derived data ────────────────────────────────────────
   const FS_PALETTE = ['#6366f1','#f59e0b','#22c55e','#ef4444','#06b6d4','#ec4899','#8b5cf6','#14b8a6'];
@@ -270,10 +302,11 @@ export function DataSourcePanel({ props, onApply }: Props) {
 
   const handleApply = () => {
     const active = colDefs.filter((c) => c.selected);
+    const activeFilters = rowFilters.filter((f) => f.field);
     onApply({
       ...props,
       columns: active.map((c) => c.label),
-      rows: liveRows.slice(0, 500).map((row) => {
+      rows: filteredLiveRows.slice(0, 500).map((row) => {
         const mapped: Record<string, string> = {};
         active.forEach(({ key, label, prefix, suffix }) => {
           const v = getNestedValue(row, key);
@@ -285,6 +318,7 @@ export function DataSourcePanel({ props, onApply }: Props) {
       dataSource: {
         url: url.trim(), method, headers: headersMap(), dataPath: selectedPath,
         columnDefs: active.map(({ key, label, prefix, suffix }) => ({ key, label, prefix, suffix })),
+        rowFilters: activeFilters,
       } satisfies StoredDatasource,
     });
   };
@@ -689,10 +723,75 @@ export function DataSourcePanel({ props, onApply }: Props) {
         </div>
       )}
 
+      {/* Row Filters */}
+      {colDefs.length > 0 && (
+        <div>
+          <button onClick={() => setShowFilters((v) => !v)}
+            className="flex items-center gap-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider hover:text-text transition-colors">
+            {showFilters ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <Filter className="w-3 h-3" />
+            Row Filters
+            {rowFilters.filter((f) => f.field).length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-accent-100 dark:bg-accent-900/40 text-accent-700 dark:text-accent-400 text-[9px] font-bold">
+                {rowFilters.filter((f) => f.field).length}
+              </span>
+            )}
+          </button>
+          {showFilters && (
+            <div className="mt-1.5 space-y-2">
+              {rowFilters.map((f, i) => (
+                <div key={i} className="rounded-md border border-border bg-bg-subtle p-2 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-semibold text-text-muted uppercase tracking-wider">Rule {i + 1}</span>
+                    <button onClick={() => setRowFilters((p) => p.filter((_, j) => j !== i))}
+                      className="text-text-muted hover:text-red-500 transition-colors">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <select value={f.field}
+                    onChange={(e) => setRowFilters((p) => p.map((r, j) => j === i ? { ...r, field: e.target.value } : r))}
+                    className="w-full px-2 py-1.5 text-[10px] rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400">
+                    <option value="">— select field —</option>
+                    {colDefs.map((c) => <option key={c.key} value={c.key}>{c.key}</option>)}
+                  </select>
+                  <div className="flex gap-1">
+                    <select value={f.op}
+                      onChange={(e) => setRowFilters((p) => p.map((r, j) => j === i ? { ...r, op: e.target.value as RowFilter['op'] } : r))}
+                      className="flex-1 px-1.5 py-1.5 text-[10px] rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400">
+                      <option value="eq">= equals</option>
+                      <option value="neq">≠ not equal</option>
+                      <option value="contains">contains</option>
+                      <option value="startsWith">starts with</option>
+                      <option value="endsWith">ends with</option>
+                      <option value="gt">&gt; greater</option>
+                      <option value="lt">&lt; less</option>
+                      <option value="gte">≥ ≥</option>
+                      <option value="lte">≤ ≤</option>
+                    </select>
+                    <input type="text" placeholder="value…" value={f.value}
+                      onChange={(e) => setRowFilters((p) => p.map((r, j) => j === i ? { ...r, value: e.target.value } : r))}
+                      className="flex-1 px-2 py-1.5 text-[10px] rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400" />
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => setRowFilters((p) => [...p, { field: colDefs[0]?.key ?? '', op: 'eq', value: '' }])}
+                className="flex items-center gap-1 text-[10px] text-text-muted hover:text-accent-600 transition-colors w-full justify-center py-1 border border-dashed border-border rounded-md hover:border-accent-400">
+                <Plus className="w-3 h-3" /> Add filter
+              </button>
+              {filteredLiveRows.length !== liveRows.length && (
+                <p className="text-[10px] text-accent-600 dark:text-accent-400 font-medium text-center">
+                  {filteredLiveRows.length} / {liveRows.length} rows match
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Mini preview */}
-      {hasResult && liveRows.length > 0 && (
+      {hasResult && filteredLiveRows.length > 0 && (
         <MiniPreview
-          rows={liveRows}
+          rows={filteredLiveRows}
           columns={colDefs.map((c) => c.key)}
           highlight={selectedCols}
         />

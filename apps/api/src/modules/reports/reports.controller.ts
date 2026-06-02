@@ -132,9 +132,11 @@ export class ReportsController {
     /** Optional: filter data to a single recipient's rows for a personalised preview. */
     @Query('filterField') filterField?: string,
     @Query('filterValue') filterValue?: string,
+    /** Mode C: preview a specific CPO's data by their ID. */
+    @Query('cpoId') cpoId?: string,
   ) {
     const filter = filterField && filterValue ? { fieldPath: filterField, filterValue } : null;
-    const pdf = await this.svc.generatePreview(u.id, id, filter);
+    const pdf = await this.svc.generatePreview(u.id, id, filter, cpoId ?? null);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline; filename="preview.pdf"',
@@ -160,6 +162,34 @@ export class ReportsController {
       'Content-Length': pdf.length,
     });
     res.end(pdf);
+  }
+
+  // ── Per-Recipient URL helpers ─────────────────────────────────────────────
+
+  /**
+   * Fetch the CPO list URL and return count + first-5 preview.
+   * Used by the "Fetch CPO List" test button in the recipients panel.
+   * POST /reports/:id/fetch-cpo-list
+   * Body: { listUrl, listDataPath?, idField?, emailField?, nameField? }
+   */
+  @Post(':id/fetch-cpo-list')
+  fetchCpoList(
+    @CurrentUser() _u: { id: string },
+    @Body() dto: {
+      listUrl: string;
+      listDataPath?: string;
+      idField?: string;
+      emailField?: string;
+      nameField?: string;
+    },
+  ) {
+    return this.svc.fetchCpoList({
+      listUrl:      dto.listUrl,
+      listDataPath: dto.listDataPath ?? '',
+      idField:      dto.idField      ?? 'id',
+      emailField:   dto.emailField   ?? 'email',
+      nameField:    dto.nameField,
+    });
   }
 
   // ── Blocklist management ──────────────────────────────────────────────────

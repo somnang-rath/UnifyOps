@@ -93,8 +93,9 @@ export function ReportCard({ template, onRun, onDelete }: Props) {
     await update.mutateAsync({ id: template._id, body: { thumbnail: '' } });
   };
 
-  const autoMode      = template.dataRecipientsConfig?.enabled && !!template.dataRecipientsConfig?.emailField;
-  const recipientCount = autoMode ? null : (template.recipients?.length ?? 0);
+  const cpoMode        = template.perRecipientUrlConfig?.enabled && !!template.perRecipientUrlConfig?.listUrl;
+  const autoMode       = !cpoMode && template.dataRecipientsConfig?.enabled && !!template.dataRecipientsConfig?.emailField;
+  const recipientCount = (autoMode || cpoMode) ? null : (template.recipients?.length ?? 0);
   const bg = template.background ?? '#e2e8f0';
 
   return (
@@ -242,7 +243,11 @@ export function ReportCard({ template, onRun, onDelete }: Props) {
               : 'Manual'}
           </span>
 
-          {autoMode ? (
+          {cpoMode ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-950/40 dark:text-violet-400 dark:border-violet-800">
+              <Zap className="w-2.5 h-2.5" /> Per-CPO
+            </span>
+          ) : autoMode ? (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-accent-50 text-accent-700 border border-accent-200 dark:bg-accent-950/40 dark:text-accent-400 dark:border-accent-800">
               <Zap className="w-2.5 h-2.5" /> Auto
             </span>

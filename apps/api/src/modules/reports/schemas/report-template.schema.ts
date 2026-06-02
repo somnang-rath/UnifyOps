@@ -179,6 +179,34 @@ export interface ReportDataRecipientsConfig {
   url?: string;
 }
 
+/**
+ * Per-Recipient URL mode:
+ * Instead of filtering one shared dataset, fetch a dedicated URL per CPO using
+ * their unique ID.  Steps at send time:
+ *   1. GET listUrl → array of CPO objects
+ *   2. For each CPO: extract id, email, optional name
+ *   3. Compute concreteUrl = dataUrlTemplate.replace('{id}', cpoId)
+ *   4. GET concreteUrl → this CPO's own dataset
+ *   5. Render all data-source elements using that dataset (no row filtering)
+ *   6. Send personalised PDF to CPO's email
+ */
+export interface ReportPerRecipientUrlConfig {
+  /** Master switch. */
+  enabled: boolean;
+  /** URL returning the full list of CPOs. E.g. https://api.example.com/cpos */
+  listUrl: string;
+  /** Dot-notation path to the array inside the list response. Empty = root is the array. */
+  listDataPath: string;
+  /** Field in each list row containing the CPO's unique ID. E.g. "id" or "_id" */
+  idField: string;
+  /** Field in each list row containing the CPO's email address. E.g. "email" */
+  emailField: string;
+  /** Optional display-name field. E.g. "name" or "company_name" */
+  nameField: string;
+  /** URL template with {id} placeholder. E.g. https://api.example.com/cpos/{id} */
+  dataUrlTemplate: string;
+}
+
 /** An entry in the report send blocklist — any recipient matching this is skipped. */
 export interface ReportBlocklistEntry {
   /** UUID generated on creation */
@@ -245,6 +273,10 @@ export class ReportTemplate {
   /** When enabled, each recipient receives a PDF filtered to only their data rows. */
   @Prop({ type: Object, default: { enabled: false, fieldPath: '' } })
   recipientDataFilter: ReportRecipientDataFilter;
+
+  /** Per-Recipient URL mode — fetch a dedicated URL per CPO using their unique ID. */
+  @Prop({ type: Object, default: { enabled: false, listUrl: '', listDataPath: '', idField: 'id', emailField: 'email', nameField: '', dataUrlTemplate: '' } })
+  perRecipientUrlConfig: ReportPerRecipientUrlConfig;
 
   /** Users / emails that should NEVER receive this report. */
   @Prop({ type: Object, default: [] })
