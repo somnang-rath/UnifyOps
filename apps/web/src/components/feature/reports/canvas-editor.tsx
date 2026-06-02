@@ -94,6 +94,8 @@ type CtxMenu = { x: number; y: number; elementId: string | null } | null;
 interface Props {
   template: ReportTemplate;
   onChange: (patch: Partial<ReportTemplate>) => void;
+  /** Filled with refreshDatasources() so parents can call it before PDF preview */
+  refreshDatasourcesRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 }
 
 // ── Keyboard shortcut cheatsheet ──────────────────────────────────────────────
@@ -807,7 +809,7 @@ function shouldShowHF(hf: { showOn?: string; skipPages?: number[] }, pgIdx: numb
 
 // ── Main editor ───────────────────────────────────────────────────────────────
 
-export function CanvasEditor({ template, onChange }: Props) {
+export function CanvasEditor({ template, onChange, refreshDatasourcesRef }: Props) {
   const [currentPage, setCurrentPage] = useState(0);
   const [leftTab, setLeftTab]   = useState<'add' | 'layout' | 'page'>('add');
   const [showLeft, setShowLeft] = useState(true);
@@ -1018,6 +1020,45 @@ export function CanvasEditor({ template, onChange }: Props) {
   const elements    = allElements.filter((e) => (e.page ?? 0) === currentPage);
   const selected    = elements.find((e) => e.id === ctrl.selectedId) ?? null;
 
+  // ── autoHeight: resize table + push/pull elements below ─────────────────
+  // For autoHeight tables, also shifts every element on the same page that
+  // sits below the table bottom by the same delta, preserving the gap.
+  // For auto-paginated (autoPageBreak) tables, just update el.h as before.
+  const handleAutoHeightChange = useCallback((id: string, newH: number) => {
+    const el = (template.elements ?? []).find((e) => e.id === id);
+    if (!el) return;
+    const p = el.props as Record<string, unknown>;
+
+    if (!p.autoHeight) {
+      // autoPageBreak table — just resize, auto-layout handles the rest
+      ctrl.updateElement(id, { h: newH });
+      return;
+    }
+
+    const oldH  = el.h;
+    const delta = Math.round(newH - oldH);
+    if (Math.abs(delta) < 1) return;
+
+    const page      = el.page ?? 0;
+    const oldBottom = el.y + oldH;
+
+    const below = (template.elements ?? []).filter((e) =>
+      e.id !== id &&
+      (e.page ?? 0) === page &&
+      e.y >= oldBottom - 1,   // 1px tolerance for float imprecision
+    );
+
+    if (below.length === 0) {
+      ctrl.updateElement(id, { h: newH });
+    } else {
+      ctrl.updateElementBatch([
+        { id, patch: { h: newH } },
+        ...below.map((e) => ({ id: e.id, patch: { y: Math.max(0, e.y + delta) } })),
+      ]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.elements, ctrl.updateElement, ctrl.updateElementBatch]);
+
   // ── URL datasource refresh ────────────────────────────────────────────────
   // Fetches live data from every table element that has a dataSource URL and
   // updates p.rows so the canvas reflects current API data.  Runs on mount
@@ -1082,6 +1123,11 @@ export function CanvasEditor({ template, onChange }: Props) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allElements, onChange]);
+
+  // Expose refreshDatasources to parent (used by Preview button to get fresh data before PDF generation).
+  useEffect(() => {
+    if (refreshDatasourcesRef) refreshDatasourcesRef.current = refreshDatasources;
+  }, [refreshDatasources, refreshDatasourcesRef]);
 
   // Auto-refresh once on mount so the table always shows current API data.
   const didAutoRefreshRef = useRef(false);
@@ -1571,7 +1617,7 @@ export function CanvasEditor({ template, onChange }: Props) {
                               (props) => ctrl.updateElement(el.id, { props }),
                               () => ctrl.handleAutoPaginate(el.id),
                               (fit) => ctrl.handleActualFit(el.id, fit),
-                              (h) => ctrl.updateElement(el.id, { h }),
+                              (h) => handleAutoHeightChange(el.id, h),
                             )}
                           </div>
                         );

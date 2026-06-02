@@ -225,10 +225,11 @@ export default function ReportEditPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [autoSave, setAutoSave]     = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
-  const debounceRef   = useRef<NodeJS.Timeout | null>(null);
-  const savedTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const localRef      = useRef<ReportTemplate | null>(null);
-  const previewBtnRef = useRef<HTMLDivElement>(null);
+  const debounceRef          = useRef<NodeJS.Timeout | null>(null);
+  const savedTimerRef        = useRef<NodeJS.Timeout | null>(null);
+  const localRef             = useRef<ReportTemplate | null>(null);
+  const previewBtnRef        = useRef<HTMLDivElement>(null);
+  const canvasRefreshRef     = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (serverTemplate && !local) {
@@ -266,11 +267,14 @@ export default function ReportEditPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfPreviewUrl]);
 
-  /* Full (unfiltered) preview — auto-saves unsaved changes first, then generates PDF */
+  /* Full (unfiltered) preview — refreshes datasources, saves, then generates PDF */
   const handlePreview = async () => {
     setPreviewing(true);
     try {
-      if (dirty && local) await update.mutateAsync({ id, body: local });
+      // Refresh URL datasources so the PDF reflects current API data
+      if (canvasRefreshRef.current) await canvasRefreshRef.current();
+      // Always save before generating PDF (datasource refresh marks template dirty)
+      if (localRef.current) await update.mutateAsync({ id, body: localRef.current });
       const res = await api.get(`/reports/${id}/preview`, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       setPdfPreviewUrl(url);
@@ -467,7 +471,7 @@ export default function ReportEditPage() {
       </div>
 
       {/* Canvas */}
-      <CanvasEditor template={local} onChange={patch} />
+      <CanvasEditor template={local} onChange={patch} refreshDatasourcesRef={canvasRefreshRef} />
 
       {/* PDF preview modal — shows inline instead of downloading */}
       {pdfPreviewUrl && (
