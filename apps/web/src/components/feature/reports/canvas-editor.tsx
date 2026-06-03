@@ -1087,7 +1087,36 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
     const p = el.props as Record<string, unknown>;
 
     if (!p.autoHeight) {
-      // autoPageBreak table — just resize, auto-layout handles the rest
+      // For continuation tables: also reposition auto-moved elements (signature,
+      // labels, etc.) on the same page using the actual DOM-measured height.
+      // The formula in computeAutoLayout can't account for text wrapping, so
+      // the stored Y of moved elements may not match the real table bottom.
+      if (p.isContinuation && p.sourceTableId) {
+        const sourceId  = p.sourceTableId as string;
+        const elPage    = el.page ?? 0;
+        const movedEls  = (template.elements ?? []).filter((e) => {
+          const ep = e.props as Record<string, unknown>;
+          return ep.autoMovedFromTableId === sourceId && (e.page ?? 0) === elPage;
+        });
+        if (movedEls.length > 0) {
+          const sorted = [...movedEls].sort((a, b) => {
+            const ay = ((a.props as Record<string, unknown>).autoMovedOriginalY as number) ?? a.y;
+            const by = ((b.props as Record<string, unknown>).autoMovedOriginalY as number) ?? b.y;
+            return ay - by;
+          });
+          const firstOrigY = ((sorted[0].props as Record<string, unknown>).autoMovedOriginalY as number) ?? sorted[0].y;
+          const tableBottom = el.y + newH;
+          ctrl.updateElementBatch([
+            { id, patch: { h: newH } },
+            ...sorted.map((e) => {
+              const origY = ((e.props as Record<string, unknown>).autoMovedOriginalY as number) ?? e.y;
+              return { id: e.id, patch: { y: tableBottom + 8 + Math.max(0, origY - firstOrigY) } };
+            }),
+          ]);
+          return;
+        }
+      }
+      // autoPageBreak source table — just resize, auto-layout handles the rest
       ctrl.updateElement(id, { h: newH });
       return;
     }

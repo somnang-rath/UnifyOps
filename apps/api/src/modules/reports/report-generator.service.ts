@@ -308,6 +308,39 @@ export class ReportGeneratorService implements OnModuleDestroy {
         { timeout: 8000 },
       ).catch(() => { /* timeout is fine — render with fallback font */ });
 
+      // Reposition auto-moved elements (signature, labels, etc.) to sit flush below
+      // their continuation table using Puppeteer's actual rendered offsetHeight.
+      // The formula in repositionMovedElements() can't account for multi-line cell
+      // wrapping, so this step corrects both under- and over-estimates.
+      await page.evaluate(() => {
+        document.querySelectorAll('.page').forEach((pageEl) => {
+          (pageEl as HTMLElement).querySelectorAll('[data-cont-table]').forEach((contTableEl) => {
+            const sourceId = (contTableEl as HTMLElement).getAttribute('data-cont-table');
+            if (!sourceId) return;
+            const tableBottom =
+              (contTableEl as HTMLElement).offsetTop + (contTableEl as HTMLElement).offsetHeight;
+
+            const movedEls = Array.from(
+              (pageEl as HTMLElement).querySelectorAll(`[data-moved-from="${sourceId}"]`),
+            ) as HTMLElement[];
+            if (!movedEls.length) return;
+
+            movedEls.sort(
+              (a, b) =>
+                parseFloat(a.getAttribute('data-orig-y') ?? '0') -
+                parseFloat(b.getAttribute('data-orig-y') ?? '0'),
+            );
+
+            const firstOrigY = parseFloat(movedEls[0].getAttribute('data-orig-y') ?? '0');
+            movedEls.forEach((movedEl) => {
+              const origY = parseFloat(movedEl.getAttribute('data-orig-y') ?? '0');
+              const offset = Math.max(0, origY - firstOrigY);
+              movedEl.style.top = `${tableBottom + 8 + offset}px`;
+            });
+          });
+        });
+      });
+
       const pdf = await page.pdf({
         printBackground: true,
         // Margins in the canvas editor are purely visual guides (dashed border overlay).
@@ -527,6 +560,9 @@ function repositionMovedElements(elements: ReportElement[], marginTop: number): 
 
     // Place first element 8px after continuation table; others keep their
     // relative spacing from the first element (as designed on the source page).
+    // NOTE: this is a formula-only estimate used as the initial position.
+    // generatePdf runs a Puppeteer evaluate() step after rendering that corrects
+    // these positions using actual measured offsetHeight, handling text wrapping.
     const firstOrigY = getOrigY(groupEls[0]);
     const baseY      = marginTop + actualContH + 8;
 
@@ -677,7 +713,33 @@ function borderWrapStyle(p: Record<string, unknown>): string {
 // Element renderers
 // ---------------------------------------------------------------------------
 
+// Thin wrapper that injects data-* attributes needed by the Puppeteer evaluate step
+// in generatePdf so moved elements can be repositioned using actual rendered heights.
 function renderElement(
+  el: ReportElement,
+  allData: Record<string, WidgetData>,
+  pageIndex: number,
+  totalPages: number,
+): string {
+  let html = renderElementInner(el, allData, pageIndex, totalPages);
+  const p = el.props as Record<string, unknown>;
+
+  // Continuation table: tag so generatePdf can measure its actual offsetHeight.
+  if (el.type === 'table' && p.isContinuation && p.sourceTableId) {
+    html = html.replace(/^(<div\b)/, `$1 data-cont-table="${escapeHtml(String(p.sourceTableId))}"`);
+  }
+
+  // Auto-moved element: tag with source table ID and original Y for repositioning.
+  const movedFrom = p.autoMovedFromTableId as string | undefined;
+  if (movedFrom) {
+    const origY = (p.autoMovedOriginalY as number) ?? el.y;
+    html = html.replace(/^(<div\b)/, `$1 data-moved-from="${escapeHtml(movedFrom)}" data-orig-y="${origY}"`);
+  }
+
+  return html;
+}
+
+function renderElementInner(
   el: ReportElement,
   allData: Record<string, WidgetData>,
   pageIndex: number,

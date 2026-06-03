@@ -17,8 +17,10 @@ function calcRowsFitH(el: ReportElement, h: number): number {
   const cPy     = (p.cellPaddingY as number)   ?? 6;
   const fs      = (p.fontSize as number)       ?? 12;
   const urlBarH = p.dataSource ? 22 : 0;
-  const headerH = hPy * 2 + hFs + 2;
-  const rowH    = cPy * 2 + fs  + 2;
+  // Use CSS line-height ≈ 1.5× font size to match Puppeteer/browser rendering.
+  // Without this, rows are under-estimated in height causing overflow in PDF output.
+  const headerH = hPy * 2 + Math.ceil(hFs * 1.5) + 2;
+  const rowH    = cPy * 2 + Math.ceil(fs  * 1.5) + 1;
   return Math.max(1, Math.floor((h - headerH - urlBarH) / rowH));
 }
 
@@ -31,8 +33,8 @@ function calcLastContH(el: ReportElement, rowCount: number): number {
   const cPy     = (p.cellPaddingY as number)   ?? 6;
   const fs      = (p.fontSize as number)       ?? 12;
   const urlBarH = p.dataSource ? 22 : 0;
-  const headerH = hPy * 2 + hFs + 2;
-  const rowH    = cPy * 2 + fs  + 2;
+  const headerH = hPy * 2 + Math.ceil(hFs * 1.5) + 2;
+  const rowH    = cPy * 2 + Math.ceil(fs  * 1.5) + 1;
   return headerH + urlBarH + rowCount * rowH;
 }
 
@@ -338,7 +340,7 @@ export function computeAutoLayout(
     const urlBarH = _tElPp.dataSource ? 22 : 0;
     const _hPy    = (_tElPp.headerPaddingY as number) ?? 8;
     const _hFs    = (_tElPp.headerFontSize as number) ?? (_tElPp.fontSize as number) ?? 12;
-    const headerH = _hPy * 2 + _hFs + 2;
+    const headerH = _hPy * 2 + Math.ceil(_hFs * 1.5) + 2;
 
     // Average actual row height from the DOM measurement.  With perRowH=0 the DOM
     // now reports natural (un-stretched) row heights, so this is the true average.
