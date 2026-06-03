@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
 
 import { validateEnv } from './config/env.config';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -28,6 +29,13 @@ import { HealthModule } from './modules/health/health.module';
 import { SearchModule } from './modules/search/search.module';
 import { ReportsModule } from './modules/reports/reports.module';
 
+// Register BullMQ globally only when REDIS_URL is configured.
+// Individual modules (ReportsModule) conditionally register their queues
+// using the same flag so everything is consistent.
+const bullRootImport = process.env.REDIS_URL
+  ? [BullModule.forRoot({ connection: { url: process.env.REDIS_URL } })]
+  : [];
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
@@ -35,6 +43,7 @@ import { ReportsModule } from './modules/reports/reports.module';
       useFactory: () => ({ uri: process.env.MONGODB_URI }),
     }),
     ScheduleModule.forRoot(),
+    ...bullRootImport,
     ThrottlerModule.forRoot([
       { name: 'short', ttl: 1000, limit: 20 },   // 20 req/s per IP
       { name: 'medium', ttl: 60_000, limit: 300 }, // 300 req/min per IP

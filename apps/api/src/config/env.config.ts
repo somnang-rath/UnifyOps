@@ -17,6 +17,9 @@ export const envSchema = z.object({
   SMTP_FROM: z.string().optional(),
   ALLOW_PUBLIC_REGISTER: z.coerce.boolean().default(false),
   API_URL: z.string().url().optional(),
+  // Redis — optional. When set, report dispatch uses BullMQ (persistent, retryable).
+  // When absent, dispatch falls back to in-process setImmediate (no retry on crash).
+  REDIS_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

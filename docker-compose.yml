@@ -15,6 +15,19 @@ services:
       retries: 5
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
@@ -22,6 +35,8 @@ services:
     restart: unless-stopped
     depends_on:
       mongo:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -38,6 +53,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     ports:
       - "4000:4000"
     volumes:
@@ -63,4 +79,5 @@ services:
 
 volumes:
   mongo-data:
+  redis-data:
   api-uploads:

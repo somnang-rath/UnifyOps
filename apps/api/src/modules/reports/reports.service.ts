@@ -4,10 +4,18 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/mongoose';
+import { Queue } from 'bullmq';
 import { Model, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
+import {
+  REPORT_QUEUE,
+  REPORT_DISPATCH_JOB,
+  ReportDispatchJobData,
+} from './report-queue.constants';
 import {
   ReportTemplate,
   ReportTemplateDocument,
@@ -84,6 +92,9 @@ export class ReportsService {
     private dataService: ReportDataService,
     private generator: ReportGeneratorService,
     private email: EmailService,
+    // Optional — only injected when REDIS_URL is configured and BullModule is registered.
+    // Falls back to setImmediate-based dispatch when absent.
+    @Optional() @InjectQueue(REPORT_QUEUE) private readonly reportQueue: Queue | undefined,
   ) {}
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -281,16 +292,24 @@ export class ReportsService {
       totalRecipients: estimatedTotal,
     });
 
-    // ✅ Fire-and-forget — HTTP response is returned immediately.
-    // Processing continues in the background.
-    setImmediate(() => {
-      void this.runDispatchInBackground(
-        run._id.toString(),
-        template as ReportTemplate,
-        recipients,
-        'manual',
-      );
-    });
+    // Enqueue in Redis (persistent, retryable) when available; fall back to
+    // setImmediate (in-process, lost on crash) when Redis is not configured.
+    const jobData: ReportDispatchJobData = {
+      runId: run._id.toString(),
+      templateId,
+      frequency: 'manual',
+    };
+    const queued = await this.enqueueDispatch(jobData);
+    if (!queued) {
+      setImmediate(() => {
+        void this.runDispatchInBackground(
+          run._id.toString(),
+          template as ReportTemplate,
+          recipients,
+          'manual',
+        );
+      });
+    }
 
     return run.toObject();
   }
@@ -312,6 +331,18 @@ export class ReportsService {
     const templateObjId = rawId ? new Types.ObjectId(String(rawId)) : undefined;
 
     try {
+      // On BullMQ retry the run may be in 'error' status — reset it so the UI
+      // shows progress again. If it somehow completed already, bail out early.
+      const currentRun = await this.runModel.findById(runId).lean();
+      if (!currentRun) return;
+      if (currentRun.status === 'done') {
+        this.logger.warn(`[${template.name}] run ${runId} already done — skipping retry`);
+        return;
+      }
+      if (currentRun.status !== 'generating') {
+        await this.runModel.findByIdAndUpdate(runId, { status: 'generating' });
+      }
+
       const blocklist            = (template.blocklist ?? []) as ReportBlocklistEntry[];
       const dataRecipientsCfg    = (template.dataRecipientsConfig ?? { enabled: false, emailField: '' }) as ReportDataRecipientsConfig;
       const manualDataFilter     = (template.recipientDataFilter ?? { enabled: false, fieldPath: '' }) as ReportRecipientDataFilter;
@@ -474,6 +505,17 @@ export class ReportsService {
       userId:     r.userId ?? null,
       sentAt,
     };
+
+    // ── Idempotency check (safe for BullMQ retries) ───────────────────────
+    // If this recipient was already successfully delivered in a previous attempt,
+    // skip silently so we never send the same email twice on retry.
+    const alreadySent = await this.deliveryLogModel
+      .findOne({ runId: runObjId, email: r.email, status: 'success' })
+      .lean();
+    if (alreadySent) {
+      this.logger.debug(`[report] ${template.name} → skip (already delivered) ${r.email}`);
+      return;
+    }
 
     // ── Blocklist check ────────────────────────────────────────────────────
     if (this.isBlocked(r.email, r.userId, blocklist)) {
@@ -1179,8 +1221,36 @@ export class ReportsService {
       status: 'generating',
       totalRecipients: estimatedTotal,
     });
-    // Await full dispatch — cron runs one template at a time
-    await this.runDispatchInBackground(run._id.toString(), template, recipients, frequency);
+
+    // When Redis is available: enqueue (worker concurrency=1 ensures sequential runs).
+    // When absent: await directly so the cron still runs one template at a time.
+    const jobData: ReportDispatchJobData = {
+      runId: run._id.toString(),
+      templateId: String((template as any)._id),
+      frequency,
+    };
+    const queued = await this.enqueueDispatch(jobData);
+    if (!queued) {
+      await this.runDispatchInBackground(run._id.toString(), template, recipients, frequency);
+    }
+  }
+
+  /**
+   * Pushes a dispatch job to the BullMQ queue with 3 retry attempts and
+   * exponential back-off (30 s → 60 s → 120 s).
+   * Returns true when queued, false when Redis is not configured (caller
+   * should fall back to setImmediate).
+   */
+  private async enqueueDispatch(data: ReportDispatchJobData): Promise<boolean> {
+    if (!this.reportQueue) return false;
+    await this.reportQueue.add(REPORT_DISPATCH_JOB, data, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 30_000 },
+      removeOnComplete: { count: 100 },
+      removeOnFail:     { count: 50  },
+    });
+    this.logger.log(`[queue] enqueued run=${data.runId} template=${data.templateId}`);
+    return true;
   }
 
   private applyAgg(rows: Record<string, unknown>[], valueKey: string, agg?: string): string | number {
