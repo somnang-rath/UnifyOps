@@ -96,6 +96,17 @@ interface Props {
   onChange: (patch: Partial<ReportTemplate>) => void;
   /** Filled with refreshDatasources() so parents can call it before PDF preview */
   refreshDatasourcesRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  /**
+   * Filled with prepareForExport(): fetches fresh datasource rows, runs
+   * computeAutoLayout, then calls onChange — all before saving/previewing.
+   * Resolves when the template state is fully up to date.
+   */
+  prepareForExportRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  /**
+   * Returns the most current template state (reads localRef.current in the parent),
+   * bypassing React render lag so prepareForExport never works from a stale snapshot.
+   */
+  getLatestTemplate?: () => ReportTemplate;
 }
 
 // ── Keyboard shortcut cheatsheet ──────────────────────────────────────────────
@@ -809,7 +820,7 @@ function shouldShowHF(hf: { showOn?: string; skipPages?: number[] }, pgIdx: numb
 
 // ── Main editor ───────────────────────────────────────────────────────────────
 
-export function CanvasEditor({ template, onChange, refreshDatasourcesRef }: Props) {
+export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepareForExportRef, getLatestTemplate }: Props) {
   const [currentPage, setCurrentPage] = useState(0);
   const [leftTab, setLeftTab]   = useState<'add' | 'layout' | 'page'>('add');
   const [showLeft, setShowLeft] = useState(true);
@@ -949,6 +960,44 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef }: Prop
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [template.elements, template.pageSize, template.orientation]);
 
+  // ── Orphan-page cleanup ───────────────────────────────────────────────────
+  // Removes system-generated empty pages:
+  //   • of-pg-* — old page-overflow pages whose element was later re-claimed
+  //               by auto-layout (autoMovedFromTableId tracking)
+  //   • al-*    — auto-layout continuation/separator pages with no elements
+  //               (can appear when table config changes between mounts)
+  //   • pages with sourceTableId and no elements (same category, any id)
+  // Uses a sig so it fires exactly once per distinct orphan set.
+  const orphanCleanupSigRef = useRef('');
+  useEffect(() => {
+    const pages = template.pages ?? [];
+    if (pages.length <= 1) return;
+    const elementPages = new Set((template.elements ?? []).map((el) => el.page ?? 0));
+    const orphanIdxs = pages
+      .map((pg, i) => {
+        if (i === 0) return -1; // never remove the first page
+        if (elementPages.has(i)) return -1; // page has elements, keep it
+        const id = typeof pg.id === 'string' ? pg.id : '';
+        const pge = pg as ReportPage & { sourceTableId?: string };
+        const isSystem = id.startsWith('of-pg-') || id.startsWith('al-') || !!pge.sourceTableId;
+        return isSystem ? i : -1;
+      })
+      .filter((i) => i >= 0);
+    const sig = orphanIdxs.join(',');
+    if (!sig || sig === orphanCleanupSigRef.current) return;
+    orphanCleanupSigRef.current = sig;
+    const keepIdxs = pages.map((_, i) => i).filter((i) => !orphanIdxs.includes(i));
+    const oldToNew = new Map(keepIdxs.map((oldI, newI) => [oldI, newI]));
+    onChange({
+      pages:    pages.filter((_, i) => !orphanIdxs.includes(i)),
+      elements: (template.elements ?? []).map((el) => ({
+        ...el,
+        page: oldToNew.get(el.page ?? 0) ?? (el.page ?? 0),
+      })),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.pages, template.elements]);
+
   // ── Marquee window listeners (registered once — reads state via refs) ────
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1020,6 +1069,14 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef }: Prop
   const elements    = allElements.filter((e) => (e.page ?? 0) === currentPage);
   const selected    = elements.find((e) => e.id === ctrl.selectedId) ?? null;
 
+  // Clamp currentPage whenever pages shrink (e.g. auto-layout or page-overflow
+  // removes pages after a save/refresh).
+  useEffect(() => {
+    if (currentPage >= pages.length) {
+      setCurrentPage(Math.max(0, pages.length - 1));
+    }
+  }, [pages.length, currentPage]);
+
   // ── autoHeight: resize table + push/pull elements below ─────────────────
   // For autoHeight tables, also shifts every element on the same page that
   // sits below the table bottom by the same delta, preserving the gap.
@@ -1060,74 +1117,105 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef }: Prop
   }, [template.elements, ctrl.updateElement, ctrl.updateElementBatch]);
 
   // ── URL datasource refresh ────────────────────────────────────────────────
-  // Fetches live data from every table element that has a dataSource URL and
-  // updates p.rows so the canvas reflects current API data.  Runs on mount
-  // and can be triggered manually via the refresh button in the toolbar.
+  // Fetches live data from every table element that has a dataSource URL.
 
   const [refreshing, setRefreshing] = useState(false);
 
-  const refreshDatasources = useCallback(async () => {
-    const sourceTables = allElements.filter((el) => {
+  // Internal helper: fetch fresh rows and return updated elements array.
+  // Does NOT call onChange — callers decide what to do with the result.
+  const fetchFreshElements = useCallback(async (elements: ReportElement[]): Promise<ReportElement[]> => {
+    const sourceTables = elements.filter((el) => {
       if (el.type !== 'table') return false;
       const p = el.props as Record<string, unknown>;
       if (p.autoGenerated || p.isContinuation) return false;
       return !!(p.dataSource as StoredDatasource | undefined)?.url;
     });
-    if (sourceTables.length === 0) return;
+    if (sourceTables.length === 0) return elements;
 
+    const results = await Promise.all(
+      sourceTables.map(async (el) => {
+        const p  = el.props as Record<string, unknown>;
+        const ds = p.dataSource as StoredDatasource;
+        try {
+          const { data: result } = await api.post<{ data: unknown }>('/reports/fetch-datasource', {
+            url: ds.url, method: ds.method ?? 'GET', headers: ds.headers ?? {},
+          });
+          const rawRows = extractArrayAtPath(result.data, ds.dataPath ?? '');
+          const rows = rawRows.slice(0, 500).map((row) => {
+            const mapped: Record<string, string> = {};
+            (ds.columnDefs ?? []).forEach(({ key, label, prefix, suffix }) => {
+              const v = (row as Record<string, unknown>)[key];
+              const raw = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+              mapped[label] = `${prefix ?? ''}${raw}${suffix ?? ''}`;
+            });
+            return mapped;
+          });
+          return { id: el.id, rows };
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const updates = results.filter(Boolean) as { id: string; rows: Record<string, string>[] }[];
+    if (updates.length === 0) return elements;
+
+    const freshMap = new Map(updates.map((u) => [u.id, u.rows]));
+    return elements.map((el) => {
+      const p = el.props as Record<string, unknown>;
+      if (freshMap.has(el.id)) return { ...el, props: { ...p, rows: freshMap.get(el.id) } };
+      const srcId = p.sourceTableId as string | undefined;
+      if (p.autoGenerated && srcId && freshMap.has(srcId)) {
+        return { ...el, props: { ...p, rows: freshMap.get(srcId) } };
+      }
+      return el;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Simple refresh: fetch → onChange (used by the toolbar button and auto-refresh on mount)
+  const refreshDatasources = useCallback(async () => {
     setRefreshing(true);
     try {
-      const results = await Promise.all(
-        sourceTables.map(async (el) => {
-          const p  = el.props as Record<string, unknown>;
-          const ds = p.dataSource as StoredDatasource;
-          try {
-            const { data: result } = await api.post<{ data: unknown }>('/reports/fetch-datasource', {
-              url: ds.url, method: ds.method ?? 'GET', headers: ds.headers ?? {},
-            });
-            const rawRows = extractArrayAtPath(result.data, ds.dataPath ?? '');
-            const rows = rawRows.slice(0, 500).map((row) => {
-              const mapped: Record<string, string> = {};
-              (ds.columnDefs ?? []).forEach(({ key, label, prefix, suffix }) => {
-                const v = (row as Record<string, unknown>)[key];
-                const raw = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
-                mapped[label] = `${prefix ?? ''}${raw}${suffix ?? ''}`;
-              });
-              return mapped;
-            });
-            return { id: el.id, rows };
-          } catch {
-            return null;
-          }
-        }),
-      );
-
-      const updates = results.filter(Boolean) as { id: string; rows: Record<string, string>[] }[];
-      if (updates.length === 0) return;
-
-      // Build a map of sourceId → fresh rows, then apply to source + continuation elements
-      const freshMap = new Map(updates.map((u) => [u.id, u.rows]));
-      const nextElements = allElements.map((el) => {
-        const p = el.props as Record<string, unknown>;
-        if (freshMap.has(el.id)) return { ...el, props: { ...p, rows: freshMap.get(el.id) } };
-        const srcId = p.sourceTableId as string | undefined;
-        if (p.autoGenerated && srcId && freshMap.has(srcId)) {
-          return { ...el, props: { ...p, rows: freshMap.get(srcId) } };
-        }
-        return el;
-      });
-
-      onChange({ elements: nextElements });
+      const next = await fetchFreshElements(allElements);
+      if (next !== allElements) onChange({ elements: next });
     } finally {
       setRefreshing(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allElements, onChange]);
+  }, [allElements, fetchFreshElements, onChange]);
 
-  // Expose refreshDatasources to parent (used by Preview button to get fresh data before PDF generation).
+  // Full prepare: fetch fresh rows + run computeAutoLayout → single onChange.
+  // Used by Preview and Run so the saved template always has current data + correct layout.
+  // Uses getLatestTemplate() (reads localRef.current in the parent) so it always starts
+  // from the most current state, not a potentially-stale React render snapshot.
+  const prepareForExport = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Always read the absolute latest template — localRef.current in the parent
+      // is updated synchronously inside setLocal(), bypassing React render lag.
+      const currentTemplate = getLatestTemplate ? getLatestTemplate() : templateRef.current;
+      const nextElements    = await fetchFreshElements(currentTemplate.elements ?? []);
+      const freshTemplate   = { ...currentTemplate, elements: nextElements };
+      const layoutResult    = computeAutoLayout(freshTemplate, ctrl.actualFitHintsRef.current);
+      if (layoutResult) {
+        onChange({ elements: layoutResult.elements, pages: layoutResult.pages });
+      } else if (nextElements !== (currentTemplate.elements ?? [])) {
+        onChange({ elements: nextElements });
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchFreshElements, getLatestTemplate, onChange, ctrl.actualFitHintsRef]);
+
+  // Expose both functions to parent via refs
   useEffect(() => {
     if (refreshDatasourcesRef) refreshDatasourcesRef.current = refreshDatasources;
   }, [refreshDatasources, refreshDatasourcesRef]);
+  useEffect(() => {
+    if (prepareForExportRef) prepareForExportRef.current = prepareForExport;
+  }, [prepareForExport, prepareForExportRef]);
 
   // Auto-refresh once on mount so the table always shows current API data.
   const didAutoRefreshRef = useRef(false);

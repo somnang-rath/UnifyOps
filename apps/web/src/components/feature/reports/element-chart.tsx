@@ -331,6 +331,7 @@ export function ElementChart({ element }: Props) {
                 paddingAngle={padAngle}
                 label={pieLabelPos === 'outside' ? renderOutsideLabel : pieLabelPos === 'inside' ? renderInsideLabel : false}
                 labelLine={showLabelLine ? { stroke: '#9ca3af', strokeWidth: 1 } : false}
+                isAnimationActive={false}
               >
                 {series.map((s, i) => <Cell key={i} fill={s.color ?? PIE_PALETTE[i % PIE_PALETTE.length]} />)}
                 {pieCenterValue && (
@@ -366,7 +367,8 @@ export function ElementChart({ element }: Props) {
               <Tooltip contentStyle={TT_STYLE} />
               {legendEl}
               <Line type="monotone" dataKey="value" stroke={accent} strokeWidth={2}
-                dot={{ r: 3, fill: accent, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                dot={{ r: 3, fill: accent, strokeWidth: 0 }} activeDot={{ r: 4 }}
+                isAnimationActive={false} />
             </LineChart>
 
           ) : chartType === 'bar-line' ? (
@@ -454,6 +456,7 @@ export function ElementChart({ element }: Props) {
                 fill={accent}
                 radius={[1, 1, 0, 0]}
                 maxBarSize={18}
+                isAnimationActive={false}
               />
               <Line
                 yAxisId="right"
@@ -464,6 +467,7 @@ export function ElementChart({ element }: Props) {
                 strokeWidth={2}
                 dot={{ r: 3, fill: lineColor, strokeWidth: 0 }}
                 activeDot={{ r: 4 }}
+                isAnimationActive={false}
               />
             </ComposedChart>
 
@@ -509,6 +513,7 @@ export function ElementChart({ element }: Props) {
                 dataKey="value"
                 radius={[0, 3, 3, 0]}
                 background={p.showBarTrack ? { fill: '#e5e7eb', radius: 3 } : false}
+                isAnimationActive={false}
               >
                 {series.map((s, i) => <Cell key={i} fill={p.singleColor ? accent : (s.color ?? accent)} />)}
                 {p.showBarValues && (
@@ -528,7 +533,7 @@ export function ElementChart({ element }: Props) {
               <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={TT_STYLE} />
               {legendEl}
-              <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              <Bar dataKey="value" radius={[3, 3, 0, 0]} isAnimationActive={false}>
                 {series.map((s, i) => <Cell key={i} fill={p.singleColor ? accent : (s.color ?? accent)} />)}
               </Bar>
             </BarChart>

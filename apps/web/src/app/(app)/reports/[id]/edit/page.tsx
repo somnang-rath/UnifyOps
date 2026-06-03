@@ -222,6 +222,8 @@ export default function ReportEditPage() {
   const [saved, setSaved]           = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [preparing, setPreparing]   = useState(false);
+  const [running, setRunning]       = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [autoSave, setAutoSave]     = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
@@ -230,6 +232,7 @@ export default function ReportEditPage() {
   const localRef             = useRef<ReportTemplate | null>(null);
   const previewBtnRef        = useRef<HTMLDivElement>(null);
   const canvasRefreshRef     = useRef<(() => Promise<void>) | null>(null);
+  const canvasExportRef      = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (serverTemplate && !local) {
@@ -267,19 +270,39 @@ export default function ReportEditPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfPreviewUrl]);
 
-  /* Full (unfiltered) preview — refreshes datasources, saves, then generates PDF */
+  /* Prepare: fetch fresh data + run auto-layout (used before preview and run) */
+  const prepare = async () => {
+    setPreparing(true);
+    try {
+      if (canvasExportRef.current) await canvasExportRef.current();
+      // Save the freshly-laid-out template so the server generates from current data
+      if (localRef.current) await update.mutateAsync({ id, body: localRef.current });
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  /* Full (unfiltered) preview — prepare → save → generate PDF */
   const handlePreview = async () => {
     setPreviewing(true);
     try {
-      // Refresh URL datasources so the PDF reflects current API data
-      if (canvasRefreshRef.current) await canvasRefreshRef.current();
-      // Always save before generating PDF (datasource refresh marks template dirty)
-      if (localRef.current) await update.mutateAsync({ id, body: localRef.current });
+      await prepare();
       const res = await api.get(`/reports/${id}/preview`, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       setPdfPreviewUrl(url);
     } finally {
       setPreviewing(false);
+    }
+  };
+
+  /* Run (send email) — prepare → save → trigger run */
+  const handleRun = async () => {
+    setRunning(true);
+    try {
+      await prepare();
+      await triggerRun.mutateAsync(id);
+    } finally {
+      setRunning(false);
     }
   };
 
@@ -406,13 +429,15 @@ export default function ReportEditPage() {
             variant="ghost"
             size="sm"
             onClick={handlePreview}
-            disabled={previewing}
+            disabled={previewing || preparing}
             className="gap-1.5 text-text-muted"
           >
-            {previewing
+            {(previewing || preparing)
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <Eye className="w-3.5 h-3.5" />}
-            <span className="hidden md:inline">Preview</span>
+            <span className="hidden md:inline">
+              {preparing ? 'Preparing…' : previewing ? 'Generating…' : 'Preview'}
+            </span>
           </Button>
 
           {/* Filter preview */}
@@ -458,20 +483,26 @@ export default function ReportEditPage() {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => triggerRun.mutate(id)}
-            disabled={triggerRun.isPending}
+            onClick={handleRun}
+            disabled={running || preparing}
             className="gap-1.5"
           >
-            {triggerRun.isPending
+            {(running || preparing)
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <Play className="w-3.5 h-3.5" />}
-            Run
+            {preparing ? 'Preparing…' : running ? 'Running…' : 'Run'}
           </Button>
         </div>
       </div>
 
       {/* Canvas */}
-      <CanvasEditor template={local} onChange={patch} refreshDatasourcesRef={canvasRefreshRef} />
+      <CanvasEditor
+        template={local}
+        onChange={patch}
+        refreshDatasourcesRef={canvasRefreshRef}
+        prepareForExportRef={canvasExportRef}
+        getLatestTemplate={() => localRef.current!}
+      />
 
       {/* PDF preview modal — shows inline instead of downloading */}
       {pdfPreviewUrl && (
