@@ -221,6 +221,32 @@ const escapeHtml = (s: unknown) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+type FooterCellFn = 'none' | 'sum' | 'count' | 'avg' | 'min' | 'max' | 'custom';
+
+function computeFooterCellPdf(
+  rows: Record<string, string>[],
+  col: string,
+  cfg: { fn: FooterCellFn; custom?: string; decimals?: number },
+): string {
+  if (cfg.fn === 'none') return '';
+  if (cfg.fn === 'custom') return cfg.custom ?? '';
+  if (cfg.fn === 'count') return String(rows.length);
+  const nums = rows
+    .map(r => parseFloat(String(r[col] ?? '').replace(/[$,%\s]/g, '')))
+    .filter(n => !isNaN(n));
+  if (!nums.length) return '';
+  let v: number;
+  switch (cfg.fn) {
+    case 'sum': v = nums.reduce((a, b) => a + b, 0); break;
+    case 'avg': v = nums.reduce((a, b) => a + b, 0) / nums.length; break;
+    case 'min': v = Math.min(...nums); break;
+    case 'max': v = Math.max(...nums); break;
+    default: return '';
+  }
+  const dp = cfg.decimals ?? 2;
+  return v % 1 === 0 ? String(v) : v.toFixed(dp);
+}
+
 // CSS variable names set by next/font → actual Google Fonts family name
 const CSS_VAR_FONT_MAP: Record<string, string> = {
   '--font-koh-santepheap': 'Koh Santepheap',
@@ -309,16 +335,29 @@ export class ReportGeneratorService implements OnModuleDestroy {
       ).catch(() => { /* timeout is fine — render with fallback font */ });
 
       // Reposition auto-moved elements (signature, labels, etc.) to sit flush below
-      // their continuation table using Puppeteer's actual rendered offsetHeight.
+      // their table using Puppeteer's actual rendered offsetHeight.
+      // Handles both continuation pages AND source pages where the table is small
+      // enough to share the page with the moved elements.
       // The formula in repositionMovedElements() can't account for multi-line cell
-      // wrapping, so this step corrects both under- and over-estimates.
+      // wrapping or the URL-badge being hidden in PDF, so this step is the final arbiter.
       await page.evaluate(() => {
         document.querySelectorAll('.page').forEach((pageEl) => {
-          (pageEl as HTMLElement).querySelectorAll('[data-cont-table]').forEach((contTableEl) => {
-            const sourceId = (contTableEl as HTMLElement).getAttribute('data-cont-table');
-            if (!sourceId) return;
-            const tableBottom =
-              (contTableEl as HTMLElement).offsetTop + (contTableEl as HTMLElement).offsetHeight;
+          // Collect unique source IDs that have moved elements on this page
+          const sourceIds = new Set<string>();
+          (pageEl as HTMLElement).querySelectorAll('[data-moved-from]').forEach((el) => {
+            const id = (el as HTMLElement).getAttribute('data-moved-from');
+            if (id) sourceIds.add(id);
+          });
+          if (!sourceIds.size) return;
+
+          sourceIds.forEach((sourceId) => {
+            // Find the auto-layout table (source or continuation) on this page
+            const tableEl = (pageEl as HTMLElement).querySelector(
+              `[data-autolayout-table="${sourceId}"]`,
+            ) as HTMLElement | null;
+            if (!tableEl) return;
+
+            const tableBottom = tableEl.offsetTop + tableEl.offsetHeight;
 
             const movedEls = Array.from(
               (pageEl as HTMLElement).querySelectorAll(`[data-moved-from="${sourceId}"]`),
@@ -724,9 +763,18 @@ function renderElement(
   let html = renderElementInner(el, allData, pageIndex, totalPages);
   const p = el.props as Record<string, unknown>;
 
-  // Continuation table: tag so generatePdf can measure its actual offsetHeight.
-  if (el.type === 'table' && p.isContinuation && p.sourceTableId) {
-    html = html.replace(/^(<div\b)/, `$1 data-cont-table="${escapeHtml(String(p.sourceTableId))}"`);
+  // Tag any auto-layout table (source OR continuation) so the Puppeteer evaluate step
+  // can measure its actual offsetHeight and reposition auto-moved elements correctly.
+  // Source tables use their own id; continuation tables point back to their source id.
+  if (el.type === 'table') {
+    const isCont      = !!(p.isContinuation);
+    const isAutoLayout = p.autoOriginalH !== undefined || isCont;
+    if (isAutoLayout) {
+      const tableSourceId = isCont ? String(p.sourceTableId ?? '') : el.id;
+      if (tableSourceId) {
+        html = html.replace(/^(<div\b)/, `$1 data-autolayout-table="${escapeHtml(tableSourceId)}"`);
+      }
+    }
   }
 
   // Auto-moved element: tag with source table ID and original Y for repositioning.
@@ -968,9 +1016,8 @@ function renderElementInner(
 
       const urlBarH    = 0; // URL badge hidden in PDF — no longer contributes to height
       const contBadgeH = isCont ? 20 : 0;
-      // Row height is always natural — the element height itself is sized to fit
-      // rows via computeAutoLayout, so explicit row stretching is not needed.
-      const perRowH = 0;
+      const bw         = (p.borderWidth as number) ?? 1;
+      const perRowH    = (p.equalRowHeight && p.rowHeight) ? (p.rowHeight as number) : 0;
 
       // computeAutoLayout stretches auto-paginated source tables to fill the page so
       // the canvas can DOM-measure actual row heights. The PDF has no DOM measurement,
@@ -991,8 +1038,8 @@ function renderElementInner(
 
       // Header bottom border — matches element-table.tsx logic
       const headerBottomBorder = p.headerBottomBorder
-        ? `2px solid ${escapeHtml((p.headerBottomBorderColor as string) ?? borderColor)}`
-        : showRowB ? `1px ${borderStyle} ${borderColor}` : 'none';
+        ? `${bw + 1}px solid ${escapeHtml((p.headerBottomBorderColor as string) ?? borderColor)}`
+        : showRowB ? `${bw}px ${borderStyle} ${borderColor}` : 'none';
 
       // <colgroup> for column widths (percentages, same as canvas table)
       const colgroupCols = [
@@ -1003,12 +1050,12 @@ function renderElementInner(
 
       // Row-number header cell
       const rowNumTh = showRowNums
-        ? `<th style="background:${headerBg};color:${headerColor};padding:${hPy}px ${cellPx}px;font-size:${hFs}px;font-weight:${hFw};text-transform:${hTT};text-align:center;${showColB ? `border-right:1px ${borderStyle} ${borderColor};` : ''}border-bottom:${headerBottomBorder};white-space:nowrap;">${rowNumLabel}</th>`
+        ? `<th style="background:${headerBg};color:${headerColor};padding:${hPy}px ${cellPx}px;font-size:${hFs}px;font-weight:${hFw};text-transform:${hTT};text-align:center;${showColB ? `border-right:${bw}px ${borderStyle} ${borderColor};` : ''}border-bottom:${headerBottomBorder};white-space:nowrap;">${rowNumLabel}</th>`
         : '';
 
       const thead = rowNumTh + cols.map((c, ci) => {
         const colAlign = hTA || escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
-        const bdrRight = showColB && ci < cols.length - 1 ? `border-right:1px ${borderStyle} ${borderColor};` : '';
+        const bdrRight = showColB && ci < cols.length - 1 ? `border-right:${bw}px ${borderStyle} ${borderColor};` : '';
         return `<th style="background:${headerBg};color:${headerColor};padding:${hPy}px ${cellPx}px;font-size:${hFs}px;font-weight:${hFw};text-transform:${hTT};text-align:${colAlign};vertical-align:top;${bdrRight}border-bottom:${headerBottomBorder};white-space:nowrap;">${escapeHtml(c)}</th>`;
       }).join('');
 
@@ -1024,7 +1071,7 @@ function renderElementInner(
 
         // Row-number cell
         const rowNumTd = showRowNums
-          ? `<td style="padding:${cellPy}px ${cellPx}px;${showColB ? `border-right:1px ${borderStyle} ${borderColor};` : ''}${showRowB && i < rows.length - 1 ? `border-bottom:1px ${borderStyle} ${borderColor};` : ''}text-align:center;color:#6b7280;">${globalI + 1}</td>`
+          ? `<td style="padding:${cellPy}px ${cellPx}px;${showColB ? `border-right:${bw}px ${borderStyle} ${borderColor};` : ''}${showRowB && i < rows.length - 1 ? `border-bottom:${bw}px ${borderStyle} ${borderColor};` : ''}text-align:center;color:#6b7280;">${globalI + 1}</td>`
           : '';
 
         const cells = cols.map((c, ci) => {
@@ -1032,8 +1079,8 @@ function renderElementInner(
           const align    = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
           const colBg    = (p.colBgs as Record<string, string>)?.[c];
           const isStatus = (p.statusColumns as string[] | undefined)?.includes(c);
-          const cellBdr  = showColB && ci < cols.length - 1 ? `border-right:1px ${borderStyle} ${borderColor};` : '';
-          const rowBdrB  = showRowB && i < rows.length - 1 ? `border-bottom:1px ${borderStyle} ${borderColor};` : '';
+          const cellBdr  = showColB && ci < cols.length - 1 ? `border-right:${bw}px ${borderStyle} ${borderColor};` : '';
+          const rowBdrB  = showRowB && i < rows.length - 1 ? `border-bottom:${bw}px ${borderStyle} ${borderColor};` : '';
           let cellContent = escapeHtml(val);
           if (isStatus && val) {
             const statusColors = p.statusColors as Record<string, string> | undefined;
@@ -1059,7 +1106,35 @@ function renderElementInner(
       // When row-stretching is active, set height:100% on the table so it fills
       // the flex container and Puppeteer distributes the explicit tr heights correctly.
       const tableHeightStyle = perRowH > 0 ? 'height:100%;' : '';
-      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<table style="width:100%;${tableHeightStyle}border-collapse:collapse;font-size:${fs}px;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+
+      // Footer row — only on the last page (endRow undefined or endRow >= allRows.length)
+      const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
+      let tfoot = '';
+      if (showFooter) {
+        const footerBg    = escapeHtml((p.footerRowBg as string) ?? '#f3f4f6');
+        const footerColor = escapeHtml((p.footerRowColor as string) ?? '#111111');
+        const footerFw    = (p.footerRowBold as boolean) !== false ? 'font-weight:700;' : '';
+        const footerLabel = escapeHtml((p.footerRowLabel as string) ?? 'Total');
+        const footerCells = (p.footerCells as Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>) ?? {};
+        const topBorder   = `border-top:${bw + 1}px ${borderStyle} ${borderColor};`;
+
+        const rowNumTd = showRowNums
+          ? `<td style="padding:${cellPy}px ${cellPx}px;${showColB ? `border-right:${bw}px ${borderStyle} ${borderColor};` : ''}${topBorder}"></td>`
+          : '';
+
+        const cells = cols.map((c, ci) => {
+          const cfg   = footerCells[c] ?? { fn: 'none' as FooterCellFn };
+          const isFirst = ci === 0;
+          const raw   = cfg.fn === 'none' && isFirst ? footerLabel : computeFooterCellPdf(allRows, c, cfg);
+          const align = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
+          const cellBdr = showColB && ci < cols.length - 1 ? `border-right:${bw}px ${borderStyle} ${borderColor};` : '';
+          return `<td style="padding:${cellPy}px ${cellPx}px;text-align:${align};${cellBdr}${topBorder}">${escapeHtml(raw)}</td>`;
+        }).join('');
+
+        tfoot = `<tfoot><tr style="background:${footerBg};color:${footerColor};${footerFw}">${rowNumTd}${cells}</tr></tfoot>`;
+      }
+
+      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<table style="width:100%;${tableHeightStyle}border-collapse:collapse;font-size:${fs}px;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody>${tfoot}</table></div>`;
     }
 
     default:

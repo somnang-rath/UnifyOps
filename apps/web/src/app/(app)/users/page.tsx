@@ -780,7 +780,7 @@ export default function UsersPage() {
                     <Td className="text-text-sub">{u.email}</Td>
 
                     <Td>
-                      {isMe ? (
+                      {isMe || u.role === 'admin' ? (
                         rolePill(u.role)
                       ) : (
                         <Select

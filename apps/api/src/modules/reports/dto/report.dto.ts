@@ -102,8 +102,8 @@ const ReportPerRecipientUrlConfigSchema = z.object({
 const ReportBlocklistEntrySchema = z
   .object({
     id: z.string(),
-    email: z.string().email().optional(),
-    userId: z.string().optional(),
+    email: z.string().email().nullish(),
+    userId: z.string().nullish(),
     reason: z.string().max(500).default(''),
     addedAt: z.string(),
   })

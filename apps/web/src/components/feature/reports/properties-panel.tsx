@@ -848,6 +848,85 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                         </>
                       )}
 
+                      {/* Footer Row */}
+                      <SectionHeader>Footer Row</SectionHeader>
+                      <Toggle checked={!!(p?.footerRowEnabled)} onChange={(v) => set({ footerRowEnabled: v })} label="Add summary footer row" />
+                      {!!(p?.footerRowEnabled) && (() => {
+                        const footerCells = (p?.footerCells as Record<string, { fn: string; custom?: string; decimals?: number }>) ?? {};
+                        const FOOTER_FNS = ['none', 'sum', 'count', 'avg', 'min', 'max', 'custom'] as const;
+                        return (
+                          <>
+                            <div>
+                              <Label>Label text</Label>
+                              <PanelInput
+                                type="text"
+                                value={(p?.footerRowLabel as string) ?? 'Total'}
+                                onChange={(e) => set({ footerRowLabel: e.target.value })}
+                                placeholder="Total"
+                              />
+                            </div>
+
+                            {tCols.length > 0 && (
+                              <div>
+                                <Label>Per-column aggregate</Label>
+                                <div className="flex flex-col gap-1 mt-1">
+                                  {tCols.map((col) => {
+                                    const cfg = footerCells[col] ?? { fn: 'none' };
+                                    return (
+                                      <div key={col} className="flex items-center gap-1.5 min-w-0">
+                                        <span className="text-[10px] text-text-muted truncate flex-1 min-w-0">{col}</span>
+                                        <select
+                                          data-no-csel
+                                          value={cfg.fn}
+                                          onChange={(e) => set({ footerCells: { ...footerCells, [col]: { ...cfg, fn: e.target.value } } })}
+                                          className="text-[10px] px-1.5 py-1 rounded border border-border bg-bg-input flex-shrink-0 w-20"
+                                        >
+                                          {FOOTER_FNS.map(fn => (
+                                            <option key={fn} value={fn}>{fn === 'none' ? 'None' : fn.toUpperCase()}</option>
+                                          ))}
+                                        </select>
+                                        {cfg.fn === 'custom' && (
+                                          <input
+                                            type="text"
+                                            value={cfg.custom ?? ''}
+                                            onChange={(e) => set({ footerCells: { ...footerCells, [col]: { ...cfg, custom: e.target.value } } })}
+                                            placeholder="text"
+                                            className="text-[10px] px-1.5 py-1 rounded border border-border bg-bg-input flex-shrink-0 w-16"
+                                          />
+                                        )}
+                                        {['sum', 'avg', 'min', 'max'].includes(cfg.fn) && (
+                                          <input
+                                            type="number"
+                                            value={cfg.decimals ?? 2}
+                                            onChange={(e) => set({ footerCells: { ...footerCells, [col]: { ...cfg, decimals: Number(e.target.value) } } })}
+                                            title="Decimal places"
+                                            min={0}
+                                            max={8}
+                                            className="text-[10px] px-1 py-1 rounded border border-border bg-bg-input flex-shrink-0 w-10"
+                                          />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-x-2">
+                              <div>
+                                <Label>Background</Label>
+                                <ColorInput value={(p?.footerRowBg as string) || '#f1f5f9'} onChange={(v) => set({ footerRowBg: v })} />
+                              </div>
+                              <div>
+                                <Label>Text color</Label>
+                                <ColorInput value={(p?.footerRowColor as string) || '#0f172a'} onChange={(v) => set({ footerRowColor: v })} />
+                              </div>
+                            </div>
+                            <Toggle checked={(p?.footerRowBold as boolean) !== false} onChange={(v) => set({ footerRowBold: v })} label="Bold text" />
+                          </>
+                        );
+                      })()}
+
                       {/* Cell padding */}
                       <SectionHeader>Cell Padding</SectionHeader>
                       <div className="grid grid-cols-2 gap-x-2">
@@ -863,7 +942,7 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
 
                       {/* Borders */}
                       <SectionHeader>Borders</SectionHeader>
-                      <div className="grid grid-cols-2 gap-x-2">
+                      <div className="grid grid-cols-3 gap-x-2">
                         <div>
                           <Label>Color</Label>
                           <ColorInput value={(p?.borderColor as string) || '#e5e7eb'} onChange={(v) => set({ borderColor: v })} />
@@ -876,10 +955,31 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                             <option value="dotted">Dotted</option>
                           </select>
                         </div>
+                        <div>
+                          <Label>Width</Label>
+                          <PanelInput type="number" value={(p?.borderWidth as number) ?? 1} onChange={(e) => set({ borderWidth: Number(e.target.value) })} min={1} max={6} />
+                        </div>
                       </div>
                       <Toggle checked={!!(p?.outerBorder)} onChange={(v) => set({ outerBorder: v })} label="Outer border" />
                       <Toggle checked={(p?.showColBorders as boolean) !== false} onChange={(v) => set({ showColBorders: v })} label="Column borders" />
                       <Toggle checked={(p?.showRowBorders as boolean) !== false} onChange={(v) => set({ showRowBorders: v })} label="Row borders" />
+                      <Toggle checked={!!(p?.headerBottomBorder)} onChange={(v) => set({ headerBottomBorder: v })} label="Header bottom line" />
+                      {!!(p?.headerBottomBorder) && (
+                        <div>
+                          <Label>Header line color</Label>
+                          <ColorInput value={(p?.headerBottomBorderColor as string) || '#e5e7eb'} onChange={(v) => set({ headerBottomBorderColor: v })} />
+                        </div>
+                      )}
+
+                      {/* Row Height */}
+                      <SectionHeader>Row Height</SectionHeader>
+                      <Toggle checked={!!(p?.equalRowHeight)} onChange={(v) => set({ equalRowHeight: v, rowHeight: v ? ((p?.rowHeight as number) ?? 36) : undefined })} label="Equal row height" />
+                      {!!(p?.equalRowHeight) && (
+                        <div>
+                          <Label>Row height (px)</Label>
+                          <PanelInput type="number" value={(p?.rowHeight as number) ?? 36} onChange={(e) => set({ rowHeight: Number(e.target.value) })} min={20} max={200} />
+                        </div>
+                      )}
 
                       {/* Font */}
                       <SectionHeader>Font</SectionHeader>

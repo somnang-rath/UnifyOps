@@ -8,7 +8,7 @@ import type {
   ReportBlocklistEntry,
 } from '@/schemas/report';
 import { useUsers } from '@/hooks/use-users';
-import { useBlocklistMutations, useFetchCpoList, type CpoPreviewEntry } from '@/hooks/use-reports';
+import { useBlocklistMutations, useFetchCpoList, useReport, type CpoPreviewEntry } from '@/hooks/use-reports';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -348,10 +348,12 @@ const DEFAULT_PER_RECIPIENT_URL_CONFIG: ReportPerRecipientUrlConfig = {
 function PerRecipientUrlSection({
   config,
   templateId,
+  blocklist = [],
   onChange,
 }: {
   config: ReportPerRecipientUrlConfig;
   templateId?: string;
+  blocklist?: ReportBlocklistEntry[];
   onChange: (c: ReportPerRecipientUrlConfig) => void;
 }) {
   const [advancedOpen, setAdvancedOpen]         = useState(false);
@@ -359,6 +361,18 @@ function PerRecipientUrlSection({
   const [cpoCount, setCpoCount]                 = useState<number | null>(null);
   const [fetchError, setFetchError]             = useState<string | null>(null);
   const fetchMutation                           = useFetchCpoList(templateId);
+  const { add: blockAdd, remove: blockRemove }  = useBlocklistMutations(templateId ?? '');
+
+  const isBlocked = (email: unknown): boolean => {
+    if (!email || typeof email !== 'string') return false;
+    return blocklist.some((e) => e.email === email.toLowerCase());
+  };
+  const toggleBlock = (email: unknown) => {
+    if (!email || typeof email !== 'string' || !templateId) return;
+    const entry = blocklist.find((e) => e.email === email.toLowerCase());
+    if (entry) blockRemove.mutate(entry.id);
+    else blockAdd.mutate({ email: email.toLowerCase() });
+  };
 
   const patch = (partial: Partial<ReportPerRecipientUrlConfig>) =>
     onChange({ ...config, ...partial });
@@ -411,13 +425,13 @@ function PerRecipientUrlSection({
             'w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0',
             config.enabled ? 'bg-white/20' : 'bg-bg-hover',
           )}>
-            <Link2 className={cn('w-4 h-4', config.enabled ? 'text-white' : 'text-text-muted')} />
+            <Link2 className={cn('w-4 h-4', config.enabled ? 'text-text' : 'text-text-muted')} />
           </div>
           <div>
-            <p className={cn('text-xs font-semibold leading-tight', config.enabled ? 'text-white' : 'text-text')}>
+            <p className={cn('text-xs font-semibold leading-tight', config.enabled ? 'text-text' : 'text-text')}>
               Per-CPO URL Mode
             </p>
-            <p className={cn('text-[10px] leading-tight mt-0.5', config.enabled ? 'text-white/70' : 'text-text-muted')}>
+            <p className={cn('text-[10px] leading-tight mt-0.5', config.enabled ? 'text-text' : 'text-text-muted')}>
               {config.enabled ? 'Fetches a dedicated URL per CPO at send time' : 'Off — using auto or manual mode'}
             </p>
           </div>
@@ -618,32 +632,63 @@ function PerRecipientUrlSection({
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    {cpoPreview.map((cpo, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/20"
-                      >
-                        <div className="w-6 h-6 rounded-full bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300 text-[9px] font-bold flex items-center justify-center flex-shrink-0">
-                          {i + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-semibold text-text truncate">
-                              {String(cpo.email ?? '–')}
-                            </span>
-                            {cpo.name != null && (
-                              <span className="text-[10px] text-text-muted truncate">
-                                · {String(cpo.name)}
+                    {cpoPreview.map((cpo, i) => {
+                      const blocked = isBlocked(cpo.email);
+                      return (
+                        <div
+                          key={i}
+                          className={cn(
+                            'flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-colors',
+                            blocked
+                              ? 'border-red-200 dark:border-red-800 bg-red-50/60 dark:bg-red-950/20'
+                              : 'border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/20',
+                          )}
+                        >
+                          <div className={cn(
+                            'w-6 h-6 rounded-full text-[9px] font-bold flex items-center justify-center flex-shrink-0',
+                            blocked
+                              ? 'bg-red-200 dark:bg-red-800 text-red-700 dark:text-red-300'
+                              : 'bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300',
+                          )}>
+                            {i + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={cn(
+                                'text-[10px] font-semibold truncate',
+                                blocked ? 'text-red-700 dark:text-red-300 line-through' : 'text-text',
+                              )}>
+                                {String(cpo.email ?? '–')}
                               </span>
-                            )}
+                              {cpo.name != null && (
+                                <span className="text-[10px] text-text-muted truncate">
+                                  · {String(cpo.name)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[9px] text-text-muted font-mono truncate mt-0.5">
+                              ID: {String(cpo.id ?? '–')}
+                            </div>
                           </div>
-                          <div className="text-[9px] text-text-muted font-mono truncate mt-0.5">
-                            ID: {String(cpo.id ?? '–')}
-                          </div>
+                          {hasTemplateId && typeof cpo.email === 'string' && (
+                            <button
+                              type="button"
+                              onClick={() => toggleBlock(cpo.email)}
+                              title={blocked ? 'Remove from blocklist' : 'Add to blocklist'}
+                              className={cn(
+                                'flex-shrink-0 p-1 rounded-md transition-colors',
+                                blocked
+                                  ? 'text-red-500 hover:text-red-700 bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-800/60'
+                                  : 'text-text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30',
+                              )}
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!hasTemplateId && <Check className="w-3 h-3 text-violet-500 flex-shrink-0" />}
                         </div>
-                        <Check className="w-3 h-3 text-violet-500 flex-shrink-0" />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -801,6 +846,9 @@ export function RecipientsPanel({
   onChangePerRecipientUrlConfig,
 }: Props) {
   const { data: users } = useUsers();
+  const { data: liveTemplate } = useReport(templateId ?? null);
+  const liveBlocklist = liveTemplate?.blocklist ?? blocklist ?? [];
+
   const [tab, setTab]               = useState<RecipientTab>('team');
   const [addUserId, setAddUserId]   = useState('');
   const [emailInput, setEmailInput] = useState('');
@@ -917,6 +965,7 @@ export function RecipientsPanel({
           <PerRecipientUrlSection
             config={cpoUrl}
             templateId={templateId}
+            blocklist={liveBlocklist}
             onChange={onChangePerRecipientUrlConfig}
           />
         </div>
@@ -1111,7 +1160,7 @@ export function RecipientsPanel({
       {templateId && (
         <div className="border-t border-border pt-4">
           <BlocklistSection
-            blocklist={blocklist ?? []}
+            blocklist={liveBlocklist}
             templateId={templateId}
           />
         </div>

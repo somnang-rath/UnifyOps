@@ -4,6 +4,32 @@ import { Wifi } from 'lucide-react';
 import type { ReportElement } from '@/schemas/report';
 import type { StoredDatasource } from './data-source-panel';
 
+type FooterCellFn = 'none' | 'sum' | 'count' | 'avg' | 'min' | 'max' | 'custom';
+
+function computeFooterCell(
+  rows: Record<string, string>[],
+  col: string,
+  cfg: { fn: FooterCellFn; custom?: string; decimals?: number },
+): string {
+  if (cfg.fn === 'none') return '';
+  if (cfg.fn === 'custom') return cfg.custom ?? '';
+  if (cfg.fn === 'count') return String(rows.length);
+  const nums = rows
+    .map(r => parseFloat(String(r[col] ?? '').replace(/[$,%\s]/g, '')))
+    .filter(n => !isNaN(n));
+  if (!nums.length) return '';
+  let v: number;
+  switch (cfg.fn) {
+    case 'sum': v = nums.reduce((a, b) => a + b, 0); break;
+    case 'avg': v = nums.reduce((a, b) => a + b, 0) / nums.length; break;
+    case 'min': v = Math.min(...nums); break;
+    case 'max': v = Math.max(...nums); break;
+    default: return '';
+  }
+  const dp = cfg.decimals ?? 2;
+  return v % 1 === 0 ? String(v) : v.toFixed(dp);
+}
+
 interface Props {
   element: ReportElement;
   onAutoPaginate?: () => void;
@@ -43,6 +69,9 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     headerPaddingY?: number;
     headerBottomBorder?: boolean;
     headerBottomBorderColor?: string;
+    borderWidth?: number;
+    equalRowHeight?: boolean;
+    rowHeight?: number;
     stripedRows?: boolean;
     rowBg?: string;
     rowAltBg?: string;
@@ -70,6 +99,12 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     repeatHeader?: boolean;
     autoPageBreak?: boolean;
     autoHeight?: boolean;
+    footerRowEnabled?: boolean;
+    footerRowBg?: string;
+    footerRowColor?: string;
+    footerRowBold?: boolean;
+    footerRowLabel?: string;
+    footerCells?: Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>;
   };
 
   const cols    = p.columns ?? ['Column 1', 'Column 2', 'Column 3'];
@@ -110,10 +145,14 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   const overflowCount = remainingAfterEnd > 0 ? remainingAfterEnd
     : Math.max(0, rows.length - rowsFit);
 
+  // Footer row — only shown on the last page (or when not paginated)
+  const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
+
   // Refs for DOM measurement of actual visible rows (handles multi-line text overflow)
   const tableAreaRef = useRef<HTMLDivElement>(null);
   const theadRef     = useRef<HTMLTableSectionElement>(null);
   const tbodyRef     = useRef<HTMLTableSectionElement>(null);
+  const tfootRef     = useRef<HTMLTableSectionElement>(null);
 
   // Measure actual rows that fit after each layout.
   //
@@ -194,12 +233,13 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     const tbody = tbodyRef.current;
     if (!thead || !tbody) return;
     const measured = Math.ceil(
-      contBadgeH +                       // "Continued from previous page" badge (0 on source)
-      (p.dataSource?.url ? 22 : 0) +     // datasource URL badge
+      contBadgeH +                            // "Continued from previous page" badge (0 on source)
+      (p.dataSource?.url ? 22 : 0) +          // datasource URL badge
       thead.offsetHeight +
       tbody.offsetHeight +
-      (outerB ? 2 : 0) +                 // outer border
-      INDICATOR_H,                       // overflow indicator (0 when no overflow)
+      (tfootRef.current?.offsetHeight ?? 0) + // footer row (0 when hidden)
+      (outerB ? 2 : 0) +                      // outer border
+      INDICATOR_H,                            // overflow indicator (0 when no overflow)
     );
     if (measured > 0 && Math.abs(measured - prevAutoH.current) > 1) {
       prevAutoH.current = measured;
@@ -208,7 +248,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.autoHeight, shouldAutoSize, rows.length, overflowCount, p.fontSize, p.cellPaddingY,
       p.cellPaddingX, p.headerFontSize, p.headerPaddingY, p.showRowNumbers, p.outerBorder,
-      p.dataSource?.url, p.isContinuation]);
+      p.dataSource?.url, p.isContinuation, showFooter]);
 
   // Auto-trigger pagination when overflow is detected and autoPageBreak has never been set.
   // Fires once per data-load cycle; resets whenever the row count changes (API refresh).
@@ -242,22 +282,22 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   const rowsPerPage = endRow !== undefined ? Math.max(1, rows.length) : rowsFit;
   const extraPageCount = overflowCount > 0 ? Math.ceil(overflowCount / rowsPerPage) : 0;
 
+  const bw = p.borderWidth ?? 1;
   const colBorderRight = (ci: number) =>
-    showColB && ci < cols.length - 1 ? `1px ${borderSt} ${borderClr}` : 'none';
+    showColB && ci < cols.length - 1 ? `${bw}px ${borderSt} ${borderClr}` : 'none';
   const rowBorderBottom = (ri: number) =>
-    showRowB && ri < rows.length - 1 ? `1px ${borderSt} ${borderClr}` : 'none';
+    showRowB && ri < rows.length - 1 ? `${bw}px ${borderSt} ${borderClr}` : 'none';
 
   const headerBorderBottom = p.headerBottomBorder
-    ? `2px solid ${p.headerBottomBorderColor ?? borderClr}`
-    : showRowB ? `1px ${borderSt} ${borderClr}` : 'none';
+    ? `${(bw + 1)}px solid ${p.headerBottomBorderColor ?? borderClr}`
+    : showRowB ? `${bw}px ${borderSt} ${borderClr}` : 'none';
+
+  const perRowH = p.equalRowHeight && p.rowHeight ? p.rowHeight : 0;
 
   // Indicator height when shown
   const INDICATOR_H = overflowCount > 0 && onAutoPaginate ? 24 : 0;
 
   const contBadgeH = p.isContinuation ? 20 : 0;
-  // Row height is always natural (content-driven). The element height itself
-  // auto-sizes to fit rows via computeAutoLayout, so stretching is not needed.
-  const perRowH = 0;
 
   return (
     <div
@@ -350,6 +390,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
           </thead>
           <tbody ref={tbodyRef}>
             {rows.map((row, ri) => {
+
               const globalRi   = startRow + ri;
               const isTotalRow = !!(p.showTotalRow && globalRi === allRows.length - 1);
               const isStripe   = !!(p.stripedRows && ri % 2 === 1);
@@ -417,6 +458,48 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
               );
             })}
           </tbody>
+          {showFooter && (
+            <tfoot ref={tfootRef}>
+              <tr
+                style={{
+                  background: p.footerRowBg ?? 'var(--bg-subtle)',
+                  color: p.footerRowColor ?? 'var(--text)',
+                  fontWeight: p.footerRowBold !== false ? 700 : 400,
+                }}
+              >
+                {p.showRowNumbers && (
+                  <td
+                    style={{
+                      padding: `${cellPy}px ${cellPx}px`,
+                      borderRight: showColB ? `${bw}px ${borderSt} ${borderClr}` : 'none',
+                      borderTop: `${bw + 1}px solid ${borderClr}`,
+                    }}
+                  />
+                )}
+                {cols.map((col, ci) => {
+                  const cfg   = p.footerCells?.[col] ?? { fn: 'none' as FooterCellFn };
+                  const isFirst = ci === 0;
+                  const val   = cfg.fn === 'none' && isFirst
+                    ? (p.footerRowLabel ?? 'Total')
+                    : computeFooterCell(allRows, col, cfg);
+                  const align = (p.colAligns?.[col] ?? 'left') as 'left' | 'center' | 'right';
+                  return (
+                    <td
+                      key={col}
+                      style={{
+                        padding: `${cellPy}px ${cellPx}px`,
+                        borderRight: colBorderRight(ci),
+                        borderTop: `${bw + 1}px solid ${borderClr}`,
+                        textAlign: align,
+                      }}
+                    >
+                      {val}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

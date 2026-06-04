@@ -252,29 +252,57 @@ export function useBlocklistMutations(templateId: string) {
     add: useMutation({
       mutationFn: (body: { email?: string; userId?: string; reason?: string }) =>
         reportsService.addBlocklistEntry(templateId, body),
+      onMutate: async (body) => {
+        await qc.cancelQueries({ queryKey: ['reports', 'byId', templateId] });
+        const prev = qc.getQueryData<ReportTemplate>(['reports', 'byId', templateId]);
+        if (prev && body.email) {
+          const optimistic = {
+            id: `optimistic-${Date.now()}`,
+            email: body.email,
+            reason: body.reason ?? '',
+            addedAt: new Date().toISOString(),
+          };
+          qc.setQueryData<ReportTemplate>(['reports', 'byId', templateId], {
+            ...prev,
+            blocklist: [...(prev.blocklist ?? []), optimistic],
+          });
+        }
+        return { prev };
+      },
       onSuccess: (entry) => {
-        qc.setQueryData<ReportTemplate>(['reports', 'byId', templateId], (old) =>
-          old ? { ...old, blocklist: [...(old.blocklist ?? []), entry] } : old,
-        );
+        qc.setQueryData<ReportTemplate>(['reports', 'byId', templateId], (old) => {
+          if (!old) return old;
+          const without = (old.blocklist ?? []).filter((e) => !e.id.startsWith('optimistic-'));
+          return { ...old, blocklist: [...without, entry] };
+        });
         refresh();
         toast('Added to blocklist');
       },
-      onError: () => toast('Failed to add to blocklist', 'error'),
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev) qc.setQueryData(['reports', 'byId', templateId], ctx.prev);
+        toast('Failed to add to blocklist', 'error');
+      },
     }),
 
     remove: useMutation({
       mutationFn: (entryId: string) =>
         reportsService.removeBlocklistEntry(templateId, entryId),
-      onSuccess: (_d, entryId) => {
+      onMutate: async (entryId) => {
+        await qc.cancelQueries({ queryKey: ['reports', 'byId', templateId] });
+        const prev = qc.getQueryData<ReportTemplate>(['reports', 'byId', templateId]);
         qc.setQueryData<ReportTemplate>(['reports', 'byId', templateId], (old) =>
-          old
-            ? { ...old, blocklist: (old.blocklist ?? []).filter((e) => e.id !== entryId) }
-            : old,
+          old ? { ...old, blocklist: (old.blocklist ?? []).filter((e) => e.id !== entryId) } : old,
         );
+        return { prev };
+      },
+      onSuccess: () => {
         refresh();
         toast('Removed from blocklist');
       },
-      onError: () => toast('Failed to remove from blocklist', 'error'),
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev) qc.setQueryData(['reports', 'byId', templateId], ctx.prev);
+        toast('Failed to remove from blocklist', 'error');
+      },
     }),
   };
 }

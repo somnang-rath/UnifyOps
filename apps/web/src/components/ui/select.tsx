@@ -31,7 +31,9 @@ export function Select<T extends string = string>({
 }: SelectProps<T>) {
   const [open, setOpen] = React.useState(false);
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
-  const [dropPos, setDropPos] = React.useState({ top: 0, left: 0, width: 0 });
+  const [dropPos, setDropPos] = React.useState<{
+    top?: number; bottom?: number; left: number; width: number; flipUp: boolean;
+  }>({ left: 0, width: 0, flipUp: false });
   const btnRef = React.useRef<HTMLButtonElement>(null);
   const wrapRef = React.useRef<HTMLDivElement>(null);
   const dropRef = React.useRef<HTMLDivElement>(null);
@@ -42,10 +44,12 @@ export function Select<T extends string = string>({
     const r = btnRef.current.getBoundingClientRect();
     const maxDropH = Math.min(280, window.innerHeight * 0.5);
     const spaceBelow = window.innerHeight - r.bottom - 8;
-    const top = spaceBelow >= maxDropH
-      ? r.bottom + 6
-      : Math.max(8, r.top - maxDropH - 6);
-    setDropPos({ top, left: r.left, width: r.width });
+    if (spaceBelow >= maxDropH) {
+      setDropPos({ top: r.bottom + 6, left: r.left, width: r.width, flipUp: false });
+    } else {
+      // anchor bottom of dropdown to just above the button
+      setDropPos({ bottom: window.innerHeight - r.top + 6, left: r.left, width: r.width, flipUp: true });
+    }
   }, []);
 
   const handleOpen = () => {
@@ -139,14 +143,16 @@ export function Select<T extends string = string>({
     <div
       ref={dropRef}
       role="listbox"
-      style={{ top: dropPos.top, left: dropPos.left, minWidth: dropPos.width }}
+      style={{ top: dropPos.top, bottom: dropPos.bottom, left: dropPos.left, minWidth: dropPos.width }}
       className={cn(
         'fixed max-h-[min(280px,50vh)] overflow-y-auto z-[9999]',
         'bg-bg-card border-[1.5px] border-border rounded-sm shadow-lg p-1',
         'transition-[opacity,transform] duration-200 ease-[cubic-bezier(.16,1,.3,1)]',
         open
           ? 'opacity-100 translate-y-0 pointer-events-auto'
-          : 'opacity-0 -translate-y-1.5 pointer-events-none',
+          : dropPos.flipUp
+            ? 'opacity-0 translate-y-1.5 pointer-events-none'
+            : 'opacity-0 -translate-y-1.5 pointer-events-none',
       )}
     >
       {options.map((o, idx) => {

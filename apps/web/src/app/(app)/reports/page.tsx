@@ -59,13 +59,13 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link
+          {/* <Link
             href="/reports/display"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-bg-card text-sm text-text-sub hover:bg-bg-hover transition-colors"
           >
             <MonitorPlay className="w-4 h-4" />
             Display
-          </Link>
+          </Link> */}
           <Button onClick={() => setModalOpen(true)} variant="primary" className="gap-2" disabled={create.isPending}>
             <Plus className="w-4 h-4" />
             New Report
