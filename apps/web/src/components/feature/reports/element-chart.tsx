@@ -1,4 +1,6 @@
 'use client';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReportElement, DataWidgetType } from '@/schemas/report';
 import {
   Bar,
@@ -18,7 +20,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Wifi } from 'lucide-react';
+import { Maximize2, Wifi, X } from 'lucide-react';
 import type { StoredChartDatasource } from './chart-datasource-panel';
 
 export type ChartType = 'bar' | 'pie' | 'line' | 'bar-line' | 'bar-h';
@@ -168,7 +170,20 @@ export function ElementChart({ element }: Props) {
     opacity?: number;
     paddingX?: number;
     paddingY?: number;
+    barRowHeight?: number;
+    valueSuffix?: string;
+    value2Suffix?: string;
+    boldLabels?: boolean;
+    valueRightMargin?: number;
   };
+
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [expanded]);
 
   const chartType: ChartType = p.chartType ?? 'bar';
   // Steel blue default for dual-axis (matches the EV-style chart), indigo for others
@@ -288,6 +303,10 @@ export function ElementChart({ element }: Props) {
     ? <Legend iconSize={8} iconType="circle" wrapperStyle={{ fontSize: 10 }} verticalAlign="top" />
     : null;
 
+  // bar-h derived values (computed once, used in chartBody)
+  const hBarRMargin = p.showBarValues ? (p.valueRightMargin ?? (p.valueSuffix || p.value2Suffix ? 160 : 48)) : 8;
+  const hBarLabelFW = p.boldLabels ? '600' : 'normal';
+
   // Dynamic margins for bar-line axis labels
   const blMargin = {
     top:    8,
@@ -296,8 +315,8 @@ export function ElementChart({ element }: Props) {
     left:   p.leftAxisLabel  ? 12 : -20,
   };
 
-  return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', ...makeChartStyle(p as Record<string, unknown>) }}>
+  const chartBody = (
+    <>
       {hasLive && (
         <div className="flex items-center gap-1 px-2 py-0.5 bg-accent-50 dark:bg-accent-950/30 border-b border-accent-200 dark:border-accent-800 flex-shrink-0">
           <Wifi className="w-2.5 h-2.5 text-accent-600" />
@@ -317,6 +336,90 @@ export function ElementChart({ element }: Props) {
           {title}
         </div>
       )}
+      {/* bar-h: scrollable container sized to fit all rows */}
+      {chartType === 'bar-h' ? (
+        <div className="flex-1 min-h-0 overflow-y-auto p-1">
+          <ResponsiveContainer width="100%" height={Math.max(series.length * (p.barRowHeight ?? 26) + 24, 120)}>
+            <BarChart data={series} layout="vertical" margin={{ top: 4, right: hBarRMargin, bottom: 4, left: 4 }}>
+              {grid}
+              <XAxis
+                type="number"
+                tick={(props: object) => {
+                  const { x, y, payload } = props as { x: number; y: number; payload: { value: number } };
+                  return (
+                    <g transform={`translate(${x},${y})`}>
+                      <text dy="0.71em" style={{ fontFamily: lFamily }} fontSize={lSize} fill={lColor} textAnchor="middle">
+                        {payload.value}
+                      </text>
+                    </g>
+                  );
+                }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                tick={(props: object) => {
+                  const { x, y, payload } = props as { x: number; y: number; payload: { value: string } };
+                  return (
+                    <g transform={`translate(${x},${y})`}>
+                      <text dy="0.355em" style={{ fontFamily: lFamily }} fontSize={lSize} fill={lColor} textAnchor={lAnchor} fontWeight={hBarLabelFW}>
+                        {payload.value}
+                      </text>
+                    </g>
+                  );
+                }}
+                axisLine={false}
+                tickLine={false}
+                width={lWidth}
+              />
+              <Tooltip contentStyle={TT_STYLE} />
+              {legendEl}
+              <Bar
+                dataKey="value"
+                radius={[0, 3, 3, 0]}
+                background={p.showBarTrack ? { fill: '#e5e7eb', radius: 3 } : false}
+                isAnimationActive={false}
+              >
+                {series.map((s, i) => <Cell key={i} fill={p.singleColor ? accent : (s.color ?? accent)} />)}
+                {p.showBarValues && (
+                  <LabelList
+                    dataKey="value"
+                    position="right"
+                    content={(lProps: object) => {
+                      const { x, y, width, height, value, index } = lProps as {
+                        x: number; y: number; width: number; height: number; value: number; index: number;
+                      };
+                      const entry = series[index];
+                      const numStr = typeof value === 'number' ? value.toLocaleString() : String(value);
+                      const suffix = p.valueSuffix ? ` ${p.valueSuffix}` : '';
+                      const v2     = entry?.value2;
+                      const v2part = v2 !== undefined && p.value2Suffix
+                        ? ` (${v2.toLocaleString()} ${p.value2Suffix})`
+                        : '';
+                      const label = `${numStr}${suffix}${v2part}`;
+                      return (
+                        <text
+                          x={x + width + 5}
+                          y={y + height / 2}
+                          dy="0.355em"
+                          style={{ fontFamily: lFamily }}
+                          fontSize={vSize}
+                          fill={vColor}
+                          textAnchor="start"
+                        >
+                          {label}
+                        </text>
+                      );
+                    }}
+                  />
+                )}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
       <div className="flex-1 min-h-0 p-1">
         <ResponsiveContainer width="100%" height="100%">
           {chartType === 'pie' ? (
@@ -471,61 +574,6 @@ export function ElementChart({ element }: Props) {
               />
             </ComposedChart>
 
-          ) : chartType === 'bar-h' ? (
-            <BarChart data={series} layout="vertical" margin={{ top: 4, right: p.showBarValues ? 48 : 8, bottom: 4, left: 4 }}>
-              {grid}
-              {/* Custom tick renderers use CSS style so var(--font-xxx) values work in SVG */}
-              <XAxis
-                type="number"
-                tick={(props: object) => {
-                  const { x, y, payload } = props as { x: number; y: number; payload: { value: number } };
-                  return (
-                    <g transform={`translate(${x},${y})`}>
-                      <text dy="0.71em" style={{ fontFamily: lFamily }} fontSize={lSize} fill={lColor} textAnchor="middle">
-                        {payload.value}
-                      </text>
-                    </g>
-                  );
-                }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={(props: object) => {
-                  const { x, y, payload } = props as { x: number; y: number; payload: { value: string } };
-                  return (
-                    <g transform={`translate(${x},${y})`}>
-                      <text dy="0.355em" style={{ fontFamily: lFamily }} fontSize={lSize} fill={lColor} textAnchor={lAnchor}>
-                        {payload.value}
-                      </text>
-                    </g>
-                  );
-                }}
-                axisLine={false}
-                tickLine={false}
-                width={lWidth}
-              />
-              <Tooltip contentStyle={TT_STYLE} />
-              {legendEl}
-              <Bar
-                dataKey="value"
-                radius={[0, 3, 3, 0]}
-                background={p.showBarTrack ? { fill: '#e5e7eb', radius: 3 } : false}
-                isAnimationActive={false}
-              >
-                {series.map((s, i) => <Cell key={i} fill={p.singleColor ? accent : (s.color ?? accent)} />)}
-                {p.showBarValues && (
-                  <LabelList
-                    dataKey="value"
-                    position="right"
-                    style={{ fontSize: vSize, fill: vColor, fontFamily: lFamily }}
-                  />
-                )}
-              </Bar>
-            </BarChart>
-
           ) : (
             <BarChart data={series} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
               {grid}
@@ -540,6 +588,56 @@ export function ElementChart({ element }: Props) {
           )}
         </ResponsiveContainer>
       </div>
-    </div>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <div
+        className="group relative"
+        style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', ...makeChartStyle(p as Record<string, unknown>) }}
+      >
+        {chartBody}
+
+        {/* Expand button — visible on hover */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-md flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60 z-10"
+          title="ពង្រីកទំហំ (Expand chart)"
+        >
+          <Maximize2 className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Fullscreen modal */}
+      {expanded && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[600] flex flex-col bg-black/80 backdrop-blur-sm animate-fade-in"
+          onClick={(e) => e.target === e.currentTarget && setExpanded(false)}
+        >
+          {/* Header bar */}
+          <div className="flex items-center justify-between px-5 py-3 bg-bg-card border-b border-border flex-shrink-0">
+            <span className="font-semibold text-sm text-text truncate">{title || 'Chart'}</span>
+            <button
+              onClick={() => setExpanded(false)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-bg-hover hover:text-text transition-colors"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Chart area — fills remaining space */}
+          <div
+            className="flex-1 min-h-0 p-6 flex flex-col"
+            style={{ ...makeChartStyle(p as Record<string, unknown>), borderRadius: 0, border: 'none' }}
+          >
+            {chartBody}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }

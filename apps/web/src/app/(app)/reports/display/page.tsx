@@ -1,9 +1,9 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useReports } from '@/hooks/use-reports';
 import type { ReportTemplate } from '@/schemas/report';
-import { ArrowLeft, FileBarChart2, Pause, Play, Zap } from 'lucide-react';
+import { ArrowLeft, FileBarChart2, Layers, Pause, Play, Zap } from 'lucide-react';
 
 const ROWS_PER_PAGE = 11;
 const AUTO_ADVANCE_MS = 6000;
@@ -36,10 +36,29 @@ function useClock() {
   return time.toLocaleTimeString('km-KH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+/**
+ * Computes rowspan counts for a list of values.
+ * Returns an array where:
+ *   - spans[i] > 0  → render this cell with rowSpan = spans[i]
+ *   - spans[i] === 0 → skip this cell (it is covered by the cell above)
+ */
+function computeSpans(values: string[]): number[] {
+  const spans = new Array(values.length).fill(0);
+  let i = 0;
+  while (i < values.length) {
+    let j = i + 1;
+    while (j < values.length && values[j] === values[i]) j++;
+    spans[i] = j - i;
+    i = j;
+  }
+  return spans;
+}
+
 export default function ReportsDisplayPage() {
   const router = useRouter();
   const { data: reports = [], isLoading } = useReports();
   const clock = useClock();
+  const [mergeCells, setMergeCells] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(reports.length / ROWS_PER_PAGE));
   const [page, setPage] = useState(0);
@@ -72,7 +91,6 @@ export default function ReportsDisplayPage() {
     }, AUTO_ADVANCE_MS);
   };
 
-  // Start/restart cycle when data loads or pause state changes
   useEffect(() => {
     if (reports.length === 0) return;
     if (paused) {
@@ -84,12 +102,10 @@ export default function ReportsDisplayPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reports.length, totalPages, paused]);
 
-  // Reset progress bar when page changes (including manual nav)
   useEffect(() => {
     setProgress(0);
   }, [page]);
 
-  // Keyboard navigation: ← → pages, Space = pause/resume
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') {
@@ -113,6 +129,33 @@ export default function ReportsDisplayPage() {
   }, [totalPages]);
 
   const pageRows = reports.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
+
+  // Compute group numbers globally so they stay consistent across pages
+  const groupNos = useMemo(() => {
+    let g = 0;
+    let last = '';
+    return reports.map((r) => {
+      if (r.name !== last) { g++; last = r.name; }
+      return g;
+    });
+  }, [reports]);
+
+  // Per-page rowspan maps (only needed when merge is on)
+  const nameSpans = useMemo(
+    () => mergeCells ? computeSpans(pageRows.map((r) => r.name)) : [],
+    [mergeCells, pageRows],
+  );
+  const descSpans = useMemo(
+    () => mergeCells ? computeSpans(pageRows.map((r) => r.description ?? '')) : [],
+    [mergeCells, pageRows],
+  );
+  // Merge "no" column by group number (same group = same cell)
+  const noSpans = useMemo(
+    () => mergeCells
+      ? computeSpans(pageRows.map((_, i) => String(groupNos[page * ROWS_PER_PAGE + i])))
+      : [],
+    [mergeCells, pageRows, groupNos, page],
+  );
 
   const headerRow = [
     { key: 'no',       label: 'ល.រ',          align: 'center' as const, w: '5%'  },
@@ -160,18 +203,34 @@ export default function ReportsDisplayPage() {
           </span>
         </div>
 
-        {/* Pause/resume toggle */}
-        <button
-          onClick={() => setPaused((v) => !v)}
-          title={paused ? 'បន្ត (Space)' : 'ផ្អាក (Space)'}
-          className={`flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1 border transition-colors ${
-            paused
-              ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-              : 'bg-green-50 border-green-200 text-green-600 hover:bg-green-100'
-          }`}
-        >
-          {paused ? <><Pause className="w-3 h-3" /> ផ្អាក</> : <><Play className="w-3 h-3" /> Auto</>}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Merge cells toggle */}
+          <button
+            onClick={() => setMergeCells((v) => !v)}
+            title="ច្របាច់ ក្រឡាដូចគ្នា"
+            className={`flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1 border transition-colors ${
+              mergeCells
+                ? 'bg-accent-100 border-accent-300 text-accent-700 hover:bg-accent-200'
+                : 'bg-[#f0f2f8] border-[#dde1ef] text-[#6b7280] hover:bg-[#e5e8f3]'
+            }`}
+          >
+            <Layers className="w-3 h-3" />
+            ច្របាច់ ឈ្មោះ
+          </button>
+
+          {/* Pause/resume toggle */}
+          <button
+            onClick={() => setPaused((v) => !v)}
+            title={paused ? 'បន្ត (Space)' : 'ផ្អាក (Space)'}
+            className={`flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1 border transition-colors ${
+              paused
+                ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                : 'bg-green-50 border-green-200 text-green-600 hover:bg-green-100'
+            }`}
+          >
+            {paused ? <><Pause className="w-3 h-3" /> ផ្អាក</> : <><Play className="w-3 h-3" /> Auto</>}
+          </button>
+        </div>
       </div>
 
       {/* Main content */}
@@ -179,13 +238,20 @@ export default function ReportsDisplayPage() {
         <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
 
           {/* Report title header */}
-          <div className="bg-gradient-to-r from-accent-600 to-accent-700 px-6 py-4">
-            <h2 className="text-white text-lg font-bold tracking-wide">
-              បញ្ជីរបាយការណ៍ — UnifyOps
-            </h2>
-            <p className="text-white/70 text-xs mt-0.5">
-              ព័ត៌មានរបាយការណ៍ទាំងអស់ · {reports.length} របាយការណ៍
-            </p>
+          <div className="bg-gradient-to-r from-accent-600 to-accent-700 px-6 py-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-white text-lg font-bold tracking-wide">
+                បញ្ជីរបាយការណ៍ — UnifyOps
+              </h2>
+              <p className="text-white/70 text-xs mt-0.5">
+                ព័ត៌មានរបាយការណ៍ទាំងអស់ · {reports.length} របាយការណ៍
+              </p>
+            </div>
+            {mergeCells && (
+              <span className="text-white/80 text-[11px] bg-white/10 border border-white/20 rounded-full px-2.5 py-0.5 font-medium">
+                ច្របាច់ ក្រឡាដូចគ្នា
+              </span>
+            )}
           </div>
 
           {/* Table */}
@@ -215,30 +281,74 @@ export default function ReportsDisplayPage() {
                 {pageRows.map((r, i) => {
                   const globalIdx = page * ROWS_PER_PAGE + i;
                   const isEven    = i % 2 === 0;
+                  const rowBg     = isEven ? 'bg-white' : 'bg-[#f7f8fc]';
+
+                  // Merge spans for this row
+                  const noSpan   = mergeCells ? noSpans[i]   : 1;
+                  const nameSpan = mergeCells ? nameSpans[i] : 1;
+                  const descSpan = mergeCells ? descSpans[i] : 1;
+
                   return (
-                    <tr key={r._id} className={isEven ? 'bg-white' : 'bg-[#f7f8fc]'}>
-                      {/* No. */}
-                      <td className="px-4 py-2.5 text-center text-[#6b7280] font-medium border-b border-[#eef0f6]">
-                        {globalIdx + 1}
-                      </td>
-                      {/* Name */}
-                      <td className="px-4 py-2.5 border-b border-[#eef0f6]">
-                        <span className="font-medium text-[#1a2540]">{r.name}</span>
-                      </td>
-                      {/* Description */}
-                      <td className="px-4 py-2.5 border-b border-[#eef0f6] text-[#6b7280] text-[12px]">
-                        {r.description || '—'}
-                      </td>
+                    <tr key={r._id} className={rowBg}>
+
+                      {/* No. — skip if covered by merged cell above */}
+                      {(!mergeCells || noSpan > 0) && (
+                        <td
+                          rowSpan={mergeCells ? noSpan : undefined}
+                          className={`px-4 py-2.5 text-center font-bold text-[#3c4a6b] border-b border-[#eef0f6] border-r border-r-[#dde1ef] ${
+                            mergeCells && noSpan > 1 ? 'align-middle bg-[#f0f2f8]' : ''
+                          }`}
+                        >
+                          {mergeCells ? groupNos[globalIdx] : globalIdx + 1}
+                        </td>
+                      )}
+
+                      {/* Name — merged when same consecutive value */}
+                      {(!mergeCells || nameSpan > 0) && (
+                        <td
+                          rowSpan={mergeCells ? nameSpan : undefined}
+                          className={`px-4 py-2.5 border-b border-[#eef0f6] ${
+                            mergeCells && nameSpan > 1
+                              ? 'align-middle border-r border-r-[#dde1ef] bg-white'
+                              : ''
+                          }`}
+                        >
+                          <span
+                            className={`font-semibold ${
+                              mergeCells && nameSpan > 1
+                                ? 'text-accent-600'
+                                : 'text-[#1a2540]'
+                            }`}
+                          >
+                            {r.name}
+                          </span>
+                        </td>
+                      )}
+
+                      {/* Description — merged when same consecutive value */}
+                      {(!mergeCells || descSpan > 0) && (
+                        <td
+                          rowSpan={mergeCells ? descSpan : undefined}
+                          className={`px-4 py-2.5 border-b border-[#eef0f6] text-[#6b7280] text-[12px] ${
+                            mergeCells && descSpan > 1 ? 'align-middle' : ''
+                          }`}
+                        >
+                          {r.description || '—'}
+                        </td>
+                      )}
+
                       {/* Size */}
                       <td className="px-4 py-2.5 border-b border-[#eef0f6] text-center">
                         <span className="text-[#3c4a6b] text-[12px]">
                           {r.pageSize} · {r.orientation === 'portrait' ? 'P' : 'L'}
                         </span>
                       </td>
+
                       {/* Schedule */}
                       <td className="px-4 py-2.5 border-b border-[#eef0f6] text-center text-[12px] text-[#3c4a6b]">
                         {fmtFreq(r)}
                       </td>
+
                       {/* Status */}
                       <td className="px-4 py-2.5 border-b border-[#eef0f6] text-center">
                         {r.schedule.enabled ? (
@@ -253,6 +363,7 @@ export default function ReportsDisplayPage() {
                           </span>
                         )}
                       </td>
+
                       {/* Created */}
                       <td className="px-4 py-2.5 border-b border-[#eef0f6] text-center text-[12px] text-[#6b7280]">
                         {fmtDate(r.createdAt)}

@@ -3,6 +3,7 @@ import { z } from 'zod';
 const ReportPageSchema = z.object({
   id: z.string(),
   background: z.string().optional(),
+  sourceTableId: z.string().optional(), // set by auto-layout; must survive DB round-trip
 });
 
 const ReportElementSchema = z.object({

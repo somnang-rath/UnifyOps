@@ -9,6 +9,7 @@ import {
   Minus,
   Square,
   Table2,
+  Layers,
   TrendingUp,
   Type,
   GaugeCircle,
@@ -43,6 +44,20 @@ const ELEMENTS: ElementDef[] = [
     icon: <ImageIcon className="w-4 h-4" />,
     defaultProps: { src: '', objectFit: 'cover' },
     defaultSize: { w: 200, h: 150 },
+  },
+  {
+    type: 'grouped-table',
+    label: 'Grouped Table',
+    icon: <Layers className="w-4 h-4" />,
+    defaultProps: {
+      groupByField:  'company_kh',
+      subGroupField: 'site_kh',
+      detailField:   'chargers_detail',
+      outerBorder:   true,
+      showColBorders: true,
+      showRowBorders: true,
+    },
+    defaultSize: { w: 600, h: 300 },
   },
   {
     type: 'table',

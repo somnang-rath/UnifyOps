@@ -1,14 +1,15 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReportElement, ReportTemplate } from '@/schemas/report';
 import { SchedulePanel } from './schedule-panel';
 import { RecipientsPanel } from './recipients-panel';
 import { DataSourcePanel } from './data-source-panel';
 import { WidgetDataSourcePanel } from './widget-datasource-panel';
 import { ChartDataSourcePanel } from './chart-datasource-panel';
+import { GROUPED_TABLE_DEFAULT_COLUMNS } from './element-grouped-table';
 import { TextDataSourcePanel } from './text-datasource-panel';
 import { runScript } from '@/lib/reports/script-runner';
-import { AlignCenter, AlignLeft, AlignRight, MousePointer2, PanelRightClose, PanelRightOpen, Play, Plus, Trash2, Upload } from 'lucide-react';
+import { AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, MousePointer2, PanelRightClose, PanelRightOpen, Play, Plus, Trash2, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Table style presets ───────────────────────────────────────────────────────
@@ -172,6 +173,9 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
   const [scriptOutput, setScriptOutput] = useState<string | null>(null);
   const p = selected?.props as Record<string, unknown> | undefined;
 
+  // Reset to Element tab whenever a different element is selected
+  useEffect(() => { setTab('element'); }, [selected?.id]);
+
   const set = (patch: Partial<Record<string, unknown>>) =>
     onElementChange({ ...(p ?? {}), ...patch });
 
@@ -180,6 +184,7 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
   const isChart       = selected?.type === 'chart';
   const isText        = selected?.type === 'text' || selected?.type === 'heading';
   const isProgressBar = selected?.type === 'progress-bar';
+  const isGroupedTable   = selected?.type === 'grouped-table';
   const hasDatasourceTab = isTable || isWidget || isChart || isText;
 
   const TABS: { id: Tab; label: string }[] = [
@@ -699,34 +704,50 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                   const colAligns   = (p?.colAligns as Record<string, string>) ?? {};
                   const colWidths   = (p?.colWidths as Record<string, number>) ?? {};
                   const colBgs      = (p?.colBgs as Record<string, string>) ?? {};
+                  const colFormats    = (p?.colFormats    as Record<string, string>) ?? {};
+                  const colLabels    = (p?.colLabels    as Record<string, string>) ?? {};
+                  const colSubLabels = (p?.colSubLabels as Record<string, string>) ?? {};
+                  const colFontSizes    = (p?.colFontSizes    as Record<string, number>) ?? {};
+                  const colTextColors   = (p?.colTextColors   as Record<string, string>) ?? {};
+                  const colFontFamilies = (p?.colFontFamilies as Record<string, string>) ?? {};
                   const statusCols  = (p?.statusColumns as string[]) ?? [];
                   const statusClrs  = (p?.statusColors as Record<string, string>) ?? {};
 
-                  const renameCol = (oldName: string, newName: string) => {
-                    const cols = [...tCols];
-                    const idx  = cols.indexOf(oldName);
-                    if (idx < 0) return;
-                    cols[idx] = newName;
-                    const rows = ((p?.rows as Record<string, string>[]) ?? []).map((row) => {
-                      const r = { ...row, [newName]: row[oldName] ?? '' };
-                      delete r[oldName];
-                      return r;
-                    });
-                    const nextAligns = { ...colAligns }; if (oldName in nextAligns) { nextAligns[newName] = nextAligns[oldName]; delete nextAligns[oldName]; }
-                    const nextWidths = { ...colWidths }; if (oldName in nextWidths) { nextWidths[newName] = nextWidths[oldName]; delete nextWidths[oldName]; }
-                    const nextBgs    = { ...colBgs };    if (oldName in nextBgs)    { nextBgs[newName]    = nextBgs[oldName];    delete nextBgs[oldName];    }
-                    const nextStCols = statusCols.map((c) => (c === oldName ? newName : c));
-                    set({ columns: cols, rows, colAligns: nextAligns, colWidths: nextWidths, colBgs: nextBgs, statusColumns: nextStCols });
+                  // Rename only updates the display label — the field key (used for data
+                  // lookup) stays unchanged so datasource rows keep working after refresh.
+                  const renameCol = (fieldKey: string, label: string) => {
+                    const nx = { ...colLabels };
+                    if (!label || label === fieldKey) {
+                      delete nx[fieldKey]; // clear override → fall back to field key
+                    } else {
+                      nx[fieldKey] = label;
+                    }
+                    set({ colLabels: nx });
                   };
 
                   const deleteCol = (name: string) => {
                     const cols = tCols.filter((c) => c !== name);
                     const rows = ((p?.rows as Record<string, string>[]) ?? []).map((row) => { const r = { ...row }; delete r[name]; return r; });
-                    const nextAligns = { ...colAligns }; delete nextAligns[name];
-                    const nextWidths = { ...colWidths }; delete nextWidths[name];
-                    const nextBgs    = { ...colBgs };    delete nextBgs[name];
-                    const nextStCols = statusCols.filter((c) => c !== name);
-                    set({ columns: cols, rows, colAligns: nextAligns, colWidths: nextWidths, colBgs: nextBgs, statusColumns: nextStCols });
+                    const nextAligns      = { ...colAligns };      delete nextAligns[name];
+                    const nextWidths      = { ...colWidths };      delete nextWidths[name];
+                    const nextBgs         = { ...colBgs };         delete nextBgs[name];
+                    const nextFormats     = { ...colFormats };     delete nextFormats[name];
+                    const nextLabels      = { ...colLabels };      delete nextLabels[name];
+                    const nextSubLabels   = { ...colSubLabels };   delete nextSubLabels[name];
+                    const nextFontSizes   = { ...colFontSizes };   delete nextFontSizes[name];
+                    const nextTextColors  = { ...colTextColors };  delete nextTextColors[name];
+                    const nextFontFamilies = { ...colFontFamilies }; delete nextFontFamilies[name];
+                    const nextStCols      = statusCols.filter((c) => c !== name);
+                    set({ columns: cols, rows, colAligns: nextAligns, colWidths: nextWidths, colBgs: nextBgs, colFormats: nextFormats, colLabels: nextLabels, colSubLabels: nextSubLabels, colFontSizes: nextFontSizes, colTextColors: nextTextColors, colFontFamilies: nextFontFamilies, statusColumns: nextStCols });
+                  };
+
+                  const moveCol = (name: string, dir: -1 | 1) => {
+                    const cols = [...tCols];
+                    const idx  = cols.indexOf(name);
+                    const to   = idx + dir;
+                    if (to < 0 || to >= cols.length) return;
+                    [cols[idx], cols[to]] = [cols[to], cols[idx]];
+                    set({ columns: cols });
                   };
 
                   return (
@@ -807,6 +828,7 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                           <ColorInput value={(p?.headerBottomBorderColor as string) || '#e5e7eb'} onChange={(v) => set({ headerBottomBorderColor: v })} />
                         </div>
                       )}
+                      <Toggle checked={!!(p?.headerWrapText)} onChange={(v) => set({ headerWrapText: v })} label="Wrap header text" />
 
                       {/* Rows */}
                       <SectionHeader>Rows</SectionHeader>
@@ -922,7 +944,20 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                 <ColorInput value={(p?.footerRowColor as string) || '#0f172a'} onChange={(v) => set({ footerRowColor: v })} />
                               </div>
                             </div>
-                            <Toggle checked={(p?.footerRowBold as boolean) !== false} onChange={(v) => set({ footerRowBold: v })} label="Bold text" />
+                            <div className="grid grid-cols-2 gap-x-2 items-end">
+                              <div>
+                                <Label>Font size (px)</Label>
+                                <PanelInput
+                                  type="number"
+                                  value={(p?.footerRowFontSize as number) ?? ''}
+                                  onChange={(e) => set({ footerRowFontSize: e.target.value ? Number(e.target.value) : undefined })}
+                                  placeholder="auto"
+                                  min={7}
+                                  max={48}
+                                />
+                              </div>
+                              <Toggle checked={(p?.footerRowBold as boolean) !== false} onChange={(v) => set({ footerRowBold: v })} label="Bold" />
+                            </div>
                           </>
                         );
                       })()}
@@ -957,7 +992,7 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                         </div>
                         <div>
                           <Label>Width</Label>
-                          <PanelInput type="number" value={(p?.borderWidth as number) ?? 1} onChange={(e) => set({ borderWidth: Number(e.target.value) })} min={1} max={6} />
+                          <PanelInput type="number" value={(p?.borderWidth as number) ?? 1} onChange={(e) => set({ borderWidth: Number(e.target.value) })} min={0} max={6} step={0.25} />
                         </div>
                       </div>
                       <Toggle checked={!!(p?.outerBorder)} onChange={(v) => set({ outerBorder: v })} label="Outer border" />
@@ -1021,9 +1056,29 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                           <SectionHeader>Column Settings</SectionHeader>
                           <p className="text-[9px] text-text-muted -mt-1">Align · Width % · Bg</p>
                           <div className="space-y-2">
-                            {tCols.map((col) => (
+                            {tCols.map((col, ci) => (
                               <div key={col}>
-                                <p className="text-[9px] font-semibold text-text-muted truncate mb-0.5">{col}</p>
+                                {/* Column name + move buttons */}
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <p className="text-[9px] font-semibold text-text-muted truncate flex-1 min-w-0">{col}</p>
+                                  <button
+                                    onClick={() => moveCol(col, -1)}
+                                    disabled={ci === 0}
+                                    title="Move left"
+                                    className="flex items-center justify-center w-5 h-5 rounded border border-border text-text-muted hover:text-accent-600 hover:border-accent-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                                  >
+                                    <ChevronLeft className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => moveCol(col, 1)}
+                                    disabled={ci === tCols.length - 1}
+                                    title="Move right"
+                                    className="flex items-center justify-center w-5 h-5 rounded border border-border text-text-muted hover:text-accent-600 hover:border-accent-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                                  >
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                {/* Column style controls */}
                                 <div className="flex gap-1 items-center">
                                   <select
                                     value={colAligns[col] ?? 'left'}
@@ -1058,6 +1113,85 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                     }}
                                     className="w-7 h-7 rounded border border-border cursor-pointer flex-shrink-0 p-0"
                                   />
+                                </div>
+                                {/* Number format */}
+                                <select
+                                  value={colFormats[col] ?? 'none'}
+                                  onChange={(e) => {
+                                    const nx = { ...colFormats };
+                                    if (e.target.value === 'none') delete nx[col]; else nx[col] = e.target.value;
+                                    set({ colFormats: nx });
+                                  }}
+                                  className="w-full mt-0.5 px-1 py-1 text-[10px] rounded border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                                >
+                                  <option value="none">— No format</option>
+                                  <option value="int">1,234,567</option>
+                                  <option value="dec1">1,234,567.0</option>
+                                  <option value="dec2">1,234,567.00</option>
+                                  <option value="dec3">1,234,567.000</option>
+                                  <option value="pct">12.5%</option>
+                                </select>
+                                {/* Sub-label (small text below header) */}
+                                <PanelInput
+                                  value={colSubLabels[col] ?? ''}
+                                  onChange={(e) => {
+                                    const nx = { ...colSubLabels };
+                                    if (!e.target.value) delete nx[col]; else nx[col] = e.target.value;
+                                    set({ colSubLabels: nx });
+                                  }}
+                                  placeholder="Sub-label e.g. (kWh)"
+                                  className="mt-0.5"
+                                />
+                                {/* Per-column cell styling: text color · font size · font */}
+                                <div className="flex gap-1 items-center mt-0.5">
+                                  <input
+                                    type="color"
+                                    title="Cell text color"
+                                    value={colTextColors[col] ?? '#000000'}
+                                    onChange={(e) => {
+                                      const nx = { ...colTextColors };
+                                      if (e.target.value === '#000000') delete nx[col]; else nx[col] = e.target.value;
+                                      set({ colTextColors: nx });
+                                    }}
+                                    className="w-7 h-7 rounded border border-border cursor-pointer flex-shrink-0 p-0"
+                                  />
+                                  <input
+                                    type="number"
+                                    title="Cell font size"
+                                    placeholder="px"
+                                    value={colFontSizes[col] ?? ''}
+                                    onChange={(e) => {
+                                      const nx = { ...colFontSizes };
+                                      if (!e.target.value) delete nx[col]; else nx[col] = Number(e.target.value);
+                                      set({ colFontSizes: nx });
+                                    }}
+                                    min={7} max={24}
+                                    className="w-12 px-1 py-1 text-[10px] rounded border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                                  />
+                                  <select
+                                    title="Cell font family"
+                                    value={colFontFamilies[col] ?? ''}
+                                    onChange={(e) => {
+                                      const nx = { ...colFontFamilies };
+                                      if (!e.target.value) delete nx[col]; else nx[col] = e.target.value;
+                                      set({ colFontFamilies: nx });
+                                    }}
+                                    className="flex-1 px-1 py-1 text-[10px] rounded border border-border bg-bg-input focus:outline-none min-w-0"
+                                  >
+                                    <option value="">— default</option>
+                                    <optgroup label="Khmer">
+                                      <option value="var(--font-noto-khmer), 'Noto Sans Khmer', sans-serif">Noto Sans Khmer</option>
+                                      <option value="var(--font-battambang), 'Battambang', serif">Battambang</option>
+                                      <option value="var(--font-koh-santepheap), 'Koh Santepheap', serif">Koh Santepheap</option>
+                                      <option value="var(--font-khmer), 'Kantumruy Pro', sans-serif">Kantumruy Pro</option>
+                                    </optgroup>
+                                    <optgroup label="Latin">
+                                      <option value="Arial, sans-serif">Arial</option>
+                                      <option value="Georgia, serif">Georgia</option>
+                                      <option value="'Times New Roman', serif">Times New Roman</option>
+                                      <option value="Verdana, sans-serif">Verdana</option>
+                                    </optgroup>
+                                  </select>
                                 </div>
                               </div>
                             ))}
@@ -1130,13 +1264,48 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                         <p className="text-[10px] text-text-muted">Add columns first</p>
                       )}
 
+                      {/* Merge Cells */}
+                      <SectionHeader>Merge Cells</SectionHeader>
+                      {tCols.length > 0 ? (
+                        <div>
+                          <Label>ច្របាច់ ក្រឡាដូចគ្នា (Merge same consecutive values)</Label>
+                          <div className="space-y-1 mt-1">
+                            {tCols.map((col) => {
+                              const mergeCols = (p?.mergeCols as string[]) ?? [];
+                              return (
+                                <label key={col} className="flex items-center gap-2 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={mergeCols.includes(col)}
+                                    onChange={(e) => set({
+                                      mergeCols: e.target.checked
+                                        ? [...mergeCols, col]
+                                        : mergeCols.filter((c) => c !== col),
+                                    })}
+                                    className="w-3 h-3 accent-accent-600"
+                                  />
+                                  <span className="text-xs text-text-sub truncate">{col}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {((p?.mergeCols as string[]) ?? []).length > 0 && (
+                            <p className="text-[9px] text-text-muted mt-1.5 leading-relaxed">
+                              Consecutive rows with the same value in checked columns are merged into one cell (rowspan).
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-text-muted">Add columns first</p>
+                      )}
+
                       {/* Auto Layout */}
                       <SectionHeader>Auto Layout</SectionHeader>
 
                       {/* Height follows row data */}
                       <Toggle
                         checked={!!(p?.autoHeight)}
-                        onChange={(v) => set({ autoHeight: v, ...(v ? { autoPageBreak: false } : {}) })}
+                        onChange={(v) => set({ autoHeight: v, ...(v ? { autoPageBreak: false } : { autoPageBreak: true }) })}
                         label="Height follows row data"
                       />
                       {!!(p?.autoHeight) && (
@@ -1150,12 +1319,12 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
 
                       {/* Auto page break — disabled when autoHeight is on */}
                       <Toggle
-                        checked={!!(p?.autoPageBreak)}
+                        checked={p?.autoPageBreak !== false}
                         onChange={(v) => set({ autoPageBreak: v, ...(v ? { autoHeight: false } : {}) })}
                         label="Auto page break"
                         disabled={!!(p?.autoHeight)}
                       />
-                      {!!(p?.autoPageBreak) && (
+                      {p?.autoPageBreak !== false && !(p?.autoHeight) && (
                         <div className="rounded-md bg-accent-50 dark:bg-accent-950/20 border border-accent-200 dark:border-accent-800 px-2.5 py-2 space-y-1">
                           <p className="text-[10px] font-semibold text-accent-700 dark:text-accent-400">Active</p>
                           <p className="text-[9px] text-accent-600 dark:text-accent-500 leading-relaxed">
@@ -1169,11 +1338,16 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                       <div className="space-y-1">
                         {tCols.map((col, ci) => (
                           <div key={ci} className="flex gap-1 items-center">
-                            <PanelInput
-                              value={col}
-                              onChange={(e) => renameCol(col, e.target.value)}
-                              placeholder={`Column ${ci + 1}`}
-                            />
+                            <div className="flex-1 min-w-0">
+                              <PanelInput
+                                value={colLabels[col] ?? col}
+                                onChange={(e) => renameCol(col, e.target.value)}
+                                placeholder={`Column ${ci + 1}`}
+                              />
+                              {colLabels[col] && colLabels[col] !== col && (
+                                <p className="text-[10px] text-text-muted px-1 mt-0.5 truncate">field: {col}</p>
+                              )}
+                            </div>
                             <button onClick={() => deleteCol(col)} className="text-text-muted hover:text-red-500 transition-colors flex-shrink-0">
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -1390,6 +1564,64 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                               <Toggle checked={!!(p?.showBarValues)} onChange={(v) => set({ showBarValues: v })} label="Show value labels" />
                               <Toggle checked={!!(p?.singleColor)}   onChange={(v) => set({ singleColor: v })}   label="Single color for all bars" />
                               <Toggle checked={!!(p?.showBarTrack)}  onChange={(v) => set({ showBarTrack: v })}  label="Show background track" />
+                              <Toggle checked={!!(p?.boldLabels)}    onChange={(v) => set({ boldLabels: v })}    label="Bold row labels" />
+
+                              {/* Value label format */}
+                              {!!(p?.showBarValues) && (
+                                <>
+                                  <div className="grid grid-cols-2 gap-x-2">
+                                    <div>
+                                      <Label>Value suffix</Label>
+                                      <PanelInput
+                                        type="text"
+                                        placeholder="e.g. kWh"
+                                        value={(p?.valueSuffix as string) ?? ''}
+                                        onChange={(e) => set({ valueSuffix: e.target.value || undefined })}
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>2nd value suffix</Label>
+                                      <PanelInput
+                                        type="text"
+                                        placeholder="e.g. sessions"
+                                        value={(p?.value2Suffix as string) ?? ''}
+                                        onChange={(e) => set({ value2Suffix: e.target.value || undefined })}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label>Right margin (px)</Label>
+                                    <PanelInput
+                                      type="number"
+                                      value={(p?.valueRightMargin as number) ?? 160}
+                                      onChange={(e) => set({ valueRightMargin: Number(e.target.value) })}
+                                      min={40} max={400}
+                                    />
+                                  </div>
+                                </>
+                              )}
+
+                              {/* Row height per bar + element height side-by-side */}
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div>
+                                  <Label>Row height (px)</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={(p?.barRowHeight as number) ?? 26}
+                                    onChange={(e) => set({ barRowHeight: Number(e.target.value) })}
+                                    min={16} max={80}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Element height (px)</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={Math.round(selected.h)}
+                                    onChange={(e) => onElementChange({ ...(p ?? {}), _h: Number(e.target.value) })}
+                                    min={60} max={2000}
+                                  />
+                                </div>
+                              </div>
 
                               <SectionHeader>Title</SectionHeader>
 
@@ -1964,6 +2196,152 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                             </button>
                           );
                         })}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ── Grouped Table ── */}
+                {isGroupedTable && (
+                  <>
+                    <SectionHeader>Data Source</SectionHeader>
+                    <div>
+                      <Label>URL</Label>
+                      <PanelInput
+                        type="text"
+                        placeholder="https://api.example.com/data"
+                        value={(p?.dataUrl as string) ?? ''}
+                        onChange={(e) => set({ dataUrl: e.target.value || undefined })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-2">
+                      <div>
+                        <Label>Method</Label>
+                        <select
+                          value={(p?.dataMethod as string) ?? 'GET'}
+                          onChange={(e) => set({ dataMethod: e.target.value })}
+                          className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                        >
+                          <option value="GET">GET</option>
+                          <option value="POST">POST</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label>Data path</Label>
+                        <PanelInput
+                          type="text"
+                          placeholder="e.g. site_performance"
+                          value={(p?.dataPath as string) ?? ''}
+                          onChange={(e) => set({ dataPath: e.target.value || undefined })}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Headers (JSON)</Label>
+                      <textarea
+                        value={(p?.dataHeaders as string) ?? ''}
+                        onChange={(e) => set({ dataHeaders: e.target.value || undefined })}
+                        placeholder={'{"Authorization":"Bearer ..."}'}
+                        rows={2}
+                        className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors font-mono resize-none"
+                      />
+                    </div>
+
+                    <SectionHeader>Grouping Fields</SectionHeader>
+                    <div className="grid grid-cols-3 gap-x-2">
+                      <div>
+                        <Label>Group by</Label>
+                        <PanelInput
+                          type="text"
+                          placeholder="company_kh"
+                          value={(p?.groupByField as string) ?? ''}
+                          onChange={(e) => set({ groupByField: e.target.value || 'company_kh' })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Sub-group by</Label>
+                        <PanelInput
+                          type="text"
+                          placeholder="site_kh"
+                          value={(p?.subGroupField as string) ?? ''}
+                          onChange={(e) => set({ subGroupField: e.target.value || 'site_kh' })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Detail field</Label>
+                        <PanelInput
+                          type="text"
+                          placeholder="chargers_detail"
+                          value={(p?.detailField as string) ?? ''}
+                          onChange={(e) => set({ detailField: e.target.value || 'chargers_detail' })}
+                        />
+                      </div>
+                    </div>
+
+                    <SectionHeader>Columns (JSON)</SectionHeader>
+                    <div>
+                      <textarea
+                        value={
+                          (p?.columns as unknown)
+                            ? JSON.stringify(p?.columns, null, 2)
+                            : JSON.stringify(GROUPED_TABLE_DEFAULT_COLUMNS, null, 2)
+                        }
+                        onChange={(e) => {
+                          try {
+                            const parsed = JSON.parse(e.target.value);
+                            set({ columns: parsed });
+                          } catch { /* ignore invalid JSON */ }
+                        }}
+                        rows={10}
+                        className="w-full px-2 py-1.5 text-[10px] rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors font-mono resize-y"
+                      />
+                    </div>
+                    <button
+                      onClick={() => set({ columns: GROUPED_TABLE_DEFAULT_COLUMNS })}
+                      className="w-full py-1.5 text-xs rounded-md border border-border text-text-muted hover:bg-bg-hover transition-colors"
+                    >
+                      Reset to default EV columns
+                    </button>
+
+                    <SectionHeader>Style</SectionHeader>
+                    <div className="grid grid-cols-2 gap-x-2">
+                      <div>
+                        <Label>Header bg</Label>
+                        <ColorInput value={(p?.headerBg as string) ?? '#1e3a5f'} onChange={(v) => set({ headerBg: v })} />
+                      </div>
+                      <div>
+                        <Label>Header color</Label>
+                        <ColorInput value={(p?.headerColor as string) ?? '#ffffff'} onChange={(v) => set({ headerColor: v })} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-2">
+                      <div>
+                        <Label>Font size</Label>
+                        <PanelInput type="number" value={(p?.fontSize as number) ?? 10} onChange={(e) => set({ fontSize: Number(e.target.value) })} min={7} max={18} />
+                      </div>
+                      <div>
+                        <Label>Header font size</Label>
+                        <PanelInput type="number" value={(p?.headerFontSize as number) ?? 10} onChange={(e) => set({ headerFontSize: Number(e.target.value) })} min={7} max={18} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-2">
+                      <div>
+                        <Label>Cell padding X</Label>
+                        <PanelInput type="number" value={(p?.cellPaddingX as number) ?? 8} onChange={(e) => set({ cellPaddingX: Number(e.target.value) })} min={2} max={24} />
+                      </div>
+                      <div>
+                        <Label>Cell padding Y</Label>
+                        <PanelInput type="number" value={(p?.cellPaddingY as number) ?? 5} onChange={(e) => set({ cellPaddingY: Number(e.target.value) })} min={2} max={24} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-2">
+                      <div>
+                        <Label>Border color</Label>
+                        <ColorInput value={(p?.borderColor as string) ?? '#d1d5db'} onChange={(v) => set({ borderColor: v })} />
+                      </div>
+                      <div>
+                        <Label>Border width</Label>
+                        <PanelInput type="number" value={(p?.borderWidth as number) ?? 1} onChange={(e) => set({ borderWidth: Number(e.target.value) })} min={0} max={4} />
                       </div>
                     </div>
                   </>

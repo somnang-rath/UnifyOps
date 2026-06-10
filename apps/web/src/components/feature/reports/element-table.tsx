@@ -6,6 +6,37 @@ import type { StoredDatasource } from './data-source-panel';
 
 type FooterCellFn = 'none' | 'sum' | 'count' | 'avg' | 'min' | 'max' | 'custom';
 
+function computeSpans(values: string[]): number[] {
+  const spans = new Array(values.length).fill(0);
+  let i = 0;
+  while (i < values.length) {
+    let j = i + 1;
+    while (j < values.length && values[j] === values[i]) j++;
+    spans[i] = j - i;
+    i = j;
+  }
+  return spans;
+}
+
+/**
+ * Format a raw cell value according to a column format code.
+ * Non-numeric values are returned unchanged.
+ * Format codes: 'int' | 'dec1' | 'dec2' | 'dec3' | 'pct'
+ */
+function fmtNumber(raw: string, fmt: string | undefined): string {
+  if (!fmt || fmt === 'none') return raw;
+  const n = parseFloat(String(raw).replace(/[,$\s]/g, ''));
+  if (isNaN(n)) return raw;
+  switch (fmt) {
+    case 'int':  return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    case 'dec1': return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    case 'dec2': return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    case 'dec3': return n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    case 'pct':  return n.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 1 });
+    default:     return raw;
+  }
+}
+
 function computeFooterCell(
   rows: Record<string, string>[],
   col: string,
@@ -69,6 +100,8 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     headerPaddingY?: number;
     headerBottomBorder?: boolean;
     headerBottomBorderColor?: string;
+    headerWrapText?: boolean;
+    colSubLabels?: Record<string, string>;
     borderWidth?: number;
     equalRowHeight?: boolean;
     rowHeight?: number;
@@ -103,8 +136,15 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     footerRowBg?: string;
     footerRowColor?: string;
     footerRowBold?: boolean;
+    footerRowFontSize?: number;
     footerRowLabel?: string;
     footerCells?: Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>;
+    mergeCols?: string[];
+    colFormats?: Record<string, string>;
+    colLabels?: Record<string, string>;
+    colFontSizes?: Record<string, number>;
+    colTextColors?: Record<string, string>;
+    colFontFamilies?: Record<string, string>;
   };
 
   const cols    = p.columns ?? ['Column 1', 'Column 2', 'Column 3'];
@@ -147,6 +187,11 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
 
   // Footer row — only shown on the last page (or when not paginated)
   const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
+
+  // Use auto layout when autoPageBreak is on and no explicit colWidths — lets the
+  // browser size each column by its content instead of distributing width equally.
+  const hasExplicitColWidths = cols.some(col => p.colWidths?.[col] != null);
+  const tableLayout: 'auto' | 'fixed' = (p.autoPageBreak !== false && !hasExplicitColWidths) ? 'auto' : 'fixed';
 
   // Refs for DOM measurement of actual visible rows (handles multi-line text overflow)
   const tableAreaRef = useRef<HTMLDivElement>(null);
@@ -241,14 +286,16 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
       (outerB ? 2 : 0) +                      // outer border
       INDICATOR_H,                            // overflow indicator (0 when no overflow)
     );
-    if (measured > 0 && Math.abs(measured - prevAutoH.current) > 1) {
+    // Compare against element.h (not only prevAutoH) so we re-fire if computeAutoLayout
+    // or orphan-cleanup restores el.h to a larger value after we already shrank it.
+    if (measured > 0 && (Math.abs(measured - element.h) > 1 || Math.abs(measured - prevAutoH.current) > 1)) {
       prevAutoH.current = measured;
       onHeightChange(measured);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.autoHeight, shouldAutoSize, rows.length, overflowCount, p.fontSize, p.cellPaddingY,
       p.cellPaddingX, p.headerFontSize, p.headerPaddingY, p.showRowNumbers, p.outerBorder,
-      p.dataSource?.url, p.isContinuation, showFooter]);
+      p.dataSource?.url, p.isContinuation, showFooter, element.h]);
 
   // Auto-trigger pagination when overflow is detected and autoPageBreak has never been set.
   // Fires once per data-load cycle; resets whenever the row count changes (API refresh).
@@ -282,14 +329,45 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   const rowsPerPage = endRow !== undefined ? Math.max(1, rows.length) : rowsFit;
   const extraPageCount = overflowCount > 0 ? Math.ceil(overflowCount / rowsPerPage) : 0;
 
-  const bw = p.borderWidth ?? 1;
+  // Merge cells: precompute rowspan maps per merge column (operates on visible rows slice)
+  const mergeColsSet = new Set(p.mergeCols ?? []);
+  const spanMaps: Record<string, number[]> = {};
+  if (mergeColsSet.size > 0) {
+    for (const col of mergeColsSet) {
+      spanMaps[col] = computeSpans(rows.map((r) => String(r[col] ?? '')));
+    }
+  }
+
+  // Auto-number with merge: when showRowNumbers + mergeCols are both active,
+  // the number column shows group index (1, 2, 3…) keyed off the first merged
+  // column, and uses the same rowspan.  Handles continuation pages via offset.
+  const primaryMergeCol = p.mergeCols?.length ? p.mergeCols[0] : null;
+  const numberSpans = primaryMergeCol ? (spanMaps[primaryMergeCol] ?? null) : null;
+  const groupNumbers: number[] = [];
+  if (primaryMergeCol && numberSpans) {
+    let offset = 0;
+    let lastV = '';
+    for (let i = 0; i < startRow; i++) {
+      const v = String(allRows[i]?.[primaryMergeCol] ?? '');
+      if (v !== lastV) { offset++; lastV = v; }
+    }
+    let g = offset;
+    let last = '';
+    for (const row of rows) {
+      const v = String(row[primaryMergeCol] ?? '');
+      if (v !== last) { g++; last = v; }
+      groupNumbers.push(g);
+    }
+  }
+
+  const bw = p.borderWidth ?? 0.1;
   const colBorderRight = (ci: number) =>
     showColB && ci < cols.length - 1 ? `${bw}px ${borderSt} ${borderClr}` : 'none';
   const rowBorderBottom = (ri: number) =>
     showRowB && ri < rows.length - 1 ? `${bw}px ${borderSt} ${borderClr}` : 'none';
 
   const headerBorderBottom = p.headerBottomBorder
-    ? `${(bw + 1)}px solid ${p.headerBottomBorderColor ?? borderClr}`
+    ? `${bw}px solid ${p.headerBottomBorderColor ?? borderClr}`
     : showRowB ? `${bw}px ${borderSt} ${borderClr}` : 'none';
 
   const perRowH = p.equalRowHeight && p.rowHeight ? p.rowHeight : 0;
@@ -301,11 +379,11 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
 
   return (
     <div
-      className="w-full h-full flex flex-col"
+      className={`w-full flex flex-col overflow-hidden${p.autoHeight ? '' : ' h-full'}`}
       style={{
         position: 'relative',
         fontFamily: p.fontFamily,
-        border: outerB ? `1px ${borderSt} ${borderClr}` : 'none',
+        border: outerB ? `${bw}px ${borderSt} ${borderClr}` : 'none',
         borderRadius: outerB ? 4 : 0,
       }}
     >
@@ -337,10 +415,10 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
       {/* Table area — clips when autoPageBreak is on; unconstrained when autoHeight is on */}
       <div
         ref={tableAreaRef}
-        className={p.autoHeight ? 'flex-1' : p.autoPageBreak !== false ? 'overflow-hidden flex-1' : 'overflow-auto flex-1'}
-        style={{ maxHeight: (!p.autoHeight && INDICATOR_H > 0) ? `calc(100% - ${INDICATOR_H}px)` : undefined }}
+        className={p.autoHeight ? '' : showFooter ? 'flex-1' : p.autoPageBreak !== false ? 'overflow-hidden flex-1' : 'overflow-auto flex-1'}
+        style={{ maxHeight: (!p.autoHeight && !showFooter && INDICATOR_H > 0) ? `calc(100% - ${INDICATOR_H}px)` : undefined }}
       >
-        <table className="w-full border-collapse" style={{ fontSize: fs }}>
+        <table className="w-full border-collapse" style={{ fontSize: fs, lineHeight: 1.2, tableLayout }}>
           <colgroup>
             {p.showRowNumbers && <col style={{ width: 36 }} />}
             {cols.map((col) => (
@@ -357,9 +435,10 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
                     padding: `${hPy}px ${cellPx}px`,
                     fontSize: hFs,
                     fontWeight: hFw,
+                    lineHeight: 1.2,
                     textTransform: (p.headerTextTransform ?? 'none') as 'none' | 'uppercase' | 'capitalize' | 'lowercase',
                     textAlign: 'center',
-                    borderRight: showColB ? `1px ${borderSt} ${borderClr}` : 'none',
+                    borderRight: showColB ? `${bw}px ${borderSt} ${borderClr}` : 'none',
                     borderBottom: headerBorderBottom,
                     whiteSpace: 'nowrap',
                   }}
@@ -376,14 +455,21 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
                     padding: `${hPy}px ${cellPx}px`,
                     fontSize: hFs,
                     fontWeight: hFw,
+                    lineHeight: 1.2,
                     textTransform: (p.headerTextTransform ?? 'none') as 'none' | 'uppercase' | 'capitalize' | 'lowercase',
                     textAlign: (p.headerTextAlign ?? p.colAligns?.[col] ?? 'left') as 'left' | 'center' | 'right',
                     borderRight: colBorderRight(ci),
                     borderBottom: headerBorderBottom,
-                    whiteSpace: 'nowrap',
+                    whiteSpace: p.headerWrapText ? 'normal' : 'nowrap',
+                    wordBreak: p.headerWrapText ? 'break-word' : 'normal',
                   }}
                 >
-                  {col}
+                  <span>{p.colLabels?.[col] ?? col}</span>
+                  {p.colSubLabels?.[col] && (
+                    <span style={{ display: 'block', fontSize: '0.75em', fontWeight: 400, opacity: 0.75, lineHeight: 1.2, marginTop: 2 }}>
+                      {p.colSubLabels[col]}
+                    </span>
+                  )}
                 </th>
               ))}
             </tr>
@@ -404,34 +490,76 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
 
               return (
                 <tr key={ri} style={{ background: rowBg, color: rowColor, fontWeight: rowFw, ...(perRowH > 0 ? { height: perRowH } : {}) }}>
-                  {p.showRowNumbers && (
-                    <td
-                      style={{
-                        padding: `${cellPy}px ${cellPx}px`,
-                        borderRight: showColB ? `1px ${borderSt} ${borderClr}` : 'none',
-                        borderBottom: rowBorderBottom(ri),
-                        textAlign: 'center',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      {globalRi + 1}
-                    </td>
-                  )}
+                  {p.showRowNumbers && (() => {
+                    // Merge-aware numbering: when a primary merge column is active,
+                    // show group number + apply same rowspan as the primary column.
+                    if (numberSpans) {
+                      const span = numberSpans[ri] ?? 1;
+                      if (span === 0) return null; // covered by merged cell above
+                      return (
+                        <td
+                          key="__rownum"
+                          rowSpan={span > 1 ? span : undefined}
+                          style={{
+                            padding: `${cellPy}px ${cellPx}px`,
+                            lineHeight: 1.2,
+                            borderRight: showColB ? `${bw}px ${borderSt} ${borderClr}` : 'none',
+                            borderBottom: rowBorderBottom(ri + span - 1),
+                            textAlign: 'center',
+                            fontWeight: 'bold',
+                            verticalAlign: 'middle',
+                            color: 'var(--text)',
+                          }}
+                        >
+                          {groupNumbers[ri]}
+                        </td>
+                      );
+                    }
+                    return (
+                      <td
+                        key="__rownum"
+                        style={{
+                          padding: `${cellPy}px ${cellPx}px`,
+                          lineHeight: 1.2,
+                          borderRight: showColB ? `${bw}px ${borderSt} ${borderClr}` : 'none',
+                          borderBottom: rowBorderBottom(ri),
+                          textAlign: 'center',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        {globalRi + 1}
+                      </td>
+                    );
+                  })()}
                   {cols.map((col, ci) => {
-                    const val      = row[col] ?? '';
+                    const mergeEnabled = mergeColsSet.has(col);
+                    const span         = mergeEnabled ? (spanMaps[col]?.[ri] ?? 1) : 1;
+
+                    // Cell is covered by a merged cell above — skip rendering
+                    if (mergeEnabled && span === 0) return null;
+
+                    const rawVal   = row[col] ?? '';
                     const isStatus = statusCols.has(col);
                     const colBg    = p.colBgs?.[col];
                     const align    = (p.colAligns?.[col] ?? 'left') as 'left' | 'center' | 'right';
+                    const val      = isStatus ? rawVal : fmtNumber(rawVal, p.colFormats?.[col]);
 
                     return (
                       <td
                         key={col}
+                        rowSpan={span > 1 ? span : undefined}
                         style={{
                           padding: `${cellPy}px ${cellPx}px`,
+                          lineHeight: 1.2,
                           borderRight: colBorderRight(ci),
-                          borderBottom: rowBorderBottom(ri),
+                          // Use last spanned row's border so the line appears at the group edge
+                          borderBottom: span > 1 ? rowBorderBottom(ri + span - 1) : rowBorderBottom(ri),
                           textAlign: align,
                           background: colBg || undefined,
+                          verticalAlign: 'middle',
+                          fontSize: p.colFontSizes?.[col] ?? undefined,
+                          color: p.colTextColors?.[col] ?? undefined,
+                          fontFamily: p.colFontFamilies?.[col] ?? undefined,
                         }}
                       >
                         {isStatus && val ? (() => {
@@ -458,38 +586,48 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
               );
             })}
           </tbody>
+
+          {/* Footer row — inside the same table so column widths always align */}
           {showFooter && (
-            <tfoot ref={tfootRef}>
+            <tfoot
+              ref={tfootRef}
+              style={{ fontFamily: p.fontFamily, fontSize: p.footerRowFontSize ?? Math.max(9, Math.round(fs * 0.9)) }}
+            >
               <tr
                 style={{
                   background: p.footerRowBg ?? 'var(--bg-subtle)',
                   color: p.footerRowColor ?? 'var(--text)',
                   fontWeight: p.footerRowBold !== false ? 700 : 400,
+                  height: perRowH > 0 ? perRowH : undefined,
                 }}
               >
                 {p.showRowNumbers && (
                   <td
                     style={{
                       padding: `${cellPy}px ${cellPx}px`,
+                      lineHeight: 1.2,
+                      borderTop: `${bw}px ${borderSt} ${borderClr}`,
                       borderRight: showColB ? `${bw}px ${borderSt} ${borderClr}` : 'none',
-                      borderTop: `${bw + 1}px solid ${borderClr}`,
+                      textAlign: 'center',
                     }}
                   />
                 )}
                 {cols.map((col, ci) => {
-                  const cfg   = p.footerCells?.[col] ?? { fn: 'none' as FooterCellFn };
+                  const cfg     = p.footerCells?.[col] ?? { fn: 'none' as FooterCellFn };
                   const isFirst = ci === 0;
-                  const val   = cfg.fn === 'none' && isFirst
+                  const raw     = cfg.fn === 'none' && isFirst
                     ? (p.footerRowLabel ?? 'Total')
                     : computeFooterCell(allRows, col, cfg);
+                  const val   = fmtNumber(raw, p.colFormats?.[col]);
                   const align = (p.colAligns?.[col] ?? 'left') as 'left' | 'center' | 'right';
                   return (
                     <td
                       key={col}
                       style={{
                         padding: `${cellPy}px ${cellPx}px`,
+                        lineHeight: 1.2,
+                        borderTop: `${bw}px ${borderSt} ${borderClr}`,
                         borderRight: colBorderRight(ci),
-                        borderTop: `${bw + 1}px solid ${borderClr}`,
                         textAlign: align,
                       }}
                     >

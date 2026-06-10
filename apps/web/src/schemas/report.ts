@@ -74,6 +74,7 @@ export type ReportElementType =
   | 'heading'
   | 'image'
   | 'table'
+  | 'grouped-table'
   | 'shape'
   | 'data-widget'
   | 'chart'

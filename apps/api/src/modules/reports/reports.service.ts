@@ -1143,7 +1143,11 @@ export class ReportsService {
 
           if (el.type === 'table') {
             const defs = (ds.columnDefs as { key: string; label: string }[]) ?? [];
-            newProps.columns = defs.map((c) => c.label);
+            // Preserve user-configured p.columns (order / deleted columns) — only fall back
+            // to columnDefs labels when no columns have been configured yet.
+            if (!(p.columns as string[] | undefined)?.length) {
+              newProps.columns = defs.map((c) => c.label);
+            }
             newProps.rows    = rows.slice(0, 500).map((row) => {
               const mapped: Record<string, string> = {};
               defs.forEach(({ key, label }) => {

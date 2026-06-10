@@ -92,6 +92,34 @@ function applyMainTpl(tpl: string, value: string, firstRow?: Record<string, unkn
   return result;
 }
 
+// Compute rowspan values for a column: same consecutive values get merged.
+// Returns an array of span counts: 0 = hidden (covered by span above), N = spans N rows.
+function computeSpans(values: string[]): number[] {
+  const spans = new Array(values.length).fill(0) as number[];
+  let i = 0;
+  while (i < values.length) {
+    let j = i + 1;
+    while (j < values.length && values[j] === values[i]) j++;
+    spans[i] = j - i;
+    i = j;
+  }
+  return spans;
+}
+
+function fmtNumber(raw: string, fmt: string | undefined): string {
+  if (!fmt || fmt === 'none') return raw;
+  const n = parseFloat(String(raw).replace(/[,$\s]/g, ''));
+  if (isNaN(n)) return raw;
+  switch (fmt) {
+    case 'int':  return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    case 'dec1': return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    case 'dec2': return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    case 'dec3': return n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    case 'pct':  return n.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 1 });
+    default: return raw;
+  }
+}
+
 // ── Table datasource live-fetch ───────────────────────────────────────────────
 // Mirrors the DataSourcePanel "Apply" flow: fetches current data from each
 // table's configured URL and replaces the stale p.rows snapshot so the PDF
@@ -264,7 +292,7 @@ function collectFontLinks(template: ReportTemplate): string {
   const families = new Set<string>(['Noto Sans Khmer:wght@400;600;700']);
   for (const el of template.elements ?? []) {
     const props = el.props as Record<string, unknown>;
-    // Scan all font-family props: general (text/table) and bar-h specific
+    // Scan all font-family props: general (text/table), bar-h specific, per-column
     for (const key of ['fontFamily', 'labelFontFamily']) {
       const ff = props?.[key] as string | undefined;
       if (!ff) continue;
@@ -272,6 +300,18 @@ function collectFontLinks(template: ReportTemplate): string {
       if (match) {
         const family = CSS_VAR_FONT_MAP[match[1]];
         if (family) families.add(family);
+      }
+    }
+    // Per-column font families (Record<colKey, fontFamily>)
+    const colFFs = props?.colFontFamilies as Record<string, string> | undefined;
+    if (colFFs) {
+      for (const ff of Object.values(colFFs)) {
+        if (!ff) continue;
+        const match = ff.match(/var\((--[\w-]+)\)/);
+        if (match) {
+          const family = CSS_VAR_FONT_MAP[match[1]];
+          if (family) families.add(family);
+        }
       }
     }
   }
@@ -540,10 +580,10 @@ function calcContTableHeight(el: ReportElement): number {
   const cPy = (p.cellPaddingY  as number) ?? 6;
   const fs  = (p.fontSize      as number) ?? 12;
 
-  // Chromium normal line-height ≈ 1.5× font size
+  // Tables use line-height:1.2 explicitly set on the <table> element
   const CONT_BADGE = 20;                               // "Continued …" badge
-  const headerH    = hPy * 2 + Math.ceil(hFs * 1.5) + 2; // +2 for header border-bottom
-  const rowH       = cPy * 2 + Math.ceil(fs  * 1.5) + 1; // +1 for row border-bottom
+  const headerH    = hPy * 2 + Math.ceil(hFs * 1.2) + 2; // +2 for header border-bottom
+  const rowH       = cPy * 2 + Math.ceil(fs  * 1.2) + 1; // +1 for row border-bottom
   return CONT_BADGE + headerH + rowCount * rowH;
 }
 
@@ -697,6 +737,27 @@ function buildHtml(
 <meta charset="utf-8"/>
 ${fontLinks}
 <style>
+  /* CSS variables that mirror the web app's light-mode theme tokens.
+     Puppeteer has no access to Next.js CSS, so any canvas fallback that uses
+     var(--border), var(--bg-subtle), color-mix(), etc. needs these resolved. */
+  :root {
+    --bg:          #ffffff;
+    --bg-card:     #ffffff;
+    --bg-subtle:   #f3f4f6;
+    --bg-hover:    #f9fafb;
+    --bg-input:    #ffffff;
+    --text:        #111827;
+    --text-sub:    #374151;
+    --text-muted:  #6b7280;
+    --border:      #e5e7eb;
+    --border-strong: #d1d5db;
+    --accent-50:   #eef2ff;
+    --accent-100:  #e0e7ff;
+    --accent-400:  #818cf8;
+    --accent-500:  #6366f1;
+    --accent-600:  #4f46e5;
+    --accent-700:  #4338ca;
+  }
   @page { size: ${w}px ${h}px; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: ${w}px; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Noto Sans Khmer', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
@@ -1012,25 +1073,67 @@ function renderElementInner(
       const isCont      = !!p.isContinuation;
       const showRowNums = !!p.showRowNumbers;
       const rowNumLabel = escapeHtml((p.rowNumberLabel as string) ?? '#');
-      const colWidths   = (p.colWidths as Record<string, number> | undefined) ?? {};
+      const colWidths    = (p.colWidths    as Record<string, number> | undefined) ?? {};
+      const colLabels    = (p.colLabels    as Record<string, string> | undefined) ?? {};
+      const colSubLabels = (p.colSubLabels as Record<string, string> | undefined) ?? {};
+      const colFontSizes    = (p.colFontSizes    as Record<string, number> | undefined) ?? {};
+      const colTextColors   = (p.colTextColors   as Record<string, string> | undefined) ?? {};
+      const colFontFamilies = (p.colFontFamilies as Record<string, string> | undefined) ?? {};
+      const hWrap        = !!(p.headerWrapText);
+
+      // Use auto layout when autoPageBreak is on and no explicit colWidths — lets
+      // Chromium size columns by content instead of distributing width equally.
+      const hasExplicitColWidths = cols.some(c => colWidths[c] != null);
+      const tblLayout = (p.autoPageBreak !== false && !hasExplicitColWidths) ? 'auto' : 'fixed';
+
+      // Merge-cell span maps: precompute rowspan for each merge column (same as canvas logic)
+      const mergeCols    = (p.mergeCols as string[] | undefined) ?? [];
+      const mergeColsSet = new Set(mergeCols);
+      const spanMaps: Record<string, number[]> = {};
+      if (mergeColsSet.size > 0) {
+        for (const col of mergeColsSet) {
+          spanMaps[col] = computeSpans(rows.map((r) => String(r[col] ?? '')));
+        }
+      }
+      const primaryMergeCol = mergeCols[0] ?? null;
 
       const urlBarH    = 0; // URL badge hidden in PDF — no longer contributes to height
       const contBadgeH = isCont ? 20 : 0;
-      const bw         = (p.borderWidth as number) ?? 1;
+      const bwRaw      = (p.borderWidth as number) ?? 0.1;
+      const bw         = Math.max(0, bwRaw);
+      // CSS border properties get pixel-snapped to 0 in Chromium for values < 0.5px.
+      // box-shadow inset renders at true sub-pixel precision — use it for all cell lines.
+      const hbbColor   = p.headerBottomBorder
+        ? escapeHtml((p.headerBottomBorderColor as string) ?? borderColor)
+        : borderColor;
+      // Build a box-shadow string from shadow parts; filters out empty strings.
+      const mkBS = (...parts: string[]): string => {
+        const v = parts.filter(Boolean).join(',');
+        return v ? `box-shadow:${v};` : '';
+      };
+      const bsR = (active: boolean) =>
+        active ? `inset -${bw}px 0 0 0 ${borderColor}` : '';
+      const bsB = (active: boolean, color = borderColor) =>
+        active ? `inset 0 -${bw}px 0 0 ${color}` : '';
       const perRowH    = (p.equalRowHeight && p.rowHeight) ? (p.rowHeight as number) : 0;
 
       // computeAutoLayout stretches auto-paginated source tables to fill the page so
       // the canvas can DOM-measure actual row heights. The PDF has no DOM measurement,
-      // so for auto-layout tables we drop the fixed height and let the table size to
-      // its content. This eliminates the blank space without risking row clipping (the
-      // row slice is already correct; the page <div> provides the outer overflow:hidden).
-      const isAutoLayout = p.autoOriginalH !== undefined || isCont;
-      const heightStyle  = isAutoLayout ? '' : `height:${el.h}px;`;
+      // so for auto-layout tables we use max-height so content can shrink (no blank
+      // space below last row) but cannot grow into the bottom margin / footer area.
+      const isAutoLayout  = p.autoOriginalH !== undefined || isCont;
+      const isAutoH       = !!(p.autoHeight);
+      // When every row is visible (no pagination / no clipping needed) cap at el.h
+      // so the table doesn't bleed into the footer. autoHeight tables are unconstrained.
+      const showingAllRows = rows.length === allRows.length;
+      const heightStyle   = isAutoH ? ''
+        : (isAutoLayout || showingAllRows) ? `max-height:${el.h}px;`
+        : `height:${el.h}px;`;
 
       const tableBase = `left:${el.x}px;top:${el.y}px;width:${el.w}px;${heightStyle}transform:rotate(${el.rotation ?? 0}deg);z-index:${el.zIndex ?? 0};`;
 
       const contBadge = isCont
-        ? `<div style="padding:2px 8px;background:rgba(99,102,241,0.08);border-bottom:1px dashed #6366f1;font-size:9px;color:#6366f1;font-weight:600;">&#8617; Continued from previous page</div>`
+        ? `<div style="flex-shrink:0;padding:2px 8px;background:rgba(99,102,241,0.08);border-bottom:1px dashed #6366f1;font-size:9px;color:#6366f1;font-weight:600;">&#8617; Continued from previous page</div>`
         : '';
 
       // URL badge is editor-only — hidden in PDF output
@@ -1038,7 +1141,7 @@ function renderElementInner(
 
       // Header bottom border — matches element-table.tsx logic
       const headerBottomBorder = p.headerBottomBorder
-        ? `${bw + 1}px solid ${escapeHtml((p.headerBottomBorderColor as string) ?? borderColor)}`
+        ? `${bw}px solid ${escapeHtml((p.headerBottomBorderColor as string) ?? borderColor)}`
         : showRowB ? `${bw}px ${borderStyle} ${borderColor}` : 'none';
 
       // <colgroup> for column widths (percentages, same as canvas table)
@@ -1050,13 +1153,15 @@ function renderElementInner(
 
       // Row-number header cell
       const rowNumTh = showRowNums
-        ? `<th style="background:${headerBg};color:${headerColor};padding:${hPy}px ${cellPx}px;font-size:${hFs}px;font-weight:${hFw};text-transform:${hTT};text-align:center;${showColB ? `border-right:${bw}px ${borderStyle} ${borderColor};` : ''}border-bottom:${headerBottomBorder};white-space:nowrap;">${rowNumLabel}</th>`
+        ? `<th style="background:${headerBg};color:${headerColor};padding:${hPy}px ${cellPx}px;font-size:${hFs}px;font-weight:${hFw};line-height:1.2;text-transform:${hTT};text-align:center;${mkBS(bsR(showColB), bsB(showRowB, hbbColor))}white-space:nowrap;">${rowNumLabel}</th>`
         : '';
 
       const thead = rowNumTh + cols.map((c, ci) => {
-        const colAlign = hTA || escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
-        const bdrRight = showColB && ci < cols.length - 1 ? `border-right:${bw}px ${borderStyle} ${borderColor};` : '';
-        return `<th style="background:${headerBg};color:${headerColor};padding:${hPy}px ${cellPx}px;font-size:${hFs}px;font-weight:${hFw};text-transform:${hTT};text-align:${colAlign};vertical-align:top;${bdrRight}border-bottom:${headerBottomBorder};white-space:nowrap;">${escapeHtml(c)}</th>`;
+        const colAlign  = hTA || escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
+        const wrapStyle = hWrap ? 'white-space:normal;word-break:break-word;' : 'white-space:nowrap;';
+        const label     = escapeHtml(colLabels[c] ?? c);
+        const subLabel  = colSubLabels[c] ? `<span style="display:block;font-size:0.75em;font-weight:400;opacity:0.75;line-height:1.2;margin-top:2px;">${escapeHtml(colSubLabels[c])}</span>` : '';
+        return `<th style="background:${headerBg};color:${headerColor};padding:${hPy}px ${cellPx}px;font-size:${hFs}px;font-weight:${hFw};line-height:1.2;text-transform:${hTT};text-align:${colAlign};vertical-align:middle;${mkBS(bsR(showColB && ci < cols.length - 1), bsB(showRowB, hbbColor))}${wrapStyle}">${label}${subLabel}</th>`;
       }).join('');
 
       const tbody = rows.map((r, i) => {
@@ -1065,22 +1170,58 @@ function renderElementInner(
         const isTotalRow = !!(p.showTotalRow && globalI === allRows.length - 1);
         let rowBg = (p.rowBg as string) ?? 'transparent';
         if (isTotalRow && p.totalRowBg) rowBg = escapeHtml(p.totalRowBg as string);
-        else if (isStripe)              rowBg = (p.rowAltBg as string) ?? '#f9fafb';
+        else if (isStripe)              rowBg = (p.rowAltBg as string) ?? '#f3f4f6';
         const rowFw = isTotalRow && p.totalRowBold !== false ? 'font-weight:bold;' : '';
         const rowFg = isTotalRow && p.totalRowColor ? `color:${escapeHtml(p.totalRowColor as string)};` : '';
 
-        // Row-number cell
-        const rowNumTd = showRowNums
-          ? `<td style="padding:${cellPy}px ${cellPx}px;${showColB ? `border-right:${bw}px ${borderStyle} ${borderColor};` : ''}${showRowB && i < rows.length - 1 ? `border-bottom:${bw}px ${borderStyle} ${borderColor};` : ''}text-align:center;color:#6b7280;">${globalI + 1}</td>`
-          : '';
+        // Row-number cell (merge-aware: spans same as primary merge column)
+        let rowNumTd = '';
+        if (showRowNums) {
+          const numSpan = primaryMergeCol ? (spanMaps[primaryMergeCol]?.[i] ?? 1) : 1;
+          if (numSpan === 0) {
+            rowNumTd = ''; // covered by merged cell above
+          } else {
+            const numRS    = numSpan > 1 ? ` rowspan="${numSpan}"` : '';
+            const numLabel = primaryMergeCol ? String((() => {
+              // group index: count unique values in the primary merge col up to this row
+              let g = 0; let last = '';
+              for (let k = 0; k <= i; k++) {
+                const v = String(rows[k]?.[primaryMergeCol] ?? '');
+                if (v !== last) { g++; last = v; }
+              }
+              return g + (startRow > 0 ? (() => {
+                let off = 0; let lv = '';
+                for (let k = 0; k < startRow; k++) {
+                  const v = String(allRows[k]?.[primaryMergeCol] ?? '');
+                  if (v !== lv) { off++; lv = v; }
+                }
+                return off;
+              })() : 0);
+            })()) : String(globalI + 1);
+            rowNumTd = `<td${numRS} style="padding:${cellPy}px ${cellPx}px;line-height:1.2;${mkBS(bsR(showColB), bsB(showRowB && i + numSpan - 1 < rows.length - 1))}text-align:center;color:#6b7280;vertical-align:middle;">${numLabel}</td>`;
+          }
+        }
 
         const cells = cols.map((c, ci) => {
-          const val      = r[c] ?? '';
+          // Merge: skip cells covered by a span above
+          const mergeEnabled = mergeColsSet.has(c);
+          const span = mergeEnabled ? (spanMaps[c]?.[i] ?? 1) : 1;
+          if (mergeEnabled && span === 0) return ''; // covered
+
+          const rawVal   = r[c] ?? '';
+          const val      = fmtNumber(rawVal, (p.colFormats as Record<string, string> | undefined)?.[c]);
           const align    = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
           const colBg    = (p.colBgs as Record<string, string>)?.[c];
           const isStatus = (p.statusColumns as string[] | undefined)?.includes(c);
-          const cellBdr  = showColB && ci < cols.length - 1 ? `border-right:${bw}px ${borderStyle} ${borderColor};` : '';
-          const rowBdrB  = showRowB && i < rows.length - 1 ? `border-bottom:${bw}px ${borderStyle} ${borderColor};` : '';
+          // For merged cells, use the border at the last spanned row
+          const lastRowIdx = mergeEnabled && span > 1 ? i + span - 1 : i;
+          const rowspanAttr = span > 1 ? ` rowspan="${span}"` : '';
+
+          // Per-column styling
+          const colFs  = colFontSizes[c]    ? `font-size:${colFontSizes[c]}px;`                                    : '';
+          const colFg  = colTextColors[c]   ? `color:${escapeHtml(colTextColors[c])};`                              : '';
+          const colFf  = colFontFamilies[c] ? `font-family:${escapeHtml(normalizeFont(colFontFamilies[c]))};`       : '';
+
           let cellContent = escapeHtml(val);
           if (isStatus && val) {
             const statusColors = p.statusColors as Record<string, string> | undefined;
@@ -1094,32 +1235,33 @@ function renderElementInner(
             else if (lower.includes('progress') || lower.includes('draft') || lower.includes('review')) bg = '#f59e0b';
             cellContent = `<span style="display:inline-block;background:${bg};color:#fff;padding:2px 10px;border-radius:4px;font-weight:600;white-space:nowrap;font-size:0.9em;">${escapeHtml(val)}</span>`;
           }
-          return `<td style="padding:${cellPy}px ${cellPx}px;text-align:${align};vertical-align:top;${colBg ? `background:${escapeHtml(colBg)};` : ''}${cellBdr}${rowBdrB}">${cellContent}</td>`;
+          const cellBS = mkBS(bsR(showColB && ci < cols.length - 1), bsB(showRowB && lastRowIdx < rows.length - 1));
+          return `<td${rowspanAttr} style="padding:${cellPy}px ${cellPx}px;line-height:1.2;text-align:${align};vertical-align:middle;${colBg ? `background:${escapeHtml(colBg)};` : ''}${colFs}${colFg}${colFf}${cellBS}">${cellContent}</td>`;
         }).join('');
 
         const trH = perRowH > 0 ? `height:${perRowH}px;` : '';
         return `<tr style="background:${escapeHtml(rowBg)};${rowFw}${rowFg}${trH}">${rowNumTd}${cells}</tr>`;
       }).join('');
 
-      const outerStyle = outerB ? `border:1px ${borderStyle} ${borderColor};border-radius:4px;` : '';
+      const outerStyle = outerB ? `border:${bw}px ${borderStyle} ${borderColor};border-radius:4px;` : '';
       const ff = p.fontFamily ? `font-family:${escapeHtml(normalizeFont(p.fontFamily as string))};` : '';
       // When row-stretching is active, set height:100% on the table so it fills
       // the flex container and Puppeteer distributes the explicit tr heights correctly.
       const tableHeightStyle = perRowH > 0 ? 'height:100%;' : '';
 
-      // Footer row — only on the last page (endRow undefined or endRow >= allRows.length)
+      // Footer row — inside the same <table> so column widths always align with data columns.
+      // Only on the last page (endRow undefined or endRow >= allRows.length).
       const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
-      let tfoot = '';
+      let tfootHtml = '';
       if (showFooter) {
         const footerBg    = escapeHtml((p.footerRowBg as string) ?? '#f3f4f6');
         const footerColor = escapeHtml((p.footerRowColor as string) ?? '#111111');
         const footerFw    = (p.footerRowBold as boolean) !== false ? 'font-weight:700;' : '';
         const footerLabel = escapeHtml((p.footerRowLabel as string) ?? 'Total');
         const footerCells = (p.footerCells as Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>) ?? {};
-        const topBorder   = `border-top:${bw + 1}px ${borderStyle} ${borderColor};`;
 
         const rowNumTd = showRowNums
-          ? `<td style="padding:${cellPy}px ${cellPx}px;${showColB ? `border-right:${bw}px ${borderStyle} ${borderColor};` : ''}${topBorder}"></td>`
+          ? `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;border-top:${bw}px ${borderStyle} ${borderColor};${mkBS(bsR(showColB))}text-align:center;"></td>`
           : '';
 
         const cells = cols.map((c, ci) => {
@@ -1127,14 +1269,15 @@ function renderElementInner(
           const isFirst = ci === 0;
           const raw   = cfg.fn === 'none' && isFirst ? footerLabel : computeFooterCellPdf(allRows, c, cfg);
           const align = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
-          const cellBdr = showColB && ci < cols.length - 1 ? `border-right:${bw}px ${borderStyle} ${borderColor};` : '';
-          return `<td style="padding:${cellPy}px ${cellPx}px;text-align:${align};${cellBdr}${topBorder}">${escapeHtml(raw)}</td>`;
+          return `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;border-top:${bw}px ${borderStyle} ${borderColor};text-align:${align};${mkBS(bsR(showColB && ci < cols.length - 1))}">${escapeHtml(raw)}</td>`;
         }).join('');
 
-        tfoot = `<tfoot><tr style="background:${footerBg};color:${footerColor};${footerFw}">${rowNumTd}${cells}</tr></tfoot>`;
+        const footerFs = (p.footerRowFontSize as number | undefined) ?? Math.max(9, Math.round(fs * 0.9));
+        const footerTrH = perRowH > 0 ? `height:${perRowH}px;` : '';
+        tfootHtml = `<tfoot style="font-size:${footerFs}px;"><tr style="background:${footerBg};color:${footerColor};${footerFw}${footerTrH}">${rowNumTd}${cells}</tr></tfoot>`;
       }
 
-      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<table style="width:100%;${tableHeightStyle}border-collapse:collapse;font-size:${fs}px;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody>${tfoot}</table></div>`;
+      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<div style="flex:1;overflow:hidden;"><table style="width:100%;${tableHeightStyle}table-layout:${tblLayout};border-collapse:separate;border-spacing:0;font-size:${fs}px;line-height:1.2;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody>${tfootHtml}</table></div></div>`;
     }
 
     default:
