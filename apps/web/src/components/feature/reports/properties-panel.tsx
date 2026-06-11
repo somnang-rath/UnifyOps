@@ -1630,26 +1630,58 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                 </>
                               )}
 
-                              {/* Row height per bar + element height side-by-side */}
+                              {/* Row height + Bar scale + Row gap + Element height */}
                               <div className="grid grid-cols-2 gap-x-2">
                                 <div>
                                   <Label>Row height (px)</Label>
                                   <PanelInput
                                     type="number"
-                                    value={(p?.barRowHeight as number) ?? 26}
-                                    onChange={(e) => set({ barRowHeight: Number(e.target.value) })}
+                                    value={(p?.barRowHeight as number) ?? 30}
+                                    onChange={(e) => {
+                                      const newRowH = Number(e.target.value);
+                                      const gap = (p?.barRowGap as number) ?? 6;
+                                      const seriesCount = (p?.seriesData as unknown[])?.length ?? 4;
+                                      const titleH = p?.title ? ((p.titleFontSize as number ?? 12) + 16) : 0;
+                                      const autoH = seriesCount * newRowH + (seriesCount - 1) * gap + 34 + titleH;
+                                      onElementChange({ ...(p ?? {}), barRowHeight: newRowH, _h: autoH });
+                                    }}
                                     min={16} max={80}
                                   />
                                 </div>
                                 <div>
-                                  <Label>Element height (px)</Label>
+                                  <Label>Bar height scale (%)</Label>
                                   <PanelInput
                                     type="number"
-                                    value={Math.round(selected.h)}
-                                    onChange={(e) => onElementChange({ ...(p ?? {}), _h: Number(e.target.value) })}
-                                    min={60} max={2000}
+                                    value={Math.round(((p?.barHeightScale as number) ?? 0.7) * 100)}
+                                    onChange={(e) => set({ barHeightScale: Math.min(100, Math.max(10, Number(e.target.value))) / 100 })}
+                                    min={10} max={100}
                                   />
                                 </div>
+                                <div>
+                                  <Label>Row gap (px)</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={(p?.barRowGap as number) ?? 6}
+                                    onChange={(e) => {
+                                      const newGap = Math.max(0, Number(e.target.value));
+                                      const rowH = (p?.barRowHeight as number) ?? 30;
+                                      const seriesCount = (p?.seriesData as unknown[])?.length ?? 4;
+                                      const titleH = p?.title ? ((p.titleFontSize as number ?? 12) + 16) : 0;
+                                      const autoH = seriesCount * rowH + (seriesCount - 1) * newGap + 34 + titleH;
+                                      onElementChange({ ...(p ?? {}), barRowGap: newGap, _h: autoH });
+                                    }}
+                                    min={0} max={24}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <Label>Element height (px)</Label>
+                                <PanelInput
+                                  type="number"
+                                  value={Math.round(selected.h)}
+                                  onChange={(e) => onElementChange({ ...(p ?? {}), _h: Number(e.target.value) })}
+                                  min={60} max={2000}
+                                />
                               </div>
 
                               <SectionHeader>Title</SectionHeader>

@@ -54,6 +54,10 @@ export interface ReportHeader {
   height: number;
   background: string;
   padding?: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  paddingRight?: number;
   borderBottom?: boolean;
   borderColor?: string;
   borderWidth?: number;
@@ -74,6 +78,10 @@ export interface ReportFooter {
   height: number;
   background: string;
   padding?: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  paddingRight?: number;
   borderTop?: boolean;
   borderColor?: string;
   borderWidth?: number;

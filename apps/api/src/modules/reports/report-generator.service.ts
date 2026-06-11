@@ -545,11 +545,15 @@ function shouldShowHF(hf: { showOn?: string; skipPages?: number[] }, pgIdx: numb
 }
 
 function buildHeaderHtml(header: ReportHeader, w: number, pageIndex: number, totalPages: number): string {
-  const pad    = header.padding ?? 12;
+  const fallback = header.padding ?? 12;
+  const pt = header.paddingTop    ?? 0;
+  const pb = header.paddingBottom ?? 0;
+  const pl = header.paddingLeft   ?? fallback;
+  const pr = header.paddingRight  ?? fallback;
   const border = header.borderBottom
     ? `border-bottom:${header.borderWidth ?? 1}px solid ${escapeHtml(header.borderColor ?? '#e5e7eb')};`
     : '';
-  const base = `position:absolute;top:0;left:0;width:${w}px;height:${header.height}px;background:${escapeHtml(header.background)};${border}display:flex;align-items:center;padding:0 ${pad}px;overflow:hidden;z-index:9000;gap:8px;`;
+  const base = `position:absolute;top:0;left:0;width:${w}px;height:${header.height}px;background:${escapeHtml(header.background)};${border}display:flex;align-items:center;padding:${pt}px ${pr}px ${pb}px ${pl}px;overflow:hidden;z-index:9000;gap:8px;`;
 
   if (hasSections(header)) {
     const left   = buildHFSectionHtml(header.left,   pageIndex, totalPages, 'flex-start');
@@ -565,11 +569,15 @@ function buildHeaderHtml(header: ReportHeader, w: number, pageIndex: number, tot
 }
 
 function buildFooterHtml(footer: ReportFooter, w: number, pageIndex: number, totalPages: number): string {
-  const pad    = footer.padding ?? 12;
+  const fallback = footer.padding ?? 12;
+  const pt = footer.paddingTop    ?? 0;
+  const pb = footer.paddingBottom ?? 0;
+  const pl = footer.paddingLeft   ?? fallback;
+  const pr = footer.paddingRight  ?? fallback;
   const border = footer.borderTop
     ? `border-top:${footer.borderWidth ?? 1}px solid ${escapeHtml(footer.borderColor ?? '#e5e7eb')};`
     : '';
-  const base = `position:absolute;bottom:0;left:0;width:${w}px;height:${footer.height}px;background:${escapeHtml(footer.background)};${border}display:flex;align-items:center;padding:0 ${pad}px;overflow:hidden;z-index:9000;gap:8px;`;
+  const base = `position:absolute;bottom:0;left:0;width:${w}px;height:${footer.height}px;background:${escapeHtml(footer.background)};${border}display:flex;align-items:center;padding:${pt}px ${pr}px ${pb}px ${pl}px;overflow:hidden;z-index:9000;gap:8px;`;
 
   if (hasSections(footer)) {
     const left   = buildHFSectionHtml(footer.left,   pageIndex, totalPages, 'flex-start');
@@ -1650,16 +1658,18 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
   const svgW = Math.max(100, elW - 12);
   const svgH = Math.max(60,  elH - titleH - legendH - 16); // 16 = wrapper padding
 
-  // Internal SVG margins.
-  const mL = leftAxisLabel  ? 50 : 32;
+  // Internal SVG margins — mirror Recharts ComposedChart defaults in element-chart.tsx.
+  // Canvas uses margin.left=-20 (axis clips off) giving more bar space; match by using 24px.
+  const mL = leftAxisLabel  ? 50 : 24;
   const mR = rightAxisLabel ? 52 : 36;
   const mT = 8;
-  const mB = xAxisLabel ? tSize + 18 : tSize + 8;
+  const mB = xAxisLabel ? tSize + 18 : tSize + 4;  // canvas mB = 4 (no x-label)
   const cW = svgW - mL - mR;
   const cH = svgH - mT - mB;
   const n  = series.length;
-  // Bar width scales with the available chart width
-  const barW = Math.min(18, Math.max(2, (cW / Math.max(n, 1)) * 0.45));
+  // Bar width: Recharts barCategoryGap=10% default → bar occupies ~90% of each slot.
+  // Previous 0.45 produced bars that were half the Recharts width.
+  const barW = Math.min(18, Math.max(2, (cW / Math.max(n, 1)) * 0.9));
   const step = cW / Math.max(n, 1);
 
   const grid = [0.25, 0.5, 0.75, 1.0].map((f) => {
@@ -1679,7 +1689,8 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
     return `<text x="${x.toFixed(1)}" y="${(mT + cH + tSize + 4).toFixed(1)}" text-anchor="middle" font-size="${tSize}" fill="${tColor}"${svgFont}>${escapeHtml(s.name)}</text>`;
   }).join('');
 
-  const leftTicks = [0, 0.5, 1.0].map((f) => {
+  // 5 ticks at [0, 25%, 50%, 75%, 100%] — matches Recharts' default 5-tick output
+  const leftTicks = [0, 0.25, 0.5, 0.75, 1.0].map((f) => {
     const y = mT + cH * (1 - f);
     return `<text x="${(mL - 4).toFixed(1)}" y="${(y + tSize / 3).toFixed(1)}" text-anchor="end" font-size="${tSize}" fill="${tColor}"${svgFont}>${Math.round(maxBar * f)}</text>`;
   }).join('');
@@ -1687,7 +1698,7 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
   let rightTicks = '';
   let lineEl = '';
   if (hasLine) {
-    rightTicks = [0, 0.5, 1.0].map((f) => {
+    rightTicks = [0, 0.25, 0.5, 0.75, 1.0].map((f) => {
       const y = mT + cH * (1 - f);
       return `<text x="${(mL + cW + 4).toFixed(1)}" y="${(y + tSize / 3).toFixed(1)}" text-anchor="start" font-size="${tSize}" fill="${tColor}"${svgFont}>${Math.round(maxLine * f)}</text>`;
     }).join('');
@@ -1706,17 +1717,20 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
   }
 
   // ── Legend: HTML div above SVG so long Khmer text wraps naturally ───────
+  // Legend text uses #374151 (text-sub) — canvas Recharts Legend inherits dark page text color,
+  // not the gray axis-tick color. tColor (#6b7280) is only for axis ticks.
+  const legendTextClr = '#374151';
   const legendHtml = `<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:14px;margin-bottom:4px;flex-shrink:0;${divFont}">
     <span style="display:inline-flex;align-items:center;gap:5px;">
       <span style="display:inline-block;width:11px;height:9px;background:${barColor};border-radius:2px;flex-shrink:0;"></span>
-      <span style="font-size:${tSize + 1}px;color:${tColor};">${barLabel}</span>
+      <span style="font-size:${tSize + 1}px;color:${legendTextClr};">${barLabel}</span>
     </span>
     ${hasLine ? `<span style="display:inline-flex;align-items:center;gap:6px;">
       <span style="display:inline-block;position:relative;width:22px;height:${tSize + 2}px;flex-shrink:0;">
         <span style="position:absolute;top:50%;left:0;right:0;height:2px;margin-top:-1px;background:${lineColor};"></span>
         <span style="position:absolute;top:50%;left:50%;width:6px;height:6px;margin-top:-3px;margin-left:-3px;background:${lineColor};border-radius:50%;"></span>
       </span>
-      <span style="font-size:${tSize + 1}px;color:${tColor};">${lineLabel}</span>
+      <span style="font-size:${tSize + 1}px;color:${legendTextClr};">${lineLabel}</span>
     </span>` : ''}
   </div>`;
 
@@ -1745,26 +1759,31 @@ function renderBarLineChartHtml(series: ChartSI[], p: Record<string, unknown>, b
 }
 
 function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, accent: string, title: string): string {
-  const sortDesc    = !!(p.sortDesc);
-  const showValues  = !!(p.showBarValues);
-  const singleColor = !!(p.singleColor);
-  const showTrack   = !!(p.showBarTrack);
+  const sortDesc     = !!(p.sortDesc);
+  const showValues   = !!(p.showBarValues);
+  const singleColor  = !!(p.singleColor);
+  const showTrack    = !!(p.showBarTrack);
+  const valueSuffix  = (p.valueSuffix  as string) ?? '';
+  const value2Suffix = (p.value2Suffix as string) ?? '';
 
-  // Typography
-  const lSize      = (p.labelFontSize  as number) ?? 10;
-  const vSize      = (p.valueFontSize  as number) ?? 10;
-  const lColor     = escapeHtml((p.labelColor  as string) ?? '#374151');
+  // Typography — defaults mirror element-chart.tsx canvas exactly
+  const lSize      = (p.labelFontSize  as number) ?? 9;   // canvas: ?? 9
+  const vSize      = (p.valueFontSize  as number) ?? 9;   // canvas: ?? 9
+  const lColor     = escapeHtml((p.labelColor  as string) ?? '#6b7280'); // canvas: ?? '#6b7280'
   const vColor     = escapeHtml((p.valueColor  as string) ?? '#6b7280');
   const lAlign     = (p.labelAlign    as string) ?? 'right';
   const titleAlign = (p.titleAlign    as string) ?? 'left';
   const titleSize  = (p.titleFontSize as number) ?? 12;
   const titleClr   = escapeHtml((p.titleColor as string) ?? '#111111');
+  const boldLabels = !!(p.boldLabels);
   // normalizeFont strips var(--xxx) CSS variable prefixes — they don't work in Puppeteer HTML
   const rawFont    = p.labelFontFamily as string | undefined;
   const fontFam    = rawFont ? `font-family:${escapeHtml(normalizeFont(rawFont))};` : '';
+  // Bar height as % of row — mirrors canvas barHeightScale prop (default 0.7)
+  const barHPct    = Math.round(((p.barHeightScale as number) ?? 0.7) * 100);
 
-  const sorted   = sortDesc ? [...series].sort((a, b) => b.value - a.value) : series;
-  const dataMax  = Math.max(...sorted.map((s) => s.value), 1);
+  const sorted  = sortDesc ? [...series].sort((a, b) => b.value - a.value) : series;
+  const dataMax = Math.max(...sorted.map((s) => s.value), 1);
 
   // Round up to a "nice" axis max the same way Recharts does
   const magnitude = Math.pow(10, Math.floor(Math.log10(dataMax)));
@@ -1772,34 +1791,53 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
   const axisMax   = Math.ceil(dataMax / step) * step || 1;
 
   const ticks  = [0, 0.25, 0.5, 0.75, 1.0].map((f) => Math.round(axisMax * f));
-  const labelW = (p.labelWidth as number) ?? 90;
-  const valueW = showValues ? 42 : 0;
+  const labelW = (p.labelWidth as number) ?? 80;  // canvas: ?? 80
+  // Respect the configured right margin; default wider when a suffix is present
+  const valueW = showValues
+    ? ((p.valueRightMargin as number) ?? (valueSuffix || value2Suffix ? 120 : 72))
+    : 0;
+
+  // Format number with commas; abbreviate to K/M for axis ticks to save space
+  const fmtNum = (v: number) => v.toLocaleString('en-US');
+  const fmtAxis = (v: number) => {
+    if (v >= 1_000_000) return `${(v / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`;
+    if (v >= 1_000)     return `${(v / 1_000).toLocaleString('en-US', { maximumFractionDigits: 1 })}K`;
+    return String(v);
+  };
+
+  const rowGap = (p.barRowGap as number) ?? 6;
 
   // Each row uses flex:1 so bars fill the container height naturally — no fixed px height
   const rows = sorted.map((s) => {
-    const pct   = Math.min(100, Math.round((s.value / axisMax) * 100));
+    // No Math.round — canvas uses raw fraction so tiny values (e.g. 0.88/3000 = 0.03%) remain visible
+    const pct   = s.value > 0 ? Math.max(0.3, Math.min(100, (s.value / axisMax) * 100)) : 0;
     const color = escapeHtml(singleColor ? accent : (s.color ?? accent));
     const barArea = showTrack
-      ? `<div style="flex:1;height:70%;background:#f3f4f6;border-radius:0 3px 3px 0;overflow:hidden;">
+      ? `<div style="flex:1;height:${barHPct}%;background:#e5e7eb;border-radius:3px;overflow:hidden;">
            <div style="height:100%;width:${pct}%;background:${color};border-radius:0 3px 3px 0;"></div>
          </div>`
-      : `<div style="flex:1;height:70%;display:flex;align-items:stretch;">
+      : `<div style="flex:1;height:${barHPct}%;overflow:hidden;">
            <div style="height:100%;width:${pct}%;background:${color};border-radius:0 3px 3px 0;min-height:1px;"></div>
          </div>`;
-    return `<div style="flex:1;min-height:12px;display:flex;align-items:center;gap:8px;">
-      <div style="width:${labelW}px;font-size:${lSize}px;${fontFam}color:${lColor};text-align:${lAlign};flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.name)}</div>
+    const numStr  = fmtNum(s.value);
+    const v2part  = s.value2 !== undefined && value2Suffix
+      ? ` (${fmtNum(s.value2)} ${value2Suffix})`
+      : '';
+    const displayVal = escapeHtml(`${numStr}${valueSuffix ? ' ' + valueSuffix : ''}${v2part}`);
+    return `<div style="flex:1;min-height:12px;display:flex;align-items:center;gap:6px;">
+      <div style="width:${labelW}px;font-size:${lSize}px;${fontFam}color:${lColor};font-weight:${boldLabels ? 600 : 'normal'};text-align:${lAlign};flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.name)}</div>
       ${barArea}
-      ${showValues ? `<div style="width:${valueW}px;font-size:${vSize}px;${fontFam}color:${vColor};flex-shrink:0;text-align:right;">${escapeHtml(String(s.value))}</div>` : ''}
+      ${showValues ? `<div style="width:${valueW}px;font-size:${vSize}px;${fontFam}color:${vColor};flex-shrink:0;text-align:right;white-space:nowrap;">${displayVal}</div>` : ''}
     </div>`;
   }).join('');
 
-  // X-axis tick row
-  const axisRow = `<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+  // X-axis tick row — gap:6 matches canvas inner row gap (was 8)
+  const axisRow = `<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
     <div style="width:${labelW}px;flex-shrink:0;"></div>
     <div style="flex:1;position:relative;height:14px;">
       ${ticks.map((t) => {
         const left = Math.round((t / axisMax) * 100);
-        return `<span style="position:absolute;left:${left}%;transform:translateX(-50%);font-size:${Math.max(8, lSize - 1)}px;${fontFam}color:#9ca3af;">${t}</span>`;
+        return `<span style="position:absolute;left:${left}%;transform:translateX(-50%);font-size:${Math.max(8, lSize - 1)}px;${fontFam}color:#9ca3af;">${fmtAxis(t)}</span>`;
       }).join('')}
     </div>
     ${showValues ? `<div style="width:${valueW}px;flex-shrink:0;"></div>` : ''}
@@ -1807,7 +1845,7 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
 
   return `<div style="width:100%;height:100%;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;">
     ${title ? `<div style="font-size:${titleSize}px;font-weight:600;${fontFam}color:${titleClr};text-align:${titleAlign};margin-bottom:6px;flex-shrink:0;">${title}</div>` : ''}
-    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:${rowGap}px;">
       ${rows}
     </div>
     <div style="margin-top:4px;">${axisRow}</div>

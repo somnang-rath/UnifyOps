@@ -42,8 +42,8 @@ function calcLastContH(el: ReportElement, rowCount: number): number {
 // Uses the *effective* original height (autoOriginalH ?? el.h) so the sig stays
 // stable after a stretch is applied, preventing infinite re-layout loops.
 
-export function autoLayoutSig(elements: ReportElement[], canvasH = 0, marginTop = 0, marginBottom = 0): string {
-  return `${canvasH}|${marginTop}|${marginBottom}|` + elements
+export function autoLayoutSig(elements: ReportElement[], canvasH = 0, marginTop = 0, marginBottom = 0, footerH = 0, headerH = 0): string {
+  return `${canvasH}|${marginTop}|${marginBottom}|${footerH}|${headerH}|` + elements
     .filter((el) => {
       const p = (el.props ?? {}) as Record<string, unknown>;
       return (
@@ -73,6 +73,14 @@ export function computeAutoLayout(
   const canvasH      = template.orientation === 'landscape' ? ps.w : ps.h;
   const marginTop    = template.margins?.top    ?? 0;
   const marginBottom = template.margins?.bottom ?? 0;
+
+  // Header/footer overlays sit at z-index:9000 over the page.  Tables must not
+  // render rows into their area or those rows will be hidden/clipped in the PDF.
+  const footerOverlay = template.footer?.enabled ? (template.footer?.height ?? 0) : 0;
+  const headerOverlay = template.header?.enabled ? (template.header?.height ?? 0) : 0;
+  // Effective clearances: whichever is larger between the margin guide and the overlay.
+  const effectiveTop    = Math.max(marginTop,    headerOverlay);
+  const effectiveBottom = Math.max(marginBottom, footerOverlay);
 
   const originalPages    = (
     template.pages?.length ? template.pages : [{ id: 'page-0' }]
@@ -219,27 +227,46 @@ export function computeAutoLayout(
     //  for multi-line text, causing rows to silently clip instead of paginating.
     const origTableH  = tEl.h;
     const hintFit     = fitHints?.[tableId];
-    const origRowsFit = hintFit ?? calcRowsFit(tEl);
 
-    // ── Special case: DOM hint says ALL rows fit ──────────────────────────────
+    // These values are needed both before and after the early-return guards.
+    const stretchedH  = Math.max(origTableH, canvasH - tEl.y);
+    const IND         = 24; // overflow indicator height
+    const CONT_BADGE  = 20; // "Continued from previous page" badge
+
+    const _tElPp  = tEl.props as Record<string, unknown>;
+    const urlBarH = _tElPp.dataSource ? 22 : 0;
+    const _hPy    = (_tElPp.headerPaddingY as number) ?? 8;
+    const _hFs    = (_tElPp.headerFontSize as number) ?? (_tElPp.fontSize as number) ?? 12;
+    const headerH = _hPy * 2 + Math.ceil(_hFs * 1.5) + 2;
+
+    // Cap the DOM-measured hint at the formula-safe row count (excluding footer
+    // clearance).  The DOM measurement in element-table.tsx has no awareness of
+    // the footer overlay — `available = areaH - theadH` uses the full canvas height —
+    // so hintFit can include rows that fall inside the footer area.  Those rows are
+    // hidden behind the footer in the PDF but are counted, which inflates
+    // hintedAvgRowH and packs too many rows into continuation pages.
+    const safeFormula      = calcRowsFitH(tEl, stretchedH - effectiveBottom - IND);
+    const effectiveHintFit = hintFit != null ? Math.min(hintFit, safeFormula) : null;
+    const origRowsFit      = effectiveHintFit ?? calcRowsFit(tEl);
+
+    // ── Special case: footer-safe DOM hint says ALL rows fit ──────────────────
     //  The underflow detection in element-table.tsx can raise hintFit to
     //  allRows.length when it finds the formula over-estimated row height.
     //  In that situation we still want to stretch the element (so it fills the
     //  page and the guard `autoOriginalH !== undefined` stays satisfied for
     //  future DOM measurements), but we must NOT set an endRow or create any
     //  continuation pages — every row is shown on the source page.
-    if (hintFit !== undefined && hintFit >= allRows.length) {
+    if (effectiveHintFit !== null && effectiveHintFit >= allRows.length) {
       // Fill the full page canvas — do NOT subtract marginBottom here.
       // Row stretching (perRowH in element-table.tsx + PDF generator) distributes
       // content within the element so rows never enter the margin area, while the
       // element boundary itself reaching canvasH eliminates the blank gap below the
       // indicator that was visible in the design canvas.
-      const stretchedHFull = Math.max(origTableH, canvasH - tEl.y);
-      if (stretchedHFull > origTableH) {
+      if (stretchedH > origTableH) {
         // Re-apply stretch so the element fills the page and autoOriginalH is set.
         workElements = workElements.map((el) =>
           el.id === tableId
-            ? { ...el, h: stretchedHFull, props: { ...el.props, autoOriginalH: origTableH } }
+            ? { ...el, h: stretchedH, props: { ...el.props, autoOriginalH: origTableH } }
             : el,
         );
         // Move any below-table elements to a new page (same logic as Case 2).
@@ -257,12 +284,12 @@ export function computeAutoLayout(
         if (belowIdsFull.size > 0) {
           // If all below elements fit on the same page right after the natural table
           // height, keep them there instead of creating an unnecessary new page.
-          const naturalH35 = Math.max(origTableH, Math.min(stretchedHFull, calcLastContH(tEl, allRows.length)));
+          const naturalH35 = Math.max(origTableH, Math.min(stretchedH, calcLastContH(tEl, allRows.length)));
           const naturalBottom35 = tEl.y + naturalH35;
           const belowElsFull = workElements.filter((el) => belowIdsFull.has(el.id));
           const allFitFull = belowElsFull.every((el) => {
             const gap = Math.max(0, el.y - origTableBottom2);
-            return naturalBottom35 + gap + el.h <= canvasH - marginBottom;
+            return naturalBottom35 + gap + el.h <= canvasH - effectiveBottom;
           });
 
           if (allFitFull) {
@@ -308,7 +335,7 @@ export function computeAutoLayout(
               return {
                 ...el,
                 page:  insertIdx,
-                y:     marginTop + gap,
+                y:     effectiveTop + gap,
                 props: {
                   ...el.props,
                   autoMovedFromPage:    sourcePage,
@@ -326,23 +353,11 @@ export function computeAutoLayout(
     if (allRows.length <= origRowsFit) continue;
 
     // Has overflow → stretch table to fill the full page canvas.
-    // Do NOT subtract marginBottom: row stretching (perRowH) distributes content
-    // within the element height so rows stay above the indicator and never bleed
-    // into the margin area.  Subtracting marginBottom used to leave a visible blank
-    // strip below the indicator in the design canvas (the gap the user reported).
-    const stretchedH  = Math.max(origTableH, canvasH - tEl.y);
-    const IND         = 24; // overflow indicator height (shown on non-final pages in editor)
-    const CONT_BADGE  = 20; // "Continued from previous page" badge at top of continuation pages
+    // stretchedH, IND, CONT_BADGE, _tElPp, urlBarH, headerH already computed above.
 
-    // rowsFit: how many rows fit in the source table.  Use DOM-measured hint when
-    // available (accurate for multi-line / Khmer rows); fall back to formula.
-    const rowsFit = hintFit ?? calcRowsFitH(tEl, stretchedH - marginBottom - IND);
-
-    const _tElPp  = tEl.props as Record<string, unknown>;
-    const urlBarH = _tElPp.dataSource ? 22 : 0;
-    const _hPy    = (_tElPp.headerPaddingY as number) ?? 8;
-    const _hFs    = (_tElPp.headerFontSize as number) ?? (_tElPp.fontSize as number) ?? 12;
-    const headerH = _hPy * 2 + Math.ceil(_hFs * 1.5) + 2;
+    // rowsFit: how many rows fit in the source table.  effectiveHintFit is already
+    // capped at safeFormula (footer-excluded count), so this is always footer-safe.
+    const rowsFit = effectiveHintFit ?? safeFormula;
 
     // Footer row height (shown only on the last continuation page).
     const _fs      = (_tElPp.fontSize as number) ?? 12;
@@ -350,14 +365,18 @@ export function computeAutoLayout(
     const _fFs     = (_tElPp.footerRowFontSize as number) ?? Math.max(9, Math.round(_fs * 0.9));
     const footerH  = _tElPp.footerRowEnabled ? _cellPy * 2 + _fFs + 2 : 0;
 
-    // Average actual row height from the DOM measurement.  With perRowH=0 the DOM
-    // now reports natural (un-stretched) row heights, so this is the true average.
+    // Average actual row height from the DOM measurement.
+    // Numerator uses the actual DOM-available height (stretchedH - IND - headerH),
+    // NOT footer-adjusted, so it reflects true measured row heights.
+    // effectiveHintFit is already capped at safeFormula, so when the cap was applied
+    // the denominator is smaller → hintedAvgRowH is generously estimated (conservative).
     const hintedAvgRowH: number | null =
-      hintFit != null && hintFit > 0
-        ? (stretchedH - marginBottom - IND - headerH - urlBarH) / hintFit
+      effectiveHintFit != null && effectiveHintFit > 0
+        ? (stretchedH - IND - headerH - urlBarH) / effectiveHintFit
         : null;
 
-    const contPageH   = canvasH - marginTop - marginBottom; // usable height per continuation page
+    // Usable height per continuation page: full canvas minus header/footer overlays and page margins.
+    const contPageH   = canvasH - effectiveTop - effectiveBottom;
     const contRowsFit = hintedAvgRowH != null
       ? Math.max(1, Math.floor((contPageH - CONT_BADGE - IND - headerH - urlBarH) / hintedAvgRowH))
       : calcRowsFitH(tEl, contPageH - CONT_BADGE - IND);
@@ -406,7 +425,7 @@ export function computeAutoLayout(
         const belowEls2 = workElements.filter((el) => belowIds.has(el.id));
         const allFit2 = belowEls2.every((el) => {
           const gap = Math.max(0, el.y - origTableBottom);
-          return naturalBottom2 + gap + el.h <= canvasH - marginBottom;
+          return naturalBottom2 + gap + el.h <= canvasH - effectiveBottom;
         });
 
         if (allFit2) {
@@ -453,7 +472,7 @@ export function computeAutoLayout(
             return {
               ...el,
               page:  insertIdx,
-              y:     marginTop + gap,
+              y:     effectiveTop + gap,
               props: {
                 ...el.props,
                 autoMovedFromPage:    sourcePage,
@@ -523,7 +542,7 @@ export function computeAutoLayout(
           ...updatedTEl,
           id:    `al-${tableId}-r${sliceStart}`,
           page:  insertIdx,
-          y:     marginTop,      // respect the page top margin
+          y:     effectiveTop,   // respect the page top margin and header overlay
           h:     thisContH,      // natural height for last slice; full page for others
           props: {
             ...updatedTEl.props,
@@ -552,7 +571,7 @@ export function computeAutoLayout(
       workElements = workElements.map((el) => {
         if (!belowIds.has(el.id)) return el;
         const gap  = Math.max(0, el.y - origTableBottom);
-        const newY = marginTop + lastContContentH + gap;
+        const newY = effectiveTop + lastContContentH + gap;
         return {
           ...el,
           page:  lastNewPageIdx,

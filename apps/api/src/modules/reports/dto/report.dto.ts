@@ -128,8 +128,9 @@ const HFSectionSchema = z.object({
   underline:            z.boolean().optional(),
   color:                z.string().optional(),
   align:                z.enum(['left', 'center', 'right']).optional(),
-  imageUrl:             z.string().max(2000).optional(),
+  imageUrl:             z.string().max(2_000_000).optional(), // supports base64 data URLs (~1.5 MB image)
   imageHeight:          z.number().min(8).max(200).optional(),
+  imageWidth:           z.number().min(0).max(800).optional(),
   imageFit:             z.enum(['contain', 'cover', 'fill']).optional(),
   pageNumberFormat:     z.enum(['page-x', 'x-of-y', 'x']).optional(),
   pageNumberTemplate:   z.string().max(200).optional(),
@@ -137,10 +138,14 @@ const HFSectionSchema = z.object({
 });
 
 const ReportHeaderSchema = z.object({
-  enabled:      z.boolean().default(false),
-  height:       z.number().min(20).max(300).default(50),
-  background:   z.string().default('#ffffff'),
-  padding:      z.number().min(0).max(60).optional(),
+  enabled:       z.boolean().default(false),
+  height:        z.number().min(20).max(300).default(50),
+  background:    z.string().default('#ffffff'),
+  padding:       z.number().min(0).max(60).optional(),
+  paddingTop:    z.number().min(0).max(60).optional(),
+  paddingBottom: z.number().min(0).max(60).optional(),
+  paddingLeft:   z.number().min(0).max(60).optional(),
+  paddingRight:  z.number().min(0).max(60).optional(),
   borderBottom: z.boolean().optional(),
   borderColor:  z.string().optional(),
   borderWidth:  z.number().min(1).max(8).optional(),
@@ -158,10 +163,14 @@ const ReportHeaderSchema = z.object({
 });
 
 const ReportFooterSchema = z.object({
-  enabled:      z.boolean().default(false),
-  height:       z.number().min(20).max(300).default(40),
-  background:   z.string().default('#ffffff'),
-  padding:      z.number().min(0).max(60).optional(),
+  enabled:       z.boolean().default(false),
+  height:        z.number().min(20).max(300).default(40),
+  background:    z.string().default('#ffffff'),
+  padding:       z.number().min(0).max(60).optional(),
+  paddingTop:    z.number().min(0).max(60).optional(),
+  paddingBottom: z.number().min(0).max(60).optional(),
+  paddingLeft:   z.number().min(0).max(60).optional(),
+  paddingRight:  z.number().min(0).max(60).optional(),
   borderTop:    z.boolean().optional(),
   borderColor:  z.string().optional(),
   borderWidth:  z.number().min(1).max(8).optional(),

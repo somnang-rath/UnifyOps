@@ -780,7 +780,8 @@ function renderHFSection(
         alt=""
         style={{
           height:    section.imageHeight ?? 32,
-          maxWidth:  '100%',
+          width:     section.imageWidth  ? section.imageWidth : undefined,
+          maxWidth:  section.imageWidth  ? undefined : '100%',
           objectFit: (section.imageFit ?? 'contain') as React.CSSProperties['objectFit'],
         }}
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -938,7 +939,9 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
   useEffect(() => {
     const mt  = template.margins?.top    ?? 0;
     const mb  = template.margins?.bottom ?? 0;
-    const sig = autoLayoutSig(template.elements ?? [], canvasH, mt, mb);
+    const fh  = template.footer?.enabled ? (template.footer?.height ?? 0) : 0;
+    const hh  = template.header?.enabled ? (template.header?.height ?? 0) : 0;
+    const sig = autoLayoutSig(template.elements ?? [], canvasH, mt, mb, fh, hh);
     if (!sig || sig === ctrl.autoLayoutSigRef.current) return;
     ctrl.autoLayoutSigRef.current = sig;
     const result = computeAutoLayout(template, ctrl.actualFitHintsRef.current);
@@ -1831,7 +1834,10 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
                             ? `${header.borderWidth ?? 1}px solid ${header.borderColor ?? '#e5e7eb'}`
                             : '1px dashed rgba(99,102,241,0.5)',
                           display: 'flex', alignItems: 'center',
-                          padding: `0 ${header.padding ?? 12}px`,
+                          paddingTop:    header.paddingTop    ?? 0,
+                          paddingBottom: header.paddingBottom ?? 0,
+                          paddingLeft:   header.paddingLeft   ?? header.padding ?? 12,
+                          paddingRight:  header.paddingRight  ?? header.padding ?? 12,
                           pointerEvents: 'none', zIndex: 9991, overflow: 'hidden', gap: 8,
                         }}>
                           {headerUsesSections(header) ? (
@@ -1867,7 +1873,10 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
                             ? `${footer.borderWidth ?? 1}px solid ${footer.borderColor ?? '#e5e7eb'}`
                             : '1px dashed rgba(99,102,241,0.5)',
                           display: 'flex', alignItems: 'center',
-                          padding: `0 ${footer.padding ?? 12}px`,
+                          paddingTop:    footer.paddingTop    ?? 0,
+                          paddingBottom: footer.paddingBottom ?? 0,
+                          paddingLeft:   footer.paddingLeft   ?? footer.padding ?? 12,
+                          paddingRight:  footer.paddingRight  ?? footer.padding ?? 12,
                           pointerEvents: 'none', zIndex: 9991, overflow: 'hidden', gap: 8,
                         }}>
                           {headerUsesSections(footer) ? (

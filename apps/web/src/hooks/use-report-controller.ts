@@ -656,8 +656,10 @@ export function useReportController({
     if (result) {
       const mt = templateRef.current.margins?.top ?? 0;
       const mb = templateRef.current.margins?.bottom ?? 0;
+      const fh = templateRef.current.footer?.enabled ? (templateRef.current.footer?.height ?? 0) : 0;
+      const hh = templateRef.current.header?.enabled ? (templateRef.current.header?.height ?? 0) : 0;
       // Update sig so the canvas-editor useEffect doesn't redundantly re-run layout.
-      autoLayoutSigRef.current = autoLayoutSig(result.elements, canvasH, mt, mb);
+      autoLayoutSigRef.current = autoLayoutSig(result.elements, canvasH, mt, mb, fh, hh);
       // Defer the state update out of the useLayoutEffect synchronous flush to
       // prevent React's "Maximum update depth exceeded" error.
       requestAnimationFrame(() => onChange({ pages: result.pages, elements: result.elements }));

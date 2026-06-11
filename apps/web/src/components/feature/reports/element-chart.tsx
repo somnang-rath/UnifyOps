@@ -9,7 +9,6 @@ import {
   Cell,
   ComposedChart,
   Label,
-  LabelList,
   Legend,
   Line,
   LineChart,
@@ -171,6 +170,8 @@ export function ElementChart({ element }: Props) {
     paddingX?: number;
     paddingY?: number;
     barRowHeight?: number;
+    barHeightScale?: number;
+    barRowGap?: number;
     valueSuffix?: string;
     value2Suffix?: string;
     boldLabels?: boolean;
@@ -200,9 +201,6 @@ export function ElementChart({ element }: Props) {
   const vColor  = p.valueColor     ?? '#6b7280';
   const lFamily = p.labelFontFamily ?? undefined;
   const lWidth  = p.labelWidth     ?? 80;
-  const lAnchor = p.labelAlign === 'left' ? 'start'
-                : p.labelAlign === 'center' ? 'middle'
-                : 'end';
 
   // Outside label renderer — two tspan lines for name+value/percent combos
   const renderOutsideLabel = (props: object) => {
@@ -304,8 +302,27 @@ export function ElementChart({ element }: Props) {
     : null;
 
   // bar-h derived values (computed once, used in chartBody)
-  const hBarRMargin = p.showBarValues ? (p.valueRightMargin ?? (p.valueSuffix || p.value2Suffix ? 160 : 48)) : 8;
+  // hBarValueW: fixed-width value column — matches the PDF renderer's valueW defaults
+  const hBarValueW  = p.showBarValues ? (p.valueRightMargin ?? (p.valueSuffix || p.value2Suffix ? 120 : 72)) : 0;
   const hBarLabelFW = p.boldLabels ? '600' : 'normal';
+  const hBarLabelTA = (p.labelAlign === 'left' ? 'left' : p.labelAlign === 'center' ? 'center' : 'right') as React.CSSProperties['textAlign'];
+  // Axis max — same "nice round number" algorithm as PDF renderer
+  const hRawMax = Math.max(...series.map((s) => s.value), 1);
+  const hMag    = Math.pow(10, Math.floor(Math.log10(hRawMax)));
+  const hStep   = hMag >= 1 ? hMag : 1;
+  const hAxMax  = Math.ceil(hRawMax / hStep) * hStep || 1;
+  const hTicks  = [0, 0.25, 0.5, 0.75, 1.0].map((f) => Math.round(hAxMax * f));
+  // Derive explicit row/bar pixel heights from element.h so bars scale exactly like the PDF.
+  // PDF: rows share element height equally via flex:1, bar = 70% of row height.
+  // percentage heights on flex children are unreliable when parent height comes from flex distribution.
+  const hTitlePx   = title ? ((p.titleFontSize as number ?? 12) + 16) : 0;
+  const hRowGap    = (p.barRowGap as number) ?? 6;
+  const hAxisPx    = 18;  // matches PDF's 14px axis row + 4px margin-top
+  const hPadPx     = 16;  // matches PDF's padding:8px on all sides (8 top + 8 bottom)
+  const hTotalGaps = Math.max(0, series.length - 1) * hRowGap;
+  const hAvailH    = Math.max(series.length * 8, element.h - hTitlePx - hPadPx - hAxisPx - hTotalGaps);
+  const hRowH      = Math.round(hAvailH / series.length);
+  const hBarH      = Math.max(3, Math.round(hRowH * (p.barHeightScale ?? 0.7)));
 
   // Dynamic margins for bar-line axis labels
   const blMargin = {
@@ -336,88 +353,65 @@ export function ElementChart({ element }: Props) {
           {title}
         </div>
       )}
-      {/* bar-h: scrollable container sized to fit all rows */}
+      {/* bar-h: pure CSS layout — explicit pixel heights derived from element.h, mirrors PDF exactly */}
       {chartType === 'bar-h' ? (
-        <div className="flex-1 min-h-0 overflow-y-auto p-1">
-          <ResponsiveContainer width="100%" height={Math.max(series.length * (p.barRowHeight ?? 26) + 24, 120)}>
-            <BarChart data={series} layout="vertical" margin={{ top: 4, right: hBarRMargin, bottom: 4, left: 4 }}>
-              {grid}
-              <XAxis
-                type="number"
-                tick={(props: object) => {
-                  const { x, y, payload } = props as { x: number; y: number; payload: { value: number } };
-                  return (
-                    <g transform={`translate(${x},${y})`}>
-                      <text dy="0.71em" style={{ fontFamily: lFamily }} fontSize={lSize} fill={lColor} textAnchor="middle">
-                        {payload.value}
-                      </text>
-                    </g>
-                  );
-                }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={(props: object) => {
-                  const { x, y, payload } = props as { x: number; y: number; payload: { value: string } };
-                  return (
-                    <g transform={`translate(${x},${y})`}>
-                      <text dy="0.355em" style={{ fontFamily: lFamily }} fontSize={lSize} fill={lColor} textAnchor={lAnchor} fontWeight={hBarLabelFW}>
-                        {payload.value}
-                      </text>
-                    </g>
-                  );
-                }}
-                axisLine={false}
-                tickLine={false}
-                width={lWidth}
-              />
-              <Tooltip contentStyle={TT_STYLE} />
-              {legendEl}
-              <Bar
-                dataKey="value"
-                radius={[0, 3, 3, 0]}
-                background={p.showBarTrack ? { fill: '#e5e7eb', radius: 3 } : false}
-                isAnimationActive={false}
-              >
-                {series.map((s, i) => <Cell key={i} fill={p.singleColor ? accent : (s.color ?? accent)} />)}
-                {p.showBarValues && (
-                  <LabelList
-                    dataKey="value"
-                    position="right"
-                    content={(lProps: object) => {
-                      const { x, y, width, height, value, index } = lProps as {
-                        x: number; y: number; width: number; height: number; value: number; index: number;
-                      };
-                      const entry = series[index];
-                      const numStr = typeof value === 'number' ? value.toLocaleString() : String(value);
-                      const suffix = p.valueSuffix ? ` ${p.valueSuffix}` : '';
-                      const v2     = entry?.value2;
-                      const v2part = v2 !== undefined && p.value2Suffix
-                        ? ` (${v2.toLocaleString()} ${p.value2Suffix})`
-                        : '';
-                      const label = `${numStr}${suffix}${v2part}`;
-                      return (
-                        <text
-                          x={x + width + 5}
-                          y={y + height / 2}
-                          dy="0.355em"
-                          style={{ fontFamily: lFamily }}
-                          fontSize={vSize}
-                          fill={vColor}
-                          textAnchor="start"
-                        >
-                          {label}
-                        </text>
-                      );
-                    }}
-                  />
-                )}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="flex-1 overflow-hidden flex flex-col p-2">
+          {/* Data rows — explicit hRowH so sizing is identical to PDF's flex:1 distribution */}
+          <div className="flex flex-col" style={{ gap: hRowGap }}>
+            {series.map((s, i) => {
+              const pct      = Math.min(100, (s.value / hAxMax) * 100);
+              const color    = p.singleColor ? accent : (s.color ?? accent);
+              const numStr   = s.value.toLocaleString('en-US');
+              const suffix   = p.valueSuffix ? ` ${p.valueSuffix}` : '';
+              const v2part   = s.value2 !== undefined && p.value2Suffix
+                ? ` (${(s.value2 as number).toLocaleString('en-US')} ${p.value2Suffix})` : '';
+              const valLabel = `${numStr}${suffix}${v2part}`;
+              return (
+                <div key={i} style={{ height: hRowH, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {/* Label */}
+                  <div style={{ width: lWidth, fontSize: lSize, fontFamily: lFamily || undefined, color: lColor, fontWeight: hBarLabelFW, textAlign: hBarLabelTA, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.name}
+                  </div>
+                  {/* Bar track + fill — explicit hBarH px, no percentage ambiguity */}
+                  {p.showBarTrack ? (
+                    <div style={{ flex: 1, height: hBarH, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '0 3px 3px 0' }} />
+                    </div>
+                  ) : (
+                    <div style={{ flex: 1, height: hBarH, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '0 3px 3px 0' }} />
+                    </div>
+                  )}
+                  {/* Value */}
+                  {p.showBarValues && (
+                    <div style={{ width: hBarValueW, fontSize: vSize, fontFamily: lFamily || undefined, color: vColor, flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {valLabel}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {/* X-axis tick row */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 3, height: 16 }}>
+            <div style={{ width: lWidth, flexShrink: 0 }} />
+            <div style={{ flex: 1, position: 'relative' }}>
+              {hTicks.map((t, fi) => {
+                // Use maximumFractionDigits:1 (not toFixed) so trailing ".0" is suppressed — matches PDF renderer
+                const fmtT = t >= 1_000_000
+                  ? `${(t / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`
+                  : t >= 1_000
+                    ? `${(t / 1_000).toLocaleString('en-US', { maximumFractionDigits: 1 })}K`
+                    : String(t);
+                return (
+                  <span key={fi} style={{ position: 'absolute', left: `${Math.round((fi / 4) * 100)}%`, transform: 'translateX(-50%)', fontSize: Math.max(7, lSize - 1), fontFamily: lFamily || undefined, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                    {fmtT}
+                  </span>
+                );
+              })}
+            </div>
+            {p.showBarValues && <div style={{ width: hBarValueW, flexShrink: 0 }} />}
+          </div>
         </div>
       ) : (
       <div className="flex-1 min-h-0 p-1">
