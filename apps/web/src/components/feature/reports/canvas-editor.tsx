@@ -918,12 +918,8 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
     setScaleRef.current(Math.max(0.25, Math.min(1, available / canvasWRef.current)));
   }, []);
 
-  // Auto-fit once after the initial layout paint so the canvas starts at the correct scale.
-  useEffect(() => {
-    const raf = requestAnimationFrame(fitToWidth);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally run once on mount
+  // Canvas starts at 100% (1:1 with the PDF) so what you design matches the preview.
+  // Users can press "Fit" to zoom out if the page is wider than their screen.
 
   // ── Reclaim focus after selection ────────────────────────────────────────
   // Moveable mounts drag/resize handles (some with tabIndex) after an element
@@ -1625,6 +1621,31 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
             />
           )}
 
+          {/* Zoom-out warning banner */}
+          {ctrl.scale < 1 && (
+            <div
+              style={{
+                position: 'sticky', top: 0, zIndex: 9999,
+                background: 'rgba(245,158,11,0.12)', borderBottom: '1px solid rgba(245,158,11,0.3)',
+                padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 11, color: '#b45309', userSelect: 'none',
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>បង្រួមទៅ {Math.round(ctrl.scale * 100)}%</span>
+              <span style={{ opacity: 0.8 }}>— ធាតុនឹងបង្ហាញតូចជាង PDF ពិតប្រាកដ។ Design នៅ 100% ដើម្បីឱ្យត្រូវគ្នា។</span>
+              <button
+                onClick={() => ctrl.setScale(1)}
+                style={{
+                  marginLeft: 6, padding: '1px 8px', borderRadius: 4,
+                  border: '1px solid rgba(180,83,9,0.4)', background: 'transparent',
+                  fontSize: 10, fontWeight: 600, color: '#b45309', cursor: 'pointer',
+                }}
+              >
+                មើលនៅ 100%
+              </button>
+            </div>
+          )}
+
           {/* Centering wrapper — all pages stacked vertically */}
           <div
             style={{
@@ -2216,8 +2237,13 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
           </button>
           <button
             onClick={() => ctrl.setScale(1)}
-            title="Reset zoom to 100% (Ctrl + 0)"
-            className="px-1.5 h-6 text-[10px] font-semibold text-text-muted hover:text-text hover:bg-bg-hover rounded transition-colors min-w-[44px] text-center"
+            title={ctrl.scale < 1 ? `បច្ចុប្បន្ននៅ ${Math.round(ctrl.scale * 100)}% — ចុចដើម្បីមើលនៅ 100% (ទំហំ PDF ពិតប្រាកដ)` : 'កំណត់ zoom ឡើងវិញទៅ 100% (Ctrl + 0)'}
+            className={cn(
+              'px-1.5 h-6 text-[10px] font-semibold rounded transition-colors min-w-[44px] text-center',
+              ctrl.scale < 1
+                ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                : 'text-text-muted hover:text-text hover:bg-bg-hover',
+            )}
           >
             {Math.round(ctrl.scale * 100)}%
           </button>

@@ -16,6 +16,7 @@ export function ElementText({ element, isEditing, onStartEdit, onChange }: Props
     content?: string;
     fontSize?: number;
     bold?: boolean;
+    boldWeight?: number;
     italic?: boolean;
     underline?: boolean;
     color?: string;
@@ -65,7 +66,7 @@ export function ElementText({ element, isEditing, onStartEdit, onChange }: Props
     const naturalW = measureRef.current.scrollWidth + padX + 4;
     onChangeRef.current({ ...p, _w: naturalW });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.autoWidth, p.content, p.fontSize, p.fontFamily, p.bold, p.italic, p.letterSpacing, p.paddingX]);
+  }, [p.autoWidth, p.content, p.fontSize, p.fontFamily, p.bold, p.boldWeight, p.italic, p.letterSpacing, p.paddingX]);
 
   // Evaluate custom script to override displayed content
   const scriptResult = hasScript && !editing
@@ -83,7 +84,7 @@ export function ElementText({ element, isEditing, onStartEdit, onChange }: Props
 
   const style: React.CSSProperties = {
     fontSize: p.fontSize ?? 14,
-    fontWeight: p.bold ? 700 : 400,
+    fontWeight: p.bold ? (p.boldWeight ?? 600) : 400,
     fontStyle: p.italic ? 'italic' : 'normal',
     textDecoration: p.underline ? 'underline' : 'none',
     color: scriptResult?.startsWith('[Script Error') ? '#ef4444' : (p.color ?? '#111111'),

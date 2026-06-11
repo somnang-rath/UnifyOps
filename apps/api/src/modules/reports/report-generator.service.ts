@@ -178,6 +178,44 @@ async function resolveTableDatasources(elements: ReportElement[]): Promise<Repor
   });
 }
 
+async function resolveGroupedTableDatasources(elements: ReportElement[]): Promise<ReportElement[]> {
+  const updates = new Map<string, Record<string, unknown>[]>();
+
+  await Promise.all(
+    elements.map(async (el) => {
+      if (el.type !== 'grouped-table') return;
+      const p = el.props as Record<string, unknown>;
+      if (!p.dataUrl) return;
+
+      let headers: Record<string, string> = {};
+      if (p.dataHeaders) {
+        try { headers = JSON.parse(String(p.dataHeaders)); } catch { /* ignore */ }
+      }
+
+      try {
+        const res = await fetch(String(p.dataUrl), {
+          method: String(p.dataMethod ?? 'GET'),
+          headers: { 'Content-Type': 'application/json', ...headers },
+          signal: AbortSignal.timeout(12_000),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const rawData = extractAtPath(data, String(p.dataPath ?? ''));
+        updates.set(el.id, rawData);
+      } catch { /* keep stored rawData on error */ }
+    }),
+  );
+
+  if (updates.size === 0) return elements;
+  return elements.map((el) => {
+    if (updates.has(el.id)) {
+      const p = el.props as Record<string, unknown>;
+      return { ...el, props: { ...p, rawData: updates.get(el.id) } };
+    }
+    return el;
+  });
+}
+
 async function resolveTextDatasources(elements: ReportElement[]): Promise<ReportElement[]> {
   return Promise.all(
     elements.map(async (el) => {
@@ -276,9 +314,13 @@ function computeFooterCellPdf(
 }
 
 // CSS variable names set by next/font → actual Google Fonts family name
+// Maps CSS variable names → Google Fonts family:wght spec used in the PDF <link> tag.
 const CSS_VAR_FONT_MAP: Record<string, string> = {
-  '--font-koh-santepheap': 'Koh Santepheap',
-  '--font-khmer':          'Kantumruy Pro',
+  '--font-koh-santepheap': 'Koh Santepheap:wght@300;400;700',
+  '--font-khmer':          'Kantumruy Pro:wght@300;400;500;600;700',
+  '--font-noto-khmer':     'Noto Sans Khmer:wght@400;600;700',
+  '--font-battambang':     'Battambang:wght@400;700',
+  '--font-sans':           'Inter:wght@300;400;500;600;700;800',
 };
 
 // Strip "var(--xxx), " prefixes that Next.js next/font injects — Puppeteer has no CSS vars
@@ -289,31 +331,28 @@ function normalizeFont(ff: string): string {
 // Scan all elements and return <link> tags for any web fonts that need to be loaded.
 // Noto Sans Khmer is always included so Khmer text in titles/labels renders correctly.
 function collectFontLinks(template: ReportTemplate): string {
-  const families = new Set<string>(['Noto Sans Khmer:wght@400;600;700']);
+  const families = new Set<string>([
+    'Inter:wght@300;400;500;600;700;800',
+    'Kantumruy Pro:wght@300;400;500;600;700',
+    'Noto Sans Khmer:wght@400;600;700',
+  ]);
+
+  const addFromVar = (ff: string | undefined) => {
+    if (!ff) return;
+    const match = ff.match(/var\((--[\w-]+)\)/);
+    if (match) {
+      const spec = CSS_VAR_FONT_MAP[match[1]];
+      if (spec) families.add(spec);
+    }
+  };
+
   for (const el of template.elements ?? []) {
     const props = el.props as Record<string, unknown>;
-    // Scan all font-family props: general (text/table), bar-h specific, per-column
-    for (const key of ['fontFamily', 'labelFontFamily']) {
-      const ff = props?.[key] as string | undefined;
-      if (!ff) continue;
-      const match = ff.match(/var\((--[\w-]+)\)/);
-      if (match) {
-        const family = CSS_VAR_FONT_MAP[match[1]];
-        if (family) families.add(family);
-      }
+    for (const key of ['fontFamily', 'labelFontFamily', 'headerFontFamily', 'footerFontFamily']) {
+      addFromVar(props?.[key] as string | undefined);
     }
-    // Per-column font families (Record<colKey, fontFamily>)
     const colFFs = props?.colFontFamilies as Record<string, string> | undefined;
-    if (colFFs) {
-      for (const ff of Object.values(colFFs)) {
-        if (!ff) continue;
-        const match = ff.match(/var\((--[\w-]+)\)/);
-        if (match) {
-          const family = CSS_VAR_FONT_MAP[match[1]];
-          if (family) families.add(family);
-        }
-      }
-    }
+    if (colFFs) Object.values(colFFs).forEach(addFromVar);
   }
   const query = [...families].map((f) => `family=${f.replace(/ /g, '+')}`).join('&');
   return `<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -364,13 +403,14 @@ export class ReportGeneratorService implements OnModuleDestroy {
 
       const resolvedElements  = await resolveTextDatasources(template.elements ?? []);
       const resolvedElements2 = await resolveTableDatasources(resolvedElements);
-      const liveTemplate = { ...template, elements: resolvedElements2 } as ReportTemplate;
+      const resolvedElements3 = await resolveGroupedTableDatasources(resolvedElements2);
+      const liveTemplate = { ...template, elements: resolvedElements3 } as ReportTemplate;
       const html = buildHtml(liveTemplate, allData, w, h, collectFontLinks(template));
       await page.setContent(html, { waitUntil: 'load' });
       // Wait for all fonts (including Google Fonts / Noto Sans Khmer) to finish loading
       await page.evaluate(() => document.fonts.ready);
       await page.waitForFunction(
-        () => document.fonts.check('12px "Noto Sans Khmer"'),
+        () => document.fonts.check('12px "Inter"') && document.fonts.check('12px "Kantumruy Pro"'),
         { timeout: 8000 },
       ).catch(() => { /* timeout is fine — render with fallback font */ });
 
@@ -760,7 +800,7 @@ ${fontLinks}
   }
   @page { size: ${w}px ${h}px; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: ${w}px; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Noto Sans Khmer', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
+  html, body { width: ${w}px; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Inter', 'Kantumruy Pro', 'Noto Sans Khmer', sans-serif; }
   .page { width: ${w}px; height: ${h}px; position: relative; overflow: hidden; break-after: page; }
   .el { position: absolute; overflow: hidden; }
   .el-text { font-size: 14px; color: #111; white-space: pre-wrap; }
@@ -860,7 +900,7 @@ function renderElementInner(
   switch (el.type) {
     case 'text': {
       const fs = (p.fontSize as number) ?? 14;
-      const fw = p.bold ? '700' : '400';
+      const fw = p.bold ? String((p.boldWeight as number) ?? 600) : '400';
       const fi = p.italic ? 'italic' : 'normal';
       const td = p.underline ? 'underline' : 'none';
       const color = (p.color as string) ?? '#111111';
@@ -1278,6 +1318,153 @@ function renderElementInner(
       }
 
       return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<div style="flex:1;overflow:hidden;"><table style="width:100%;${tableHeightStyle}table-layout:${tblLayout};border-collapse:separate;border-spacing:0;font-size:${fs}px;line-height:1.2;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody>${tfootHtml}</table></div></div>`;
+    }
+
+    case 'grouped-table': {
+      type GCol = { label: string; level: 'group_no' | 'group' | 'subgroup' | 'detail'; field: string; width?: number; align?: string; bold?: boolean; color?: string; format?: string };
+      const DEFAULT_COLS: GCol[] = [
+        { label: 'ល.រ',             level: 'group_no',  field: '',                    width: 36,  align: 'center' },
+        { label: 'ក្រុមហ៊ុន',         level: 'group',     field: 'company_kh',          width: 110, align: 'left', color: '#1d6bbc', bold: true },
+        { label: 'ស្ថានីយ',           level: 'subgroup',  field: 'site_kh',             width: 120, align: 'left' },
+        { label: 'ទូទាត់',            level: 'detail',    field: 'id',                  width: 90,  align: 'left' },
+        { label: 'អាតុភាព',           level: 'detail',    field: 'rated_power_display', width: 60,  align: 'center' },
+        { label: 'ប្រើប្រាស់',         level: 'detail',    field: 'sessions',            width: 55,  align: 'center', format: 'number' },
+        { label: 'ថាមពលសរុប\n(kWh)', level: 'detail',    field: 'kwh',                 width: 80,  align: 'right',  format: 'number_2dp' },
+        { label: 'តម្លៃ (ស្ថូ)\n/kWh', level: 'detail',    field: 'price',               width: 70,  align: 'right',  format: 'number' },
+        { label: 'ចំណូល\n(ស្ថូ)',       level: 'detail',    field: 'revenue',             width: 90,  align: 'right',  bold: true, format: 'currency_khr' },
+      ];
+
+      const rawData    = (p.rawData as Record<string, unknown>[] | undefined) ?? [];
+      const groupField = (p.groupByField  as string | undefined) ?? 'company_kh';
+      const detField   = (p.detailField   as string | undefined) ?? 'chargers_detail';
+      const cols       = (p.columns as GCol[] | undefined) ?? DEFAULT_COLS;
+
+      const headerBg = escapeHtml((p.headerBg  as string | undefined) ?? '#1e3a5f');
+      const headerFg = escapeHtml((p.headerColor as string | undefined) ?? '#ffffff');
+      const hFs      = (p.headerFontSize   as number | undefined) ?? 10;
+      const hFw      = escapeHtml((p.headerFontWeight as string | undefined) ?? '600');
+      const hPy      = (p.headerPaddingY   as number | undefined) ?? 7;
+      const fs2      = (p.fontSize         as number | undefined) ?? 10;
+      const cellPx2  = (p.cellPaddingX     as number | undefined) ?? 8;
+      const cellPy2  = (p.cellPaddingY     as number | undefined) ?? 5;
+      const bClr     = escapeHtml((p.borderColor as string | undefined) ?? '#d1d5db');
+      const bW2      = (p.borderWidth      as number | undefined) ?? 1;
+      const bSt2     = escapeHtml((p.borderStyle  as string | undefined) ?? 'solid');
+      const bLine    = `${bW2}px ${bSt2} ${bClr}`;
+      const showColB2 = p.showColBorders !== false;
+      const outerB2   = p.outerBorder !== false;
+      const ff2       = p.fontFamily ? `font-family:${escapeHtml(normalizeFont(p.fontFamily as string))};` : '';
+
+      const gFmtVal = (v: unknown, fmt?: string): string => {
+        if (v == null || v === '') return '';
+        const n = parseFloat(String(v).replace(/,/g, ''));
+        if (fmt && !isNaN(n)) {
+          if (fmt === 'number')       return n.toLocaleString('en-US');
+          if (fmt === 'number_2dp')   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          if (fmt === 'currency_khr') return n.toLocaleString('en-US');
+        }
+        return String(v);
+      };
+
+      const gGetField = (obj: Record<string, unknown>, field: string): unknown => {
+        if (!field) return '';
+        return field.split('.').reduce<unknown>((cur, k) => {
+          if (cur != null && typeof cur === 'object' && !Array.isArray(cur))
+            return (cur as Record<string, unknown>)[k];
+          return undefined;
+        }, obj);
+      };
+
+      // Build grouped structure
+      type SiteEntry  = { siteRow: Record<string, unknown>; details: Record<string, unknown>[] };
+      type GroupEntry = { key: string; firstRow: Record<string, unknown>; sites: SiteEntry[]; totalDetailRows: number };
+      const groups: GroupEntry[] = [];
+      const groupIdxMap = new Map<string, number>();
+
+      for (const siteRow of rawData) {
+        const gKey    = String(gGetField(siteRow, groupField) ?? '');
+        const details = (siteRow[detField] as Record<string, unknown>[] | undefined) ?? [];
+        if (!groupIdxMap.has(gKey)) {
+          groupIdxMap.set(gKey, groups.length);
+          groups.push({ key: gKey, firstRow: siteRow, sites: [], totalDetailRows: 0 });
+        }
+        const grp = groups[groupIdxMap.get(gKey)!];
+        grp.sites.push({ siteRow, details });
+        grp.totalDetailRows += Math.max(1, details.length);
+      }
+
+      // Build colgroup
+      const cg2 = `<colgroup>${cols.map((c) => c.width != null ? `<col style="width:${c.width}px"/>` : '<col/>').join('')}</colgroup>`;
+
+      // Build header
+      const theadCells = cols.map((c, ci) => {
+        const lines = c.label.split('\n');
+        const br = lines[1] ? `<br/><span style="font-weight:400;opacity:0.85;">${escapeHtml(lines[1])}</span>` : '';
+        const bR = showColB2 && ci < cols.length - 1 ? `border-right:${bLine};` : '';
+        return `<th style="background:${headerBg};color:${headerFg};padding:${hPy}px ${cellPx2}px;font-size:${hFs}px;font-weight:${hFw};line-height:1.3;text-align:${escapeHtml(c.align ?? 'center')};vertical-align:middle;border-bottom:${bLine};${bR}white-space:pre-wrap;">${escapeHtml(lines[0])}${br}</th>`;
+      }).join('');
+
+      // Build body rows
+      const bodyRows: string[] = [];
+      for (let gi = 0; gi < groups.length; gi++) {
+        const grp = groups[gi];
+        const isLastGroup = gi === groups.length - 1;
+        const groupBb = !isLastGroup ? bLine : 'none';
+        let detRowIdx = 0;
+
+        for (let si = 0; si < grp.sites.length; si++) {
+          const site = grp.sites[si];
+          const siteDetCount = Math.max(1, site.details.length);
+          const detailRows   = site.details.length ? site.details : [{}];
+          const isLastSite   = si === grp.sites.length - 1;
+
+          for (let di = 0; di < detailRows.length; di++) {
+            const detail = detailRows[di];
+            const isFirstInGroup = si === 0 && di === 0;
+            const isFirstInSite  = di === 0;
+            const isLastInGroup  = isLastSite && di === detailRows.length - 1;
+            const isLastInSite   = di === detailRows.length - 1;
+            const rowBb    = !isLastInGroup ? bLine : groupBb;
+            const siteRowBb = !isLastInSite ? bLine : (isLastInGroup ? groupBb : bLine);
+            const altBg    = p.stripedRows && detRowIdx % 2 === 1 ? escapeHtml((p.altRowBg as string | undefined) ?? '#f9fafb') : '';
+
+            const cells: string[] = [];
+            for (let ci = 0; ci < cols.length; ci++) {
+              const col = cols[ci];
+              const bR  = showColB2 && ci < cols.length - 1 ? `border-right:${bLine};` : '';
+              const baseStyle = `padding:${cellPy2}px ${cellPx2}px;line-height:1.3;vertical-align:middle;text-align:${escapeHtml(col.align ?? 'left')};${col.bold ? 'font-weight:700;' : ''}${col.color ? `color:${escapeHtml(col.color)};` : ''}${bR}`;
+
+              if (col.level === 'group_no') {
+                if (isFirstInGroup) {
+                  cells.push(`<td rowspan="${grp.totalDetailRows}" style="${baseStyle}${p.groupBg ? `background:${escapeHtml(p.groupBg as string)};` : ''}border-bottom:${groupBb};">${gi + 1}</td>`);
+                }
+              } else if (col.level === 'group') {
+                if (isFirstInGroup) {
+                  cells.push(`<td rowspan="${grp.totalDetailRows}" style="${baseStyle}${p.groupBg ? `background:${escapeHtml(p.groupBg as string)};` : ''}border-bottom:${groupBb};">${escapeHtml(gFmtVal(gGetField(grp.firstRow, col.field), col.format))}</td>`);
+                }
+              } else if (col.level === 'subgroup') {
+                if (isFirstInSite) {
+                  cells.push(`<td rowspan="${siteDetCount}" style="${baseStyle}${p.subGroupBg ? `background:${escapeHtml(p.subGroupBg as string)};` : ''}border-bottom:${siteRowBb};">${escapeHtml(gFmtVal(gGetField(site.siteRow, col.field), col.format))}</td>`);
+                }
+              } else {
+                cells.push(`<td style="${baseStyle}border-bottom:${rowBb};${altBg ? `background:${altBg};` : ''}">${escapeHtml(gFmtVal(gGetField(detail as Record<string, unknown>, col.field), col.format))}</td>`);
+              }
+            }
+
+            bodyRows.push(`<tr>${cells.join('')}</tr>`);
+            detRowIdx++;
+          }
+        }
+      }
+
+      const outerStyle2 = outerB2 ? `border:${bLine};border-radius:4px;` : '';
+      const tableBase2  = `left:${el.x}px;top:${el.y}px;width:${el.w}px;max-height:${el.h}px;transform:rotate(${el.rotation ?? 0}deg);z-index:${el.zIndex ?? 0};`;
+
+      const emptyRow = rawData.length === 0
+        ? `<tr><td colspan="${cols.length}" style="padding:16px 8px;text-align:center;color:#9ca3af;font-size:10px;">No data</td></tr>`
+        : '';
+
+      return `<div class="el" style="${tableBase2}${outerStyle2}${ff2}overflow:hidden;display:flex;flex-direction:column;"><div style="flex:1;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:${fs2}px;line-height:1.3;${ff2}">${cg2}<thead><tr>${theadCells}</tr></thead><tbody>${emptyRow}${bodyRows.join('')}</tbody></table></div></div>`;
     }
 
     default:

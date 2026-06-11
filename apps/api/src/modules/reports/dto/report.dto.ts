@@ -8,7 +8,7 @@ const ReportPageSchema = z.object({
 
 const ReportElementSchema = z.object({
   id: z.string(),
-  type: z.enum(['text', 'heading', 'image', 'table', 'shape', 'data-widget', 'chart', 'divider', 'page-number', 'progress-bar']),
+  type: z.enum(['text', 'heading', 'image', 'table', 'grouped-table', 'shape', 'data-widget', 'chart', 'divider', 'page-number', 'progress-bar']),
   x: z.number(),
   y: z.number(),
   w: z.number().min(1),

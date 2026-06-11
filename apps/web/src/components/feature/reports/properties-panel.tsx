@@ -409,6 +409,35 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                       </div>
                     </div>
 
+                    {/* Bold weight — only shown when bold is active */}
+                    {p?.bold && (
+                      <div>
+                        <Label>Bold weight</Label>
+                        <div className="flex gap-1">
+                          {([
+                            { w: 500, label: '500' },
+                            { w: 600, label: '600' },
+                            { w: 700, label: '700' },
+                            { w: 800, label: '800' },
+                          ] as const).map(({ w, label }) => (
+                            <button
+                              key={w}
+                              onClick={() => set({ boldWeight: w })}
+                              className={cn(
+                                'flex-1 py-1.5 text-xs rounded-md border transition-colors',
+                                ((p?.boldWeight as number) ?? 600) === w
+                                  ? 'border-accent-600 bg-accent-50 text-accent-700 dark:bg-accent-950/30 dark:text-accent-400'
+                                  : 'border-border text-text-muted hover:text-text',
+                              )}
+                              style={{ fontWeight: w }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <Label>Align</Label>
                       <div className="flex gap-1">
