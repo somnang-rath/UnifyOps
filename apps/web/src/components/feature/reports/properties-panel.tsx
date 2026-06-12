@@ -8,6 +8,7 @@ import { WidgetDataSourcePanel } from './widget-datasource-panel';
 import { ChartDataSourcePanel } from './chart-datasource-panel';
 import { GROUPED_TABLE_DEFAULT_COLUMNS } from './element-grouped-table';
 import { TextDataSourcePanel } from './text-datasource-panel';
+import { applyTextNumberFormat } from './element-text';
 import { runScript } from '@/lib/reports/script-runner';
 import { AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, MousePointer2, PanelRightClose, PanelRightOpen, Play, Plus, Trash2, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -461,6 +462,66 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                         ))}
                       </div>
                     </div>
+
+                    {/* ── Number Format ── */}
+                    <SectionHeader>Number Format</SectionHeader>
+                    <div>
+                      <Label>Format</Label>
+                      <select
+                        value={(p?.numberFormat as string) ?? 'none'}
+                        onChange={(e) => set({ numberFormat: e.target.value || 'none' })}
+                        className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                      >
+                        <option value="none">— None (plain text)</option>
+                        <option value="comma">1,234,567 (comma)</option>
+                        <option value="K">1.2K (thousands)</option>
+                        <option value="M">1.23M (millions)</option>
+                        <option value="B">1.23B (billions)</option>
+                        <option value="pct">12.5% (percent)</option>
+                      </select>
+                    </div>
+                    {(p?.numberFormat as string) && (p?.numberFormat as string) !== 'none' && (
+                      <div>
+                        <Label>Decimal places</Label>
+                        <PanelInput
+                          type="number"
+                          value={(p?.numberDecimals as number) ?? 0}
+                          onChange={(e) => set({ numberDecimals: Number(e.target.value) })}
+                          min={0} max={6}
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-x-2">
+                      <div>
+                        <Label>Prefix</Label>
+                        <PanelInput
+                          value={(p?.numberPrefix as string) ?? ''}
+                          onChange={(e) => set({ numberPrefix: e.target.value || undefined })}
+                          placeholder="e.g. $  €  ₭"
+                        />
+                      </div>
+                      <div>
+                        <Label>Suffix</Label>
+                        <PanelInput
+                          value={(p?.numberSuffix as string) ?? ''}
+                          onChange={(e) => set({ numberSuffix: e.target.value || undefined })}
+                          placeholder="e.g. kWh  MW"
+                        />
+                      </div>
+                    </div>
+                    {((p?.numberFormat as string) && (p?.numberFormat as string) !== 'none') || (p?.numberPrefix as string) || (p?.numberSuffix as string) ? (
+                      <div className="rounded-md bg-bg-subtle border border-border px-2 py-1.5 text-[10px] text-text-sub">
+                        Preview: <span className="font-semibold font-mono">
+                          {applyTextNumberFormat(
+                            '1234567.89',
+                            (p?.numberFormat as string) || 'none',
+                            (p?.numberDecimals as number) ?? 0,
+                            (p?.numberPrefix as string) ?? '',
+                            (p?.numberSuffix as string) ?? '',
+                          )}
+                        </span>
+                      </div>
+                    ) : null}
                   </>
                 )}
 

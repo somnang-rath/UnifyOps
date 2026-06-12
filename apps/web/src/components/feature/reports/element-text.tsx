@@ -4,6 +4,32 @@ import type { ReportElement } from '@/schemas/report';
 import { Wifi, Code2 } from 'lucide-react';
 import { runScript } from '@/lib/reports/script-runner';
 
+export type TextNumberFormat = 'none' | 'comma' | 'K' | 'M' | 'B' | 'pct';
+
+export function applyTextNumberFormat(
+  raw: string,
+  fmt: TextNumberFormat | string | undefined,
+  decimals: number,
+  prefix: string,
+  suffix: string,
+): string {
+  const pfx = prefix ?? '';
+  const sfx = suffix ?? '';
+  if (!fmt || fmt === 'none') return pfx || sfx ? pfx + raw + sfx : raw;
+  const n = parseFloat(String(raw).replace(/[,\s]/g, ''));
+  if (isNaN(n)) return pfx + raw + sfx;
+  let out: string;
+  switch (fmt) {
+    case 'comma': out = n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }); break;
+    case 'K':     out = (n / 1e3).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + 'K'; break;
+    case 'M':     out = (n / 1e6).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + 'M'; break;
+    case 'B':     out = (n / 1e9).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + 'B'; break;
+    case 'pct':   out = n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + '%'; break;
+    default:      out = raw;
+  }
+  return pfx + out + sfx;
+}
+
 interface Props {
   element: ReportElement;
   isEditing: boolean;
@@ -31,6 +57,10 @@ export function ElementText({ element, isEditing, onStartEdit, onChange }: Props
     scriptEnabled?: boolean;
     customScript?: string;
     autoWidth?: boolean;
+    numberFormat?: TextNumberFormat;
+    numberDecimals?: number;
+    numberPrefix?: string;
+    numberSuffix?: string;
   };
 
   const isLive   = !!p.textDataSource?.url;
@@ -80,7 +110,14 @@ export function ElementText({ element, isEditing, onStartEdit, onChange }: Props
       })
     : null;
 
-  const displayContent = scriptResult ?? p.content ?? '';
+  const rawContent = scriptResult ?? p.content ?? '';
+  const displayContent = applyTextNumberFormat(
+    rawContent,
+    p.numberFormat,
+    p.numberDecimals ?? 0,
+    p.numberPrefix ?? '',
+    p.numberSuffix ?? '',
+  );
 
   const style: React.CSSProperties = {
     fontSize: p.fontSize ?? 14,

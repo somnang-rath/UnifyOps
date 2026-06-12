@@ -120,6 +120,30 @@ function fmtNumber(raw: string, fmt: string | undefined): string {
   }
 }
 
+function applyTextNumberFmt(
+  raw: string,
+  fmt: string | undefined,
+  decimals: number,
+  prefix: string,
+  suffix: string,
+): string {
+  const pfx = prefix ?? '';
+  const sfx = suffix ?? '';
+  if (!fmt || fmt === 'none') return pfx || sfx ? pfx + raw + sfx : raw;
+  const n = parseFloat(String(raw).replace(/[,\s]/g, ''));
+  if (isNaN(n)) return pfx + raw + sfx;
+  let out: string;
+  switch (fmt) {
+    case 'comma': out = n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }); break;
+    case 'K':     out = (n / 1e3).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + 'K'; break;
+    case 'M':     out = (n / 1e6).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + 'M'; break;
+    case 'B':     out = (n / 1e9).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + 'B'; break;
+    case 'pct':   out = n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + '%'; break;
+    default:      out = raw;
+  }
+  return pfx + out + sfx;
+}
+
 // ── Table datasource live-fetch ───────────────────────────────────────────────
 // Mirrors the DataSourcePanel "Apply" flow: fetches current data from each
 // table's configured URL and replaces the stale p.rows snapshot so the PDF
@@ -310,7 +334,9 @@ function computeFooterCellPdf(
     default: return '';
   }
   const dp = cfg.decimals ?? 2;
-  return v % 1 === 0 ? String(v) : v.toFixed(dp);
+  return v % 1 === 0
+    ? v.toLocaleString('en-US')
+    : v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
 // CSS variable names set by next/font → actual Google Fonts family name
@@ -919,8 +945,15 @@ function renderElementInner(
       const bg = p.background ? `background:${escapeHtml(p.background as string)};` : '';
       const px = p.paddingX ? `padding-left:${p.paddingX}px;padding-right:${p.paddingX}px;` : '';
       const py = p.paddingY ? `padding-top:${p.paddingY}px;padding-bottom:${p.paddingY}px;` : '';
+      const textContent = applyTextNumberFmt(
+        String(p.content ?? ''),
+        p.numberFormat as string | undefined,
+        (p.numberDecimals as number) ?? 0,
+        (p.numberPrefix as string) ?? '',
+        (p.numberSuffix as string) ?? '',
+      );
       // word-break:break-word matches canvas ElementText overflow:hidden + wordBreak:'break-word'
-      return `<div class="el el-text" style="${base}${lh}${ls}${ff}${bg}${px}${py}font-size:${fs}px;font-weight:${fw};font-style:${fi};text-decoration:${td};color:${escapeHtml(color)};text-align:${align};word-break:break-word;">${escapeHtml(p.content ?? '')}</div>`;
+      return `<div class="el el-text" style="${base}${lh}${ls}${ff}${bg}${px}${py}font-size:${fs}px;font-weight:${fw};font-style:${fi};text-decoration:${td};color:${escapeHtml(color)};text-align:${align};word-break:break-word;">${escapeHtml(textContent)}</div>`;
     }
 
     case 'heading': {
@@ -936,7 +969,14 @@ function renderElementInner(
       const bg = p.background ? `background:${escapeHtml(p.background as string)};` : '';
       const px = p.paddingX ? `padding-left:${p.paddingX}px;padding-right:${p.paddingX}px;` : '';
       const py = p.paddingY ? `padding-top:${p.paddingY}px;padding-bottom:${p.paddingY}px;` : '';
-      return `<div class="el el-heading" style="${base}${lh}${ls}${ff}${bg}${px}${py}font-size:${fs}px;font-weight:${fw};font-style:${fi};text-decoration:${td};color:${escapeHtml(color)};text-align:${align};white-space:pre-wrap;word-break:break-word;">${escapeHtml(p.content ?? '')}</div>`;
+      const headingContent = applyTextNumberFmt(
+        String(p.content ?? ''),
+        p.numberFormat as string | undefined,
+        (p.numberDecimals as number) ?? 0,
+        (p.numberPrefix as string) ?? '',
+        (p.numberSuffix as string) ?? '',
+      );
+      return `<div class="el el-heading" style="${base}${lh}${ls}${ff}${bg}${px}${py}font-size:${fs}px;font-weight:${fw};font-style:${fi};text-decoration:${td};color:${escapeHtml(color)};text-align:${align};white-space:pre-wrap;word-break:break-word;">${escapeHtml(headingContent)}</div>`;
     }
 
     case 'image': {
@@ -1313,9 +1353,12 @@ function renderElementInner(
           : '';
 
         const cells = cols.map((c, ci) => {
-          const cfg   = footerCells[c] ?? { fn: 'none' as FooterCellFn };
+          const cfg     = footerCells[c] ?? { fn: 'none' as FooterCellFn };
           const isFirst = ci === 0;
-          const raw   = cfg.fn === 'none' && isFirst ? footerLabel : computeFooterCellPdf(allRows, c, cfg);
+          const rawFn   = computeFooterCellPdf(allRows, c, cfg);
+          const raw     = cfg.fn === 'none' && isFirst
+            ? footerLabel
+            : fmtNumber(rawFn, (p.colFormats as Record<string, string> | undefined)?.[c]);
           const align = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
           return `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;border-top:${bw}px ${borderStyle} ${borderColor};text-align:${align};${mkBS(bsR(showColB && ci < cols.length - 1))}">${escapeHtml(raw)}</td>`;
         }).join('');

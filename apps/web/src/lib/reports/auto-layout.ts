@@ -55,9 +55,10 @@ export function autoLayoutSig(elements: ReportElement[], canvasH = 0, marginTop 
     })
     .map((el) => {
       const p = (el.props ?? {}) as Record<string, unknown>;
-      const rows       = (p.rows as unknown[]) ?? [];
-      const effectiveH = (p.autoOriginalH as number | undefined) ?? el.h;
-      return `${el.id}|${effectiveH}|${el.y}|${rows.length}|${el.page ?? 0}`;
+      const rows          = (p.rows as unknown[]) ?? [];
+      const effectiveH    = (p.autoOriginalH as number | undefined) ?? el.h;
+      const footerEnabled = !!(p.footerRowEnabled);
+      return `${el.id}|${effectiveH}|${el.y}|${rows.length}|${el.page ?? 0}|${footerEnabled}`;
     })
     .join('::');
 }
@@ -239,6 +240,13 @@ export function computeAutoLayout(
     const _hFs    = (_tElPp.headerFontSize as number) ?? (_tElPp.fontSize as number) ?? 12;
     const headerH = _hPy * 2 + Math.ceil(_hFs * 1.5) + 2;
 
+    // Footer row height — computed early so it can be used in both the special-case
+    // block (effectiveHintFit >= allRows.length) and Case 2 (allRows.length <= rowsFit).
+    const _fs     = (_tElPp.fontSize as number) ?? 12;
+    const _cellPy = (_tElPp.cellPaddingY as number) ?? 6;
+    const _fFs    = (_tElPp.footerRowFontSize as number) ?? Math.max(9, Math.round(_fs * 0.9));
+    const footerH = _tElPp.footerRowEnabled ? _cellPy * 2 + _fFs + 2 : 0;
+
     // Cap the DOM-measured hint at the formula-safe row count (excluding footer
     // clearance).  The DOM measurement in element-table.tsx has no awareness of
     // the footer overlay — `available = areaH - theadH` uses the full canvas height —
@@ -284,7 +292,7 @@ export function computeAutoLayout(
         if (belowIdsFull.size > 0) {
           // If all below elements fit on the same page right after the natural table
           // height, keep them there instead of creating an unnecessary new page.
-          const naturalH35 = Math.max(origTableH, Math.min(stretchedH, calcLastContH(tEl, allRows.length)));
+          const naturalH35 = Math.max(origTableH, Math.min(stretchedH, calcLastContH(tEl, allRows.length) + footerH));
           const naturalBottom35 = tEl.y + naturalH35;
           const belowElsFull = workElements.filter((el) => belowIdsFull.has(el.id));
           const allFitFull = belowElsFull.every((el) => {
@@ -359,12 +367,6 @@ export function computeAutoLayout(
     // capped at safeFormula (footer-excluded count), so this is always footer-safe.
     const rowsFit = effectiveHintFit ?? safeFormula;
 
-    // Footer row height (shown only on the last continuation page).
-    const _fs      = (_tElPp.fontSize as number) ?? 12;
-    const _cellPy  = (_tElPp.cellPaddingY as number) ?? 6;
-    const _fFs     = (_tElPp.footerRowFontSize as number) ?? Math.max(9, Math.round(_fs * 0.9));
-    const footerH  = _tElPp.footerRowEnabled ? _cellPy * 2 + _fFs + 2 : 0;
-
     // Average actual row height from the DOM measurement.
     // Numerator uses the actual DOM-available height (stretchedH - IND - headerH),
     // NOT footer-adjusted, so it reflects true measured row heights.
@@ -416,9 +418,9 @@ export function computeAutoLayout(
           origTableH,
           Math.min(
             stretchedH,
-            hintedAvgRowH != null
+            (hintedAvgRowH != null
               ? Math.ceil(urlBarH + headerH + allRows.length * hintedAvgRowH)
-              : calcLastContH(updatedTEl, allRows.length),
+              : calcLastContH(updatedTEl, allRows.length)) + footerH,
           ),
         );
         const naturalBottom2 = tEl.y + naturalH2;

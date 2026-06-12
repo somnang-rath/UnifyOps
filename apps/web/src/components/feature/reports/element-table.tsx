@@ -58,7 +58,9 @@ function computeFooterCell(
     default: return '';
   }
   const dp = cfg.decimals ?? 2;
-  return v % 1 === 0 ? String(v) : v.toFixed(dp);
+  return v % 1 === 0
+    ? v.toLocaleString('en-US')
+    : v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
 interface Props {
