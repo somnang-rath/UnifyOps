@@ -5,6 +5,7 @@ import {
   AlertCircle,
   Bell,
   BookOpen,
+  Bug,
   Calendar,
   CheckSquare,
   Database,
@@ -28,6 +29,8 @@ import { useUIStore } from "@/stores/ui-store"
 import { useBadges } from "@/hooks/use-badges"
 import { cn } from "@/lib/utils"
 
+const SUPER_ADMIN_EMAILS = new Set(['somnang.rath12@gmail.com', 'admin@demo.com'])
+
 type BadgeKey = 'issues' | 'mywork' | 'approvals' | 'notifications'
 
 interface NavItem {
@@ -35,6 +38,7 @@ interface NavItem {
   label: string
   Icon: React.ComponentType<{ className?: string }>
   adminOnly?: boolean
+  superAdminOnly?: boolean
   badge?: BadgeKey
 }
 
@@ -73,6 +77,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/automations", label: "Automations", Icon: Zap },
       { href: "/timeline", label: "Timeline", Icon: Activity },
       { href: "/users", label: "People", Icon: Users, adminOnly: true },
+      { href: "/debug", label: "Debug & Errors", Icon: Bug, superAdminOnly: true },
       { href: "/settings", label: "Settings", Icon: SettingsIcon },
     ],
   },
@@ -83,8 +88,9 @@ export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggle = useUIStore((s) => s.toggleSidebar)
   const setPalette = useUIStore((s) => s.setPalette)
-  const role = useAuthStore((s) => s.user?.role)
-  const isAdmin = role === "admin"
+  const user = useAuthStore((s) => s.user)
+  const isAdmin = user?.role === "admin"
+  const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.has(user.email)
   const { data: badges } = useBadges()
 
   return (
@@ -146,7 +152,11 @@ export function Sidebar() {
 
       <nav className="flex-1 overflow-y-auto px-2.5 pb-4 flex flex-col gap-0.5">
         {NAV.map(({ section, items }) => {
-          const visible = items.filter((i) => !i.adminOnly || isAdmin)
+          const visible = items.filter(
+            (i) =>
+              (!i.adminOnly || isAdmin) &&
+              (!i.superAdminOnly || isSuperAdmin),
+          )
           if (visible.length === 0) return null
           return (
             <div key={section} className="flex flex-col gap-0.5">

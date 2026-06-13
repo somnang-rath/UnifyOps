@@ -11,7 +11,8 @@ import { useNotificationsSocket } from '@/hooks/use-notifications-socket';
 import { useTabBadge } from '@/hooks/use-tab-badge';
 import { refreshAuth } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { LoadingScreen } from '@/components/ui/loading-screen';
+import { LoadingScreen } from '@/components/ui/loading-screen'
+import { ErrorCollector } from '@/components/feature/debug/error-collector';
 
 export default function AppLayout({
   children,
@@ -46,27 +47,29 @@ export default function AppLayout({
   const isReportEditor = /\/reports\/[^/]+\/edit/.test(pathname);
 
   return (
-    <div className="min-h-screen">
-      <NavigationProgress />
-      <Sidebar />
-      <div
-        className={cn(
-          'transition-[margin] duration-300 ease-[cubic-bezier(.4,0,.2,1)]',
-          collapsed ? 'ml-sb-collapsed' : 'ml-sb',
-        )}
-      >
-        {!isReportEditor && <Topbar />}
-        <main
+    <ErrorCollector>
+      <div className="min-h-screen">
+        <NavigationProgress />
+        <Sidebar />
+        <div
           className={cn(
-            isReportEditor
-              ? 'h-screen overflow-hidden'
-              : 'px-6 py-5',
+            'transition-[margin] duration-300 ease-[cubic-bezier(.4,0,.2,1)]',
+            collapsed ? 'ml-sb-collapsed' : 'ml-sb',
           )}
         >
-          {children}
-        </main>
+          {!isReportEditor && <Topbar />}
+          <main
+            className={cn(
+              isReportEditor
+                ? 'h-screen overflow-hidden'
+                : 'px-6 py-5',
+            )}
+          >
+            {children}
+          </main>
+        </div>
+        <CommandPalette />
       </div>
-      <CommandPalette />
-    </div>
+    </ErrorCollector>
   );
 }
