@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useFetchDatasource,
   extractArrayAtPath,
@@ -8,7 +8,7 @@ import {
 import { applyAggregation, type Aggregation } from '@/lib/kpi-format';
 import { cn } from '@/lib/utils';
 import {
-  ChevronDown, ChevronRight, KeyRound, Loader2, Maximize2, Plus, RefreshCw, Tag, Trash2, Type, Wifi, X,
+  ChevronDown, ChevronRight, KeyRound, Layers, Loader2, Maximize2, Plus, RefreshCw, Tag, Trash2, Type, Wifi, X,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -122,6 +122,461 @@ function renderRowTemplate(tmpl: string, row: Record<string, unknown>): string {
   });
 }
 
+// ── Extra helpers ─────────────────────────────────────────────────────────────
+
+/** Walk the full JSON tree and return every usable path — arrays AND flat objects. */
+function detectAllPaths(
+  data: unknown,
+  prefix = '',
+  depth = 0,
+): DetectedArray[] {
+  if (!data || typeof data !== 'object' || depth > 6) return [];
+  const results: DetectedArray[] = [];
+
+  if (Array.isArray(data)) {
+    if (data.length > 0 && typeof data[0] === 'object' && !Array.isArray(data[0])) {
+      const merged: Record<string, unknown> = {};
+      (data as Record<string, unknown>[]).slice(0, 10).forEach((r) => Object.assign(merged, r));
+      const columns = Object.entries(merged)
+        .filter(([, v]) => v !== null && typeof v !== 'object')
+        .map(([key, val]) => ({ key, type: typeof val === 'number' ? 'number' : 'string' }));
+      if (columns.length > 0)
+        results.push({ path: prefix, count: (data as unknown[]).length, columns });
+    }
+    return results;
+  }
+
+  const obj = data as Record<string, unknown>;
+  const scalarCols = Object.entries(obj)
+    .filter(([, v]) => v !== null && (typeof v === 'string' || typeof v === 'number'))
+    .map(([key, val]) => ({ key, type: typeof val === 'number' ? 'number' : 'string' }));
+
+  if (scalarCols.length >= 1 && prefix) {
+    results.push({ path: prefix, count: 1, columns: scalarCols });
+  }
+
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== null && typeof val === 'object') {
+      const childPath = prefix ? `${prefix}.${key}` : key;
+      results.push(...detectAllPaths(val, childPath, depth + 1));
+    }
+  }
+
+  return results;
+}
+
+/** Extract rows — handles both arrays and plain objects (returns 1-row array for objects). */
+function extractRows(data: unknown, path: string): Record<string, unknown>[] {
+  const fromArray = extractArrayAtPath(data, path);
+  if (fromArray.length > 0) return fromArray;
+  // Resolve the path manually and wrap a plain object as a single row
+  const parts = path ? path.split('.') : [];
+  let cur: unknown = data;
+  for (const p of parts) {
+    if (cur == null || typeof cur !== 'object' || Array.isArray(cur)) return [];
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  if (cur && typeof cur === 'object' && !Array.isArray(cur)) return [cur as Record<string, unknown>];
+  return [];
+}
+
+// ── Join Row Modal ─────────────────────────────────────────────────────────────
+
+interface JoinRowModalConfig {
+  path: string;
+  joinMode: boolean;
+  joinRowTemplate: string;
+  joinSeparator: string;
+  aggDefs: AggDef[];
+}
+
+function JoinRowModal({
+  data,
+  detected,
+  initial,
+  onApply,
+  onClose,
+}: {
+  data: unknown;
+  detected: DetectedArray[];
+  initial: JoinRowModalConfig;
+  onApply: (cfg: JoinRowModalConfig) => void;
+  onClose: () => void;
+}) {
+  const allPaths = useMemo(() => {
+    const clientPaths = detectAllPaths(data);
+    const backendKeys = new Set(detected.map((d) => d.path));
+    const merged = [
+      ...detected,
+      ...clientPaths.filter((p) => !backendKeys.has(p.path)),
+    ];
+    return merged.sort((a, b) => a.path.localeCompare(b.path));
+  }, [data, detected]);
+
+  const [selectedPath, setSelectedPath] = useState<string>(
+    () => initial.path || allPaths[0]?.path || '',
+  );
+  const [joinMode, setJoinMode] = useState(initial.joinMode);
+  const [joinRowTemplate, setJoinRowTemplate] = useState(initial.joinRowTemplate);
+  const [joinSeparator, setJoinSeparator] = useState(initial.joinSeparator || ', ');
+  const [aggDefs, setAggDefs] = useState<AggDef[]>(
+    initial.aggDefs.length
+      ? initial.aggDefs
+      : [{ fieldKey: '', aggregation: 'first' as Aggregation }],
+  );
+
+  const selectedPathInfo = allPaths.find((p) => p.path === selectedPath);
+  const rows = useMemo(() => extractRows(data, selectedPath), [data, selectedPath]);
+
+  const cols: { key: string; type: string }[] = (() => {
+    if (selectedPathInfo?.columns?.length) return selectedPathInfo.columns;
+    if (!rows.length) return [];
+    const merged: Record<string, unknown> = {};
+    rows.slice(0, 5).forEach((r) => Object.assign(merged, r));
+    return Object.entries(merged)
+      .filter(([, v]) => v !== null && typeof v !== 'object')
+      .map(([key, val]) => ({ key, type: typeof val === 'number' ? 'number' : 'string' }));
+  })();
+
+  const firstRow = rows[0];
+
+  const previewText = useMemo(() => {
+    if (!rows.length || !joinMode || !joinRowTemplate.trim()) return null;
+    return rows
+      .map((row) => renderRowTemplate(joinRowTemplate, row as Record<string, unknown>))
+      .join(joinSeparator);
+  }, [rows, joinMode, joinRowTemplate, joinSeparator]);
+
+  const handleApply = () => {
+    onApply({
+      path: selectedPath,
+      joinMode,
+      joinRowTemplate,
+      joinSeparator,
+      aggDefs: aggDefs.filter((d) => d.fieldKey),
+    });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl max-h-[90vh] bg-bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-accent-600" />
+            <span className="text-sm font-semibold">Select Data Path</span>
+            <span className="text-[10px] text-text-muted bg-bg-subtle border border-border px-2 py-0.5 rounded-full">
+              {allPaths.length} paths detected
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-bg-hover transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Left: path list */}
+          <div className="w-52 flex-shrink-0 border-r border-border overflow-y-auto p-2 space-y-0.5 bg-bg-subtle/40">
+            {allPaths.map((p) => (
+              <button
+                key={p.path}
+                onClick={() => setSelectedPath(p.path)}
+                className={cn(
+                  'w-full text-left px-2.5 py-2 rounded-lg text-[11px] transition-colors border',
+                  selectedPath === p.path
+                    ? 'bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-400 border-accent-200 dark:border-accent-800'
+                    : 'text-text-muted hover:text-text hover:bg-bg-hover border-transparent',
+                )}
+              >
+                <span className="font-mono font-semibold block truncate">
+                  {p.path || '(root)'}
+                </span>
+                <span className="text-[9px] opacity-60">
+                  {p.count === 1 ? 'object' : `${p.count} rows`} · {p.columns.length} fields
+                </span>
+              </button>
+            ))}
+            {allPaths.length === 0 && (
+              <p className="text-[10px] text-text-muted text-center py-6 px-2">
+                No paths detected
+              </p>
+            )}
+          </div>
+
+          {/* Right: config panel */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {selectedPathInfo ? (
+              <>
+                {/* Field chips */}
+                <div>
+                  <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">
+                    Fields at{' '}
+                    <code className="font-mono normal-case text-accent-600 bg-accent-50 dark:bg-accent-950/30 px-1 rounded">
+                      {selectedPath}
+                    </code>
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {cols.map((col) => (
+                      <span
+                        key={col.key}
+                        className={cn(
+                          'px-2 py-0.5 rounded-full border text-[10px] font-mono',
+                          col.type === 'number'
+                            ? 'border-blue-200 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400'
+                            : 'border-border bg-bg-subtle text-text-muted',
+                        )}
+                      >
+                        {col.key}
+                        {col.type === 'number' ? ' #' : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* First row preview */}
+                {firstRow && (
+                  <div className="bg-bg-subtle border border-border rounded-lg p-3 overflow-auto max-h-28">
+                    <p className="text-[9px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">
+                      First row
+                    </p>
+                    <div className="space-y-0.5">
+                      {Object.entries(firstRow).slice(0, 12).map(([k, v]) => (
+                        <div key={k} className="flex gap-2 text-[10px] font-mono">
+                          <span className="text-accent-600 dark:text-accent-400 font-semibold w-32 truncate flex-shrink-0">
+                            {k}
+                          </span>
+                          <span className="text-text truncate">{String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mode toggle */}
+                <div>
+                  <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">
+                    Output mode
+                  </span>
+                  <div className="flex gap-1">
+                    {(
+                      [
+                        { id: false, label: 'Aggregate', desc: 'Compute SUM / AVG / COUNT' },
+                        { id: true,  label: 'Join rows',  desc: 'Format each row as text'  },
+                      ] as const
+                    ).map(({ id, label, desc }) => (
+                      <button
+                        key={String(id)}
+                        onClick={() => setJoinMode(id)}
+                        className={cn(
+                          'flex-1 px-3 py-2 rounded-lg border text-left transition-colors',
+                          joinMode === id
+                            ? 'border-accent-600 bg-accent-50 dark:bg-accent-950/30'
+                            : 'border-border hover:border-accent-300 hover:bg-bg-hover',
+                        )}
+                      >
+                        <p className={cn('text-[11px] font-semibold', joinMode === id ? 'text-accent-700 dark:text-accent-400' : 'text-text-muted')}>
+                          {label}
+                        </p>
+                        <p className="text-[9px] text-text-muted mt-0.5">{desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Join rows config */}
+                {joinMode && (
+                  <div className="space-y-3 bg-bg-subtle border border-border rounded-xl p-3">
+                    <div>
+                      <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                        Row template
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="{name} ({kwh|round} kWh)"
+                        value={joinRowTemplate}
+                        onChange={(e) => setJoinRowTemplate(e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                      />
+                      <p className="text-[9px] text-text-muted mt-1 leading-relaxed">
+                        Use <code className="bg-bg px-0.5 rounded">&#123;field&#125;</code> or{' '}
+                        <code className="bg-bg px-0.5 rounded">&#123;field|round&#125;</code> for numbers.
+                        Click to insert:
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {cols.map((col) => (
+                          <button
+                            key={col.key}
+                            onClick={() => {
+                              const token = col.type === 'number'
+                                ? `{${col.key}|round}`
+                                : `{${col.key}}`;
+                              setJoinRowTemplate((t) => `${t}${token}`);
+                            }}
+                            className="px-1.5 py-0.5 rounded-full border border-border bg-bg text-[9px] font-mono hover:border-accent-500 hover:text-accent-600 transition-colors"
+                          >
+                            +{col.key}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                        Separator
+                      </span>
+                      <input
+                        type="text"
+                        placeholder=", "
+                        value={joinSeparator}
+                        onChange={(e) => setJoinSeparator(e.target.value)}
+                        className="w-32 px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                      />
+                    </div>
+                    {previewText !== null && (
+                      <div className="bg-bg border border-border rounded-lg p-2.5">
+                        <p className="text-[9px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                          Preview
+                        </p>
+                        <p className="text-xs text-text break-all leading-relaxed">{previewText}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Aggregate config */}
+                {!joinMode && (
+                  <div className="space-y-2">
+                    <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                      Aggregations
+                    </span>
+                    {aggDefs.map((def, idx) => (
+                      <div key={idx} className="space-y-1.5">
+                        <div className="flex items-center gap-1">
+                          {cols.length > 0 ? (
+                            <select
+                              value={def.fieldKey}
+                              onChange={(e) =>
+                                setAggDefs((p) =>
+                                  p.map((d, j) => j === idx ? { ...d, fieldKey: e.target.value } : d),
+                                )
+                              }
+                              className="flex-1 px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors"
+                            >
+                              <option value="">— pick field —</option>
+                              {cols.map((c) => (
+                                <option key={c.key} value={c.key}>
+                                  {c.key}{c.type === 'number' ? ' (#)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              placeholder="field name"
+                              value={def.fieldKey}
+                              onChange={(e) =>
+                                setAggDefs((p) =>
+                                  p.map((d, j) => j === idx ? { ...d, fieldKey: e.target.value } : d),
+                                )
+                              }
+                              className="flex-1 px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input"
+                            />
+                          )}
+                          {idx > 0 && (
+                            <button
+                              onClick={() => setAggDefs((p) => p.filter((_, j) => j !== idx))}
+                              className="p-1.5 rounded text-text-muted hover:text-red-500 flex-shrink-0"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['count', 'sum', 'avg', 'min', 'max', 'first'] as Aggregation[]).map((agg) => (
+                            <button
+                              key={agg}
+                              onClick={() =>
+                                setAggDefs((p) =>
+                                  p.map((d, j) => j === idx ? { ...d, aggregation: agg } : d),
+                                )
+                              }
+                              className={cn(
+                                'py-1 text-[10px] rounded-md border font-semibold transition-colors',
+                                def.aggregation === agg
+                                  ? 'border-accent-600 bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-400'
+                                  : 'border-border text-text-muted hover:text-text',
+                              )}
+                            >
+                              {agg.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                        {idx < aggDefs.length - 1 && <div className="border-t border-border/60" />}
+                      </div>
+                    ))}
+                    <button
+                      onClick={() =>
+                        setAggDefs((p) => [...p, { fieldKey: '', aggregation: 'first' as Aggregation }])
+                      }
+                      className="flex items-center gap-1 text-[10px] text-text-muted hover:text-accent-600 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> Add aggregation
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-text-muted">
+                <Layers className="w-8 h-8 opacity-20" />
+                <p className="text-xs text-center opacity-60">Select a path from the left panel</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 px-5 py-3 border-t border-border flex-shrink-0 bg-bg-card">
+          <p className="text-[10px] text-text-muted">
+            {selectedPath ? (
+              <>
+                Selected: <code className="font-mono text-accent-600">{selectedPath}</code>
+                {' · '}
+                {rows.length === 1 ? '1 row' : `${rows.length} rows`}
+              </>
+            ) : (
+              'No path selected'
+            )}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs rounded-lg border border-border text-text-muted hover:text-text transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              disabled={!selectedPath}
+              className="px-4 py-1.5 text-xs rounded-lg bg-accent-600 text-white hover:bg-accent-700 disabled:opacity-50 font-semibold transition-colors"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Micro-components ──────────────────────────────────────────────────────────
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -175,6 +630,7 @@ export function TextDataSourcePanel({ props, onApply }: Props) {
   const [joinMode,        setJoinMode]        = useState(stored?.joinMode ?? false);
   const [joinRowTemplate, setJoinRowTemplate] = useState(stored?.joinRowTemplate ?? '');
   const [joinSeparator,   setJoinSeparator]   = useState(stored?.joinSeparator ?? ', ');
+  const [showJoinModal,   setShowJoinModal]   = useState(false);
 
   // In join mode the outer template must be {value} — auto-correct if stored value is wrong
   const [template, setTemplate] = useState(() => {
@@ -211,7 +667,7 @@ export function TextDataSourcePanel({ props, onApply }: Props) {
     if (!result) return [];
     const path = effectivePath;
     if (!path) return [];
-    const rows = extractArrayAtPath(result.data, path);
+    const rows = extractRows(result.data, path);
     if (!rows.length) return [];
     const merged: Record<string, unknown> = {};
     rows.slice(0, 5).forEach((r) => Object.assign(merged, r));
@@ -299,7 +755,7 @@ export function TextDataSourcePanel({ props, onApply }: Props) {
       }
       return null;
     }
-    const rows = extractArrayAtPath(result.data, effectivePath);
+    const rows = extractRows(result.data, effectivePath);
     if (!rows.length) return null;
     if (joinMode) {
       if (!joinRowTemplate.trim()) return null;
@@ -314,7 +770,7 @@ export function TextDataSourcePanel({ props, onApply }: Props) {
   /** First row of the active array — used to resolve {fieldName} tokens */
   const firstRow = (() => {
     if (!result || sourceMode !== 'array') return undefined;
-    const rows = extractArrayAtPath(result.data, effectivePath);
+    const rows = extractRows(result.data, effectivePath);
     return rows[0] as Record<string, unknown> | undefined;
   })();
 
@@ -345,6 +801,7 @@ export function TextDataSourcePanel({ props, onApply }: Props) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div className="space-y-3 text-xs">
 
       {/* Active badge */}
@@ -498,7 +955,12 @@ export function TextDataSourcePanel({ props, onApply }: Props) {
               { id: 'root'  as const, label: 'Object field' },
               { id: 'array' as const, label: 'Array + aggregate' },
             ]).map(({ id, label }) => (
-              <button key={id} onClick={() => setSourceMode(id)}
+              <button
+                key={id}
+                onClick={() => {
+                  setSourceMode(id);
+                  if (id === 'array' && hasResult) setShowJoinModal(true);
+                }}
                 className={cn(
                   'flex-1 py-1.5 text-[10px] rounded-md border transition-colors font-semibold',
                   sourceMode === id
@@ -831,5 +1293,29 @@ export function TextDataSourcePanel({ props, onApply }: Props) {
         </div>
       )}
     </div>
+
+    {showJoinModal && result && (
+      <JoinRowModal
+        data={result.data}
+        detected={detected}
+        initial={{
+          path: selectedPath,
+          joinMode,
+          joinRowTemplate,
+          joinSeparator,
+          aggDefs,
+        }}
+        onApply={(cfg) => {
+          setSelectedPath(cfg.path);
+          setJoinMode(cfg.joinMode);
+          setJoinRowTemplate(cfg.joinRowTemplate);
+          setJoinSeparator(cfg.joinSeparator);
+          if (cfg.aggDefs.length) setAggDefs(cfg.aggDefs);
+          setShowJoinModal(false);
+        }}
+        onClose={() => setShowJoinModal(false)}
+      />
+    )}
+    </>
   );
 }
