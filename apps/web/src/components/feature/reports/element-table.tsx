@@ -178,17 +178,23 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   const outerB     = !!p.outerBorder;
   const statusCols = new Set(p.statusColumns ?? []);
 
-  // Estimate how many rows fit in the element height
+  // Footer row — only shown on the last page (or when not paginated)
+  const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
+
+  // Estimate how many rows fit in the element height.
+  // Subtract footer row height so overflowCount correctly detects when the footer
+  // is covering rows — without this, overflowCount stays 0 and the auto-paginate
+  // trigger never fires, leaving autoPageBreak unset and causing the source table
+  // to be erroneously auto-resized by the shouldAutoSize effect.
+  const fFs       = (p.footerRowFontSize as number) ?? Math.max(9, Math.round(fs * 0.9));
+  const footerRowH = showFooter ? (cellPy * 2 + fFs + 2) : 0;
   const urlBarH   = p.dataSource?.url ? 22 : 0;
   const headerH   = hPy * 2 + hFs + 2;
   const rowH      = cellPy * 2 + fs + 2;
-  const rowsFit   = Math.max(1, Math.floor((element.h - headerH - urlBarH) / rowH));
+  const rowsFit   = Math.max(1, Math.floor((element.h - headerH - urlBarH - footerRowH) / rowH));
   // Overflow = explicit endRow cutoff OR height-based
   const overflowCount = remainingAfterEnd > 0 ? remainingAfterEnd
     : Math.max(0, rows.length - rowsFit);
-
-  // Footer row — only shown on the last page (or when not paginated)
-  const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
 
   // Use auto layout when autoPageBreak is on and no explicit colWidths — lets the
   // browser size each column by its content instead of distributing width equally.
@@ -226,7 +232,12 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     // so the flex layout reduces the table-area clientHeight by exactly INDICATOR_H).
     // Do NOT subtract 24 again here — that was a double-deduction that caused the
     // underflow estimator to under-count by ~1 row, keeping unnecessary continuation pages.
-    const available = areaH - theadH;
+    //
+    // When the footer is rendered (showFooter=true), it occupies space at the bottom of
+    // the table that is not available for body rows.  Subtract its measured height so
+    // the fit count reflects only visible body rows above the footer.
+    const tfootH = showFooter ? (tfootRef.current?.offsetHeight ?? 0) : 0;
+    const available = areaH - theadH - tfootH;
     if (available <= 0) return;
 
     const bodyRows = tbody.rows;

@@ -694,7 +694,17 @@ export function useReportController({
     if (_w !== undefined)        patch.w        = _w as number;
     if (_h !== undefined)        patch.h        = _h as number;
     if (_rotation !== undefined) patch.rotation = _rotation as number;
+    // When the footer row is toggled, the previously stored DOM-measured row-fit hint
+    // was measured without footer clearance and is now stale.  Clear it so that
+    // computeAutoLayout re-measures from scratch rather than using an inflated count
+    // that could skip the continuation pages the footer row requires.
+    if ('footerRowEnabled' in rest) {
+      const { [selectedId]: _removed, ...remainingHints } = actualFitHintsRef.current;
+      actualFitHintsRef.current = remainingHints;
+      autoLayoutSigRef.current = '';
+    }
     updateElement(selectedId, patch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, allElements, updateElement]);
 
   // ── keyboard shortcuts ───────────────────────────────────────────────────

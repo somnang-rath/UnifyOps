@@ -658,7 +658,13 @@ function calcContTableHeight(el: ReportElement): number {
   const CONT_BADGE = 20;                               // "Continued …" badge
   const headerH    = hPy * 2 + Math.ceil(hFs * 1.2) + 2; // +2 for header border-bottom
   const rowH       = cPy * 2 + Math.ceil(fs  * 1.2) + 1; // +1 for row border-bottom
-  return CONT_BADGE + headerH + rowCount * rowH;
+
+  // Footer appears on the last continuation page (endRow undefined = all remaining rows shown)
+  const isLastSlice = endRow === undefined;
+  const _fFs    = (p.footerRowFontSize as number) ?? Math.max(9, Math.round(fs * 0.9));
+  const footerH = (p.footerRowEnabled && isLastSlice) ? cPy * 2 + _fFs + 2 : 0;
+
+  return CONT_BADGE + headerH + rowCount * rowH + footerH;
 }
 
 // ── Reposition auto-moved elements ────────────────────────────────────────────
@@ -1138,6 +1144,8 @@ function renderElementInner(
       const startRow = Math.max(0, (p.startRow as number) ?? 0);
       const endRow   = p.endRow as number | undefined;
       const rows     = allRows.slice(startRow, endRow);
+      // Moved up so effectiveH (see below) and heightStyle can use it.
+      const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
 
       // Default colors mirror the canvas element-table.tsx defaults exactly:
       //  headerBg   → var(--bg-subtle)  ≈ #f3f4f6
@@ -1205,6 +1213,17 @@ function renderElementInner(
         active ? `inset 0 -${bw}px 0 0 ${color}` : '';
       const perRowH    = (p.equalRowHeight && p.rowHeight) ? (p.rowHeight as number) : 0;
 
+      // Self-correcting footer height: templates saved before the footer-height fix may have
+      // el.h that omits footerH, causing <tfoot> to be clipped in the PDF.  Compute the
+      // minimum content height and expand el.h if needed — makes the backend self-correcting
+      // regardless of what was persisted in the DB.
+      const fFs_est    = (p.footerRowFontSize as number | undefined) ?? Math.max(9, Math.round(fs * 0.9));
+      const fH_est     = showFooter ? cellPy * 2 + fFs_est + 2 : 0;
+      const hH_est     = hPy * 2 + Math.ceil(hFs * 1.2) + 2;
+      const rH_est     = perRowH > 0 ? perRowH : cellPy * 2 + Math.ceil(fs * 1.2) + 1;
+      const minElH     = contBadgeH + hH_est + rows.length * rH_est + fH_est;
+      const effectiveH = showFooter ? Math.max(el.h, minElH) : el.h;
+
       // computeAutoLayout stretches auto-paginated source tables to fill the page so
       // the canvas can DOM-measure actual row heights. The PDF has no DOM measurement,
       // so for auto-layout tables we use max-height so content can shrink (no blank
@@ -1215,8 +1234,8 @@ function renderElementInner(
       // so the table doesn't bleed into the footer. autoHeight tables are unconstrained.
       const showingAllRows = rows.length === allRows.length;
       const heightStyle   = isAutoH ? ''
-        : (isAutoLayout || showingAllRows) ? `max-height:${el.h}px;`
-        : `height:${el.h}px;`;
+        : (isAutoLayout || showingAllRows) ? `max-height:${effectiveH}px;`
+        : `height:${effectiveH}px;`;
 
       const tableBase = `left:${el.x}px;top:${el.y}px;width:${el.w}px;${heightStyle}transform:rotate(${el.rotation ?? 0}deg);z-index:${el.zIndex ?? 0};`;
 
@@ -1338,8 +1357,7 @@ function renderElementInner(
       const tableHeightStyle = perRowH > 0 ? 'height:100%;' : '';
 
       // Footer row — inside the same <table> so column widths always align with data columns.
-      // Only on the last page (endRow undefined or endRow >= allRows.length).
-      const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
+      // showFooter was already declared above (moved up for effectiveH computation).
       let tfootHtml = '';
       if (showFooter) {
         const footerBg    = escapeHtml((p.footerRowBg as string) ?? '#f3f4f6');
@@ -1368,7 +1386,14 @@ function renderElementInner(
         tfootHtml = `<tfoot style="font-size:${footerFs}px;"><tr style="background:${footerBg};color:${footerColor};${footerFw}${footerTrH}">${rowNumTd}${cells}</tr></tfoot>`;
       }
 
-      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<div style="flex:1;overflow:hidden;"><table style="width:100%;${tableHeightStyle}table-layout:${tblLayout};border-collapse:separate;border-spacing:0;font-size:${fs}px;line-height:1.2;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody>${tfootHtml}</table></div></div>`;
+      // When a summary footer is shown, the inner wrapper must NOT clip — the footer sits at
+      // the bottom of the same <table> and would be hidden by overflow:hidden if any body
+      // rows push the table taller than the wrapper.  auto-layout.ts already reserves footer
+      // height in the element bounds, so there is no real overflow to clip.
+      // Without a footer the overflow:hidden guard is still needed to prevent body rows from
+      // bleeding into header/footer overlay areas on non-last continuation pages.
+      const innerOverflow = showFooter ? '' : 'overflow:hidden;';
+      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<div style="flex:1;${innerOverflow}"><table style="width:100%;${tableHeightStyle}table-layout:${tblLayout};border-collapse:separate;border-spacing:0;font-size:${fs}px;line-height:1.2;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody>${tfootHtml}</table></div></div>`;
     }
 
     case 'grouped-table': {
@@ -1455,12 +1480,18 @@ function renderElementInner(
         return `<th style="background:${headerBg};color:${headerFg};padding:${hPy}px ${cellPx2}px;font-size:${hFs}px;font-weight:${hFw};line-height:1.3;text-align:${escapeHtml(c.align ?? 'center')};vertical-align:middle;border-bottom:${bLine};${bR}white-space:pre-wrap;">${escapeHtml(lines[0])}${br}</th>`;
       }).join('');
 
-      // Build body rows
-      const bodyRows: string[] = [];
-      for (let gi = 0; gi < groups.length; gi++) {
-        const grp = groups[gi];
-        const isLastGroup = gi === groups.length - 1;
-        const groupBb = !isLastGroup ? bLine : 'none';
+      const startGI   = (p.startGroupIdx as number | undefined) ?? 0;
+      const endGI     = (p.endGroupIdx   as number | undefined); // undefined = all remaining
+      const isCont    = !!(p.isContinuation);
+      const visGroups = groups.slice(startGI, endGI);
+
+      // Re-build bodyRows for visible groups only
+      const visBodyRows: string[] = [];
+      for (let gi = 0; gi < visGroups.length; gi++) {
+        const grp        = visGroups[gi];
+        const globalGI   = startGI + gi;
+        const isLastGroup = gi === visGroups.length - 1;
+        const groupBb    = !isLastGroup ? bLine : 'none';
         let detRowIdx = 0;
 
         for (let si = 0; si < grp.sites.length; si++) {
@@ -1475,9 +1506,9 @@ function renderElementInner(
             const isFirstInSite  = di === 0;
             const isLastInGroup  = isLastSite && di === detailRows.length - 1;
             const isLastInSite   = di === detailRows.length - 1;
-            const rowBb    = !isLastInGroup ? bLine : groupBb;
+            const rowBb     = !isLastInGroup ? bLine : groupBb;
             const siteRowBb = !isLastInSite ? bLine : (isLastInGroup ? groupBb : bLine);
-            const altBg    = p.stripedRows && detRowIdx % 2 === 1 ? escapeHtml((p.altRowBg as string | undefined) ?? '#f9fafb') : '';
+            const altBg     = p.stripedRows && detRowIdx % 2 === 1 ? escapeHtml((p.altRowBg as string | undefined) ?? '#f9fafb') : '';
 
             const cells: string[] = [];
             for (let ci = 0; ci < cols.length; ci++) {
@@ -1487,7 +1518,7 @@ function renderElementInner(
 
               if (col.level === 'group_no') {
                 if (isFirstInGroup) {
-                  cells.push(`<td rowspan="${grp.totalDetailRows}" style="${baseStyle}${p.groupBg ? `background:${escapeHtml(p.groupBg as string)};` : ''}border-bottom:${groupBb};">${gi + 1}</td>`);
+                  cells.push(`<td rowspan="${grp.totalDetailRows}" style="${baseStyle}${p.groupBg ? `background:${escapeHtml(p.groupBg as string)};` : ''}border-bottom:${groupBb};">${globalGI + 1}</td>`);
                 }
               } else if (col.level === 'group') {
                 if (isFirstInGroup) {
@@ -1501,12 +1532,15 @@ function renderElementInner(
                 cells.push(`<td style="${baseStyle}border-bottom:${rowBb};${altBg ? `background:${altBg};` : ''}">${escapeHtml(gFmtVal(gGetField(detail as Record<string, unknown>, col.field), col.format))}</td>`);
               }
             }
-
-            bodyRows.push(`<tr>${cells.join('')}</tr>`);
+            visBodyRows.push(`<tr>${cells.join('')}</tr>`);
             detRowIdx++;
           }
         }
       }
+
+      const contBadgeGT = isCont
+        ? `<div style="flex-shrink:0;padding:2px 8px;background:rgba(99,102,241,0.08);border-bottom:1px dashed #6366f1;font-size:9px;color:#6366f1;font-weight:600;">&#8617; Continued from previous page</div>`
+        : '';
 
       const outerStyle2 = outerB2 ? `border:${bLine};border-radius:4px;` : '';
       const tableBase2  = `left:${el.x}px;top:${el.y}px;width:${el.w}px;max-height:${el.h}px;transform:rotate(${el.rotation ?? 0}deg);z-index:${el.zIndex ?? 0};`;
@@ -1515,7 +1549,7 @@ function renderElementInner(
         ? `<tr><td colspan="${cols.length}" style="padding:16px 8px;text-align:center;color:#9ca3af;font-size:10px;">No data</td></tr>`
         : '';
 
-      return `<div class="el" style="${tableBase2}${outerStyle2}${ff2}overflow:hidden;display:flex;flex-direction:column;"><div style="flex:1;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:${fs2}px;line-height:1.3;${ff2}">${cg2}<thead><tr>${theadCells}</tr></thead><tbody>${emptyRow}${bodyRows.join('')}</tbody></table></div></div>`;
+      return `<div class="el" style="${tableBase2}${outerStyle2}${ff2}overflow:hidden;display:flex;flex-direction:column;">${contBadgeGT}<div style="flex:1;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:${fs2}px;line-height:1.3;${ff2}">${cg2}<thead><tr>${theadCells}</tr></thead><tbody>${emptyRow}${visBodyRows.join('')}</tbody></table></div></div>`;
     }
 
     default:
