@@ -7,7 +7,7 @@ import {
 } from '@/hooks/use-report-datasource';
 import { cn } from '@/lib/utils';
 import {
-  BarChart2, ChevronDown, ChevronRight, KeyRound, Loader2, Plus, RefreshCw, Trash2, Wifi,
+  BarChart2, ChevronDown, ChevronRight, KeyRound, Loader2, Maximize2, Plus, RefreshCw, Trash2, Wifi, X,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ type HeaderRow = { key: string; value: string };
 interface Props {
   props: Record<string, unknown>;
   onApply: (patch: Record<string, unknown>) => void;
+  onFetched?: (rawApiResponse: unknown) => void;
 }
 
 // ── Micro-components ──────────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ function MiniPreview({ rows, columns, highlight }: {
 
 const PALETTE = ['#6366f1','#f59e0b','#22c55e','#ef4444','#06b6d4','#ec4899','#8b5cf6','#14b8a6'];
 
-export function ChartDataSourcePanel({ props, onApply }: Props) {
+export function ChartDataSourcePanel({ props, onApply, onFetched }: Props) {
   const stored = props.dataSource as StoredChartDatasource | undefined;
 
   const [url, setUrl]         = useState(stored?.url ?? '');
@@ -137,7 +138,8 @@ export function ChartDataSourcePanel({ props, onApply }: Props) {
   const [bearerToken, setBearerToken] = useState('');
   const [showAuth,    setShowAuth]    = useState(false);
   const [showHeaders, setShowHeaders] = useState(false);
-  const [showJson,    setShowJson]    = useState(false);
+  const [showJson,       setShowJson]       = useState(false);
+  const [jsonFullscreen, setJsonFullscreen] = useState(false);
   const [selectedPath, setSelectedPath] = useState(stored?.dataPath ?? '');
   const [nameKey,   setNameKey]   = useState(stored?.nameKey   ?? '');
   const [valueKey,  setValueKey]  = useState(stored?.valueKey  ?? '');
@@ -175,6 +177,7 @@ export function ChartDataSourcePanel({ props, onApply }: Props) {
           if (numCols[0]) setValueKey(numCols[0].key);
           if (isDualAxis && numCols[1]) setValue2Key(numCols[1].key);
         }
+        onFetched?.(res.data);
         setShowJson(true);
       },
     });
@@ -204,6 +207,8 @@ export function ChartDataSourcePanel({ props, onApply }: Props) {
         ...(isDualAxis && value2Key ? { value2Key } : {}),
         ...(colorKey ? { colorKey } : {}),
       } satisfies StoredChartDatasource,
+      rawApiResponse: result.data,
+      rawSeriesRows: liveRows.slice(0, 50),
       seriesData: liveRows.slice(0, 50).map((row, i) => ({
         name:  String(row[nameKey] ?? ''),
         value: Number(row[valueKey] ?? 0),
@@ -310,16 +315,55 @@ export function ChartDataSourcePanel({ props, onApply }: Props) {
       {/* JSON preview */}
       {hasResult && (
         <div>
-          <button onClick={() => setShowJson((v) => !v)}
-            className="flex items-center gap-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider hover:text-text transition-colors">
-            {showJson ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            JSON Response
-          </button>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setShowJson((v) => !v)}
+              className="flex items-center gap-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider hover:text-text transition-colors">
+              {showJson ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              JSON Response
+            </button>
+            <button
+              onClick={() => setJsonFullscreen(true)}
+              title="Full screen"
+              className="p-1 rounded text-text-muted hover:text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
+            >
+              <Maximize2 className="w-3 h-3" />
+            </button>
+          </div>
           {showJson && (
             <pre className="mt-1.5 text-[10px] bg-bg-subtle border border-border rounded-md p-2 overflow-auto max-h-28 whitespace-pre-wrap break-all leading-relaxed">
               {jsonPreview}{jsonPreview.length >= 4000 && '\n… (truncated)'}
             </pre>
           )}
+        </div>
+      )}
+
+      {/* JSON fullscreen modal */}
+      {jsonFullscreen && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => setJsonFullscreen(false)}
+        >
+          <div
+            className="relative w-full max-w-4xl h-[80vh] bg-bg-card border border-border rounded-xl shadow-lg flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-accent-600" />
+                <span className="text-sm font-semibold text-text">JSON Response</span>
+                <span className="text-[10px] text-text-muted font-mono truncate max-w-[300px]">{url}</span>
+              </div>
+              <button
+                onClick={() => setJsonFullscreen(false)}
+                className="p-1.5 rounded-md text-text-muted hover:text-text hover:bg-bg-hover transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto p-4 text-[12px] bg-bg-subtle font-mono whitespace-pre-wrap break-all leading-relaxed text-text">
+              {JSON.stringify(result?.data, null, 2)}
+            </pre>
+          </div>
         </div>
       )}
 

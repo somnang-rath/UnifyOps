@@ -167,6 +167,262 @@ function Toggle({
   );
 }
 
+// ── Helpers for field-path mode ───────────────────────────────────────────────
+
+type ScalarLeaf = { path: string; value: string | number };
+
+function extractScalarPaths(data: unknown, prefix = '', depth = 0): ScalarLeaf[] {
+  if (depth > 6 || !data || typeof data !== 'object' || Array.isArray(data)) return [];
+  const results: ScalarLeaf[] = [];
+  for (const [key, val] of Object.entries(data as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (typeof val === 'number' || typeof val === 'string') {
+      results.push({ path, value: val as string | number });
+    } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+      results.push(...extractScalarPaths(val, path, depth + 1));
+    }
+  }
+  return results;
+}
+
+function resolveJsonPath(data: unknown, path: string): string | number | undefined {
+  let cur: unknown = data;
+  for (const part of path.split('.')) {
+    if (cur == null || typeof cur !== 'object' || Array.isArray(cur)) return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return typeof cur === 'string' || typeof cur === 'number' ? cur : undefined;
+}
+
+// ── Center label section ───────────────────────────────────────────────────────
+
+type CenterAgg  = 'sum' | 'count' | 'avg' | 'min' | 'max';
+type CenterMode = 'aggregate' | 'field';
+
+function CenterLabelFromChartSection({
+  props: p,
+  onApply,
+}: {
+  props: Record<string, unknown>;
+  onApply: (centerText: string) => void;
+}) {
+  const rawRows   = (p.rawSeriesRows  as Record<string, unknown>[] | undefined) ?? [];
+  const rawApi    = p.rawApiResponse  as unknown;
+
+  // Numeric columns from series rows (for aggregate mode)
+  const numericCols: string[] = (() => {
+    if (!rawRows.length) return [];
+    const merged: Record<string, unknown> = {};
+    rawRows.slice(0, 5).forEach((r) => Object.assign(merged, r));
+    return Object.entries(merged).filter(([, v]) => typeof v === 'number').map(([k]) => k);
+  })();
+
+  // All scalar leaves from the full API response (for field-path mode)
+  const scalarLeaves: ScalarLeaf[] = rawApi ? extractScalarPaths(rawApi) : [];
+
+  const hasData = rawRows.length > 0 || scalarLeaves.length > 0;
+
+  const [mode,     setMode]     = useState<CenterMode>('aggregate');
+  const [field,    setField]    = useState(() => numericCols[0] ?? '');
+  const [agg,      setAgg]      = useState<CenterAgg>('sum');
+  const [template, setTemplate] = useState('{value}');
+  const [pathInput, setPathInput] = useState('');
+  const [search,    setSearch]    = useState('');
+
+  // Keep field in sync when raw rows first arrive
+  useEffect(() => {
+    if (field === '' && numericCols.length > 0) setField(numericCols[0]);
+  }, [numericCols.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Aggregate mode computed value ─────────────────────────────────────────
+  const nums = rawRows.map((r) => Number(r[field] ?? 0)).filter((n) => !isNaN(n));
+  const aggComputed = (() => {
+    if (!nums.length || !field) return null;
+    if (agg === 'count') return nums.length;
+    if (agg === 'sum')   return nums.reduce((a, b) => a + b, 0);
+    if (agg === 'avg')   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length * 10) / 10;
+    if (agg === 'min')   return Math.min(...nums);
+    if (agg === 'max')   return Math.max(...nums);
+    return null;
+  })();
+  const aggPreview = aggComputed !== null ? template.replace(/\{value\}/g, String(aggComputed)) : null;
+
+  // ── Field-path mode computed value ────────────────────────────────────────
+  const effectivePath    = pathInput.trim();
+  const resolvedValue    = effectivePath ? resolveJsonPath(rawApi, effectivePath) : undefined;
+  const fieldPreview     = resolvedValue !== undefined
+    ? template.replace(/\{value\}/g, String(resolvedValue))
+    : null;
+
+  const filteredLeaves   = search
+    ? scalarLeaves.filter((l) => l.path.toLowerCase().includes(search.toLowerCase()))
+    : scalarLeaves;
+
+  const currentPreview = mode === 'aggregate' ? aggPreview : fieldPreview;
+
+  return (
+    <div className="border-t border-border pt-3 space-y-3">
+      <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Center Label</p>
+
+      {!hasData && (
+        <p className="text-[10px] text-text-muted bg-bg-subtle border border-border rounded-md px-2 py-1.5">
+          Fetch chart data first using the panel above.
+        </p>
+      )}
+
+      {hasData && (
+        <>
+          {/* Mode toggle */}
+          <div className="flex gap-1">
+            {([
+              { id: 'aggregate' as CenterMode, label: 'Aggregate' },
+              { id: 'field'     as CenterMode, label: 'Field path' },
+            ]).map(({ id, label }) => (
+              <button key={id} onClick={() => setMode(id)}
+                className={cn('flex-1 py-1.5 text-[10px] rounded-md border font-semibold transition-colors',
+                  mode === id
+                    ? 'border-accent-600 bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-400'
+                    : 'border-border text-text-muted hover:text-text')}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Aggregate mode ── */}
+          {mode === 'aggregate' && (
+            <>
+              {numericCols.length > 0 ? (
+                <>
+                  <div>
+                    <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1">Field</span>
+                    <select value={field} onChange={(e) => setField(e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors">
+                      {numericCols.map((col) => <option key={col} value={col}>{col}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1">Aggregation</span>
+                    <div className="grid grid-cols-5 gap-1">
+                      {(['sum', 'count', 'avg', 'min', 'max'] as CenterAgg[]).map((a) => (
+                        <button key={a} onClick={() => setAgg(a)}
+                          className={cn('py-1 text-[10px] rounded-md border font-semibold uppercase transition-colors',
+                            agg === a
+                              ? 'border-accent-600 bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-400'
+                              : 'border-border text-text-muted hover:text-text')}>
+                          {a}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[10px] text-text-muted">No numeric fields found in series rows.</p>
+              )}
+            </>
+          )}
+
+          {/* ── Field path mode ── */}
+          {mode === 'field' && (
+            <>
+              <div>
+                <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                  Path <span className="normal-case font-normal opacity-60">(dot-notation)</span>
+                </span>
+                <input
+                  type="text"
+                  value={pathInput}
+                  onChange={(e) => setPathInput(e.target.value)}
+                  placeholder="data.summary.active_connectors"
+                  className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors font-mono"
+                />
+                {effectivePath && resolvedValue === undefined && (
+                  <p className="text-[9px] text-red-500 mt-0.5">Path not found in response</p>
+                )}
+                {resolvedValue !== undefined && (
+                  <p className="text-[9px] text-green-600 dark:text-green-400 mt-0.5 font-mono">→ {String(resolvedValue)}</p>
+                )}
+              </div>
+
+              {/* Searchable leaf list */}
+              {scalarLeaves.length > 0 && (
+                <div>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search fields…"
+                    className="w-full px-2 py-1 text-[10px] rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors mb-1"
+                  />
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
+                    {filteredLeaves.map((leaf) => (
+                      <button
+                        key={leaf.path}
+                        onClick={() => setPathInput(leaf.path)}
+                        className={cn(
+                          'w-full flex items-center justify-between px-2 py-1.5 text-left transition-colors hover:bg-bg-hover',
+                          pathInput === leaf.path && 'bg-accent-50 dark:bg-accent-950/30',
+                        )}
+                      >
+                        <span className={cn(
+                          'font-mono text-[10px] truncate',
+                          pathInput === leaf.path ? 'text-accent-700 dark:text-accent-400' : 'text-text-muted',
+                        )}>
+                          {leaf.path}
+                        </span>
+                        <span className={cn(
+                          'text-[10px] font-semibold ml-2 flex-shrink-0',
+                          typeof leaf.value === 'number' ? 'text-green-600 dark:text-green-400' : 'text-text-sub',
+                        )}>
+                          {typeof leaf.value === 'string' && leaf.value.length > 20
+                            ? `${leaf.value.slice(0, 20)}…`
+                            : String(leaf.value)}
+                        </span>
+                      </button>
+                    ))}
+                    {filteredLeaves.length === 0 && (
+                      <p className="text-[10px] text-text-muted px-2 py-2">No fields match</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Template (shared) */}
+          <div>
+            <span className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1">Template</span>
+            <input type="text" value={template} onChange={(e) => setTemplate(e.target.value)}
+              placeholder="{value}"
+              className="w-full px-2 py-1.5 text-xs rounded-md border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors" />
+            <p className="text-[9px] text-text-muted mt-0.5">
+              Use <code className="bg-bg-subtle px-0.5 rounded">&#123;value&#125;</code> for the result, e.g. <code className="bg-bg-subtle px-0.5 rounded">&#123;value&#125; kWh</code>
+            </p>
+          </div>
+
+          {currentPreview !== null && (
+            <div className="flex items-center gap-2 bg-bg-subtle border border-border rounded-md px-2 py-1.5">
+              <span className="text-xs font-semibold text-text">{currentPreview}</span>
+              <span className="text-[9px] text-text-muted ml-auto">preview</span>
+            </div>
+          )}
+
+          <button
+            onClick={() => { if (currentPreview !== null) onApply(currentPreview); }}
+            disabled={currentPreview === null}
+            className={cn(
+              'w-full py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors',
+              'bg-bg-card border border-border hover:border-accent-400 hover:text-accent-600',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
+            )}
+          >
+            Apply to Center Label
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export function PropertiesPanel({ selected, template, onElementChange, onTemplateChange, wide, onToggleWide }: Props) {
@@ -1938,6 +2194,7 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                       <option value="none">None</option>
                                       <option value="total">Total count</option>
                                       <option value="custom">Custom text</option>
+                                      <option value="datasource">From data source</option>
                                     </select>
                                   </div>
                                   {(p?.centerLabel as string) !== 'none' && (p?.centerLabel as string) && (
@@ -1947,6 +2204,11 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                           <Label>Text</Label>
                                           <PanelInput value={(p?.centerText as string) ?? ''} onChange={(e) => set({ centerText: e.target.value })} placeholder="e.g. Total" />
                                         </div>
+                                      )}
+                                      {(p?.centerLabel as string) === 'datasource' && (
+                                        <p className="text-[10px] text-text-muted bg-bg-subtle border border-border rounded-md px-2 py-1.5">
+                                          Configure the data source in the <strong>Data Source</strong> tab →
+                                        </p>
                                       )}
                                       <div className="grid grid-cols-2 gap-x-2">
                                         <div>
@@ -2769,7 +3031,14 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
               key={selected?.id}
               props={p ?? {}}
               onApply={(patch) => onElementChange(patch)}
+              onFetched={(rawApiResponse) => onElementChange({ ...(p ?? {}), rawApiResponse })}
             />
+            {(p?.centerLabel as string) === 'datasource' && (
+              <CenterLabelFromChartSection
+                props={p ?? {}}
+                onApply={(centerText) => onElementChange({ ...(p ?? {}), centerText })}
+              />
+            )}
           </div>
         )}
 

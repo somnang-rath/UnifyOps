@@ -149,7 +149,8 @@ export function ElementChart({ element }: Props) {
     // Pie-specific
     pieStyle?: 'solid' | 'donut';
     innerRadius?: number;
-    centerLabel?: 'none' | 'total' | 'custom';
+    centerLabel?: 'none' | 'total' | 'custom' | 'datasource';
+    centerDataSource?: unknown;
     centerText?: string;
     centerFontSize?: number;
     centerColor?: string;
