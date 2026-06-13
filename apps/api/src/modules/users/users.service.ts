@@ -5,8 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import * as speakeasy from 'speakeasy';
@@ -16,6 +16,7 @@ import { ApiToken, ApiTokenDocument } from './schemas/api-token.schema';
 import {
   AdminUpdateUserDto,
   ChangePasswordDto,
+  ClearDataDto,
   Confirm2FADto,
   CreateApiTokenDto,
   InviteUserDto,
@@ -26,12 +27,31 @@ import {
   mergeNotifPrefs,
   type NotifPrefs,
 } from '../notifications/notif-prefs';
+import { ActivityService } from '../activity/activity.service';
+
+// Collections grouped by the field that scopes them to a user.
+// Used by clearAllData to delete only the requesting user's records.
+const OWNER_SCOPED = [
+  'projects', 'issues', 'mergerequests', 'wikipages',
+  'notes', 'notefolders', 'fileitems', 'folders',
+  'workbooks', 'workbookcomments', 'automations', 'reporttemplates',
+] as const;
+
+const USER_ID_SCOPED = [
+  'kanbanboards', 'kanbanpositions', 'backupfiles', 'backupschedules',
+  'notifications',
+] as const;
+
+// activities use actorId to record who performed the action
+const ACTOR_SCOPED = ['activities'] as const;
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(ApiToken.name) private apiTokenModel: Model<ApiTokenDocument>,
+    @InjectConnection() private connection: Connection,
+    private activity: ActivityService,
   ) {}
 
   findById(id: string) {
@@ -199,6 +219,96 @@ export class UsersService {
     if (!ok) throw new BadRequestException('Current password is incorrect');
     u.passwordHash = await bcrypt.hash(dto.newPassword, 12);
     await u.save();
+    return { ok: true };
+  }
+
+  async clearAllData(userId: string, dto: ClearDataDto) {
+    const u = await this.userModel.findById(userId).select('+passwordHash');
+    if (!u) throw new NotFoundException();
+    const ok = await bcrypt.compare(dto.password, u.passwordHash);
+    if (!ok) throw new BadRequestException('Password is incorrect');
+
+    const db = this.connection.db;
+    if (!db) throw new Error('Database connection unavailable');
+
+    const oid = new Types.ObjectId(userId);
+
+    // Collect child-record parent IDs before deletion so we can cascade.
+    const [automationIds, templateIds, fileItemKeys] = await Promise.all([
+      db.collection('automations')
+        .find({ ownerId: oid }, { projection: { _id: 1 } })
+        .toArray()
+        .then((docs) => docs.map((d) => d._id as Types.ObjectId)),
+      db.collection('reporttemplates')
+        .find({ ownerId: oid }, { projection: { _id: 1 } })
+        .toArray()
+        .then((docs) => docs.map((d) => d._id as Types.ObjectId)),
+      db.collection('fileitems')
+        .find({ ownerId: oid }, { projection: { storageKey: 1 } })
+        .toArray()
+        .then((docs) =>
+          docs
+            .map((d) => d.storageKey as string | undefined)
+            .filter(Boolean) as string[],
+        ),
+    ]);
+
+    // Delete all records scoped to this user.
+    await Promise.all([
+      ...OWNER_SCOPED.map((c) =>
+        db.collection(c).deleteMany({ ownerId: oid }),
+      ),
+      ...USER_ID_SCOPED.map((c) =>
+        db.collection(c).deleteMany({ userId: oid }),
+      ),
+      ...ACTOR_SCOPED.map((c) =>
+        db.collection(c).deleteMany({ actorId: oid }),
+      ),
+    ]);
+
+    // Cascade: automation logs (keyed on automationId)
+    if (automationIds.length) {
+      await db
+        .collection('automationlogs')
+        .deleteMany({ automationId: { $in: automationIds } });
+    }
+
+    // Cascade: report runs and their delivery logs (keyed on templateId / runId)
+    if (templateIds.length) {
+      const runDocs = await db
+        .collection('reportruns')
+        .find({ templateId: { $in: templateIds } }, { projection: { _id: 1 } })
+        .toArray();
+      const runIds = runDocs.map((d) => d._id as Types.ObjectId);
+      await db
+        .collection('reportruns')
+        .deleteMany({ templateId: { $in: templateIds } });
+      if (runIds.length) {
+        await db
+          .collection('reportdeliverylogs')
+          .deleteMany({ runId: { $in: runIds } });
+      }
+    }
+
+    // Cascade: GridFS uploaded files and their binary chunks
+    if (fileItemKeys.length) {
+      const gridfsIds = fileItemKeys.map((k) => new Types.ObjectId(k));
+      await Promise.all([
+        db.collection('uploads.files').deleteMany({ _id: { $in: gridfsIds } }),
+        db.collection('uploads.chunks').deleteMany({
+          files_id: { $in: gridfsIds },
+        }),
+      ]);
+    }
+
+    await this.activity.log(
+      userId,
+      'system',
+      userId,
+      'clear-data',
+      'All application data cleared',
+    );
+
     return { ok: true };
   }
 

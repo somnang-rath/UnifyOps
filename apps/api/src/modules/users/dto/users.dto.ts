@@ -94,3 +94,8 @@ export const InviteUserSchema = z.object({
     .default('member'),
 });
 export type InviteUserDto = z.infer<typeof InviteUserSchema>;
+
+export const ClearDataSchema = z.object({
+  password: z.string().min(1),
+});
+export type ClearDataDto = z.infer<typeof ClearDataSchema>;

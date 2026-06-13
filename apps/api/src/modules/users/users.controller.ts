@@ -16,6 +16,8 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   ChangePasswordDto,
   ChangePasswordSchema,
+  ClearDataDto,
+  ClearDataSchema,
   Confirm2FADto,
   Confirm2FASchema,
   CreateApiTokenDto,
@@ -57,6 +59,16 @@ export class UsersController {
     @Body() dto: ChangePasswordDto,
   ) {
     return this.users.changePassword(me.id, dto);
+  }
+
+  @HttpCode(200)
+  @Post('me/clear-data')
+  @UsePipes(new ZodValidationPipe(ClearDataSchema))
+  clearData(
+    @CurrentUser() me: { id: string },
+    @Body() dto: ClearDataDto,
+  ) {
+    return this.users.clearAllData(me.id, dto);
   }
 
   @Get('me/notif-prefs')

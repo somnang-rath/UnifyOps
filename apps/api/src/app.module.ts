@@ -28,6 +28,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { HealthModule } from './modules/health/health.module';
 import { SearchModule } from './modules/search/search.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { BackupsModule } from './modules/backups/backup.module';
 
 // Register BullMQ globally only when REDIS_URL is configured.
 // Individual modules (ReportsModule) conditionally register their queues
@@ -76,6 +77,7 @@ const bullRootImport = process.env.REDIS_URL
     HealthModule,
     SearchModule,
     ReportsModule,
+    BackupsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

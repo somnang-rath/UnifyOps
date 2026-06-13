@@ -30,6 +30,8 @@ interface TwoFASetup {
 const svc = {
   changePassword: (b: { currentPassword: string; newPassword: string }) =>
     api.post('/users/me/change-password', b).then((r) => r.data),
+  clearData: (b: { password: string }) =>
+    api.post('/users/me/clear-data', b).then((r) => r.data),
   setup2FA: () =>
     api.post<TwoFASetup>('/users/me/2fa/setup').then((r) => r.data),
   confirm2FA: (code: string) =>
@@ -50,6 +52,17 @@ export function useChangePassword() {
   return useMutation({
     mutationFn: svc.changePassword,
     onSuccess: () => toast('Password updated', 'success'),
+  });
+}
+
+export function useClearData() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: svc.clearData,
+    onSuccess: () => {
+      qc.invalidateQueries();
+      toast('All application data has been cleared', 'success');
+    },
   });
 }
 

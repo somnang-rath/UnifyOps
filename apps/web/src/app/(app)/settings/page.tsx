@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
+  AlertTriangle,
   Bell,
   Check,
   Copy,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 import { ImageCropModal } from '@/components/feature/sheets/image-crop-modal';
 import { Field, Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -44,12 +46,17 @@ import {
 import {
   useApiTokens,
   useChangePassword,
+  useClearData,
   useConfirm2FA,
   useCreateApiToken,
   useDisable2FA,
   useRevokeApiToken,
   useSetup2FA,
 } from '@/hooks/use-security';
+import { BackupExportCard }   from '@/components/feature/backup/backup-export-card';
+import { BackupScheduleCard } from '@/components/feature/backup/backup-schedule-card';
+import { BackupImportCard }   from '@/components/feature/backup/backup-import-card';
+import { BackupHistoryCard }  from '@/components/feature/backup/backup-history-card';
 import { useLogout } from '@/lib/auth';
 import {
   isSoundEnabled,
@@ -571,18 +578,161 @@ export default function SettingsPage() {
           {pane === 'security' && <SecurityPane />}
 
           {pane === 'data' && (
-            <Card
-              title="Your data"
-              sub="Manage your workspace data"
-            >
-              <p className="text-[13px] text-text-muted leading-relaxed">
-                Export and reset functionality lands in the next step.
-                Your server-stored data is always available via the API.
-              </p>
-            </Card>
+            <>
+              <BackupExportCard />
+              <BackupScheduleCard />
+              <BackupImportCard />
+              <BackupHistoryCard />
+              <ClearDataCard />
+            </>
           )}
         </main>
       </div>
+    </>
+  );
+}
+
+function ClearDataCard() {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const clearData = useClearData();
+
+  const handleOpen = () => {
+    setPassword('');
+    setShowPw(false);
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    if (clearData.isPending) return;
+    setOpen(false);
+    setPassword('');
+  };
+
+  const handleConfirm = async () => {
+    try {
+      await clearData.mutateAsync({ password });
+      setOpen(false);
+      setPassword('');
+    } catch {
+      // global api interceptor already toasted the error; keep modal open
+    }
+  };
+
+  return (
+    <>
+      <Modal
+        open={open}
+        onClose={handleClose}
+        title="Clear all application data"
+        size="sm"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={handleClose}
+              disabled={clearData.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              onClick={handleConfirm}
+              disabled={!password || clearData.isPending}
+            >
+              {clearData.isPending ? 'Clearing…' : 'Confirm & delete'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-3 p-3 rounded-md bg-red-500/10 border border-red-500/30">
+            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[13px] text-red-600 dark:text-red-400 leading-relaxed">
+              This action is <strong>permanent and cannot be undone.</strong>
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 text-[13px]">
+            <p className="font-medium">The following will be permanently deleted:</p>
+            <ul className="list-disc list-inside text-text-muted space-y-0.5 pl-1">
+              <li>Projects, issues, and approvals</li>
+              <li>Notes, wiki pages, and file storage</li>
+              <li>Kanban boards and automation rules</li>
+              <li>Spreadsheet workbooks and comments</li>
+              <li>Reports, schedules, and run history</li>
+              <li>Activity logs, notifications, and backups</li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col gap-2 text-[13px]">
+            <p className="font-medium text-emerald-600 dark:text-emerald-400">
+              The following will NOT be deleted:
+            </p>
+            <ul className="list-disc list-inside text-text-muted space-y-0.5 pl-1">
+              <li>Your account (name, email, password)</li>
+              <li>Profile settings and preferences</li>
+              <li>API tokens and active sessions</li>
+              <li>User roles and other accounts</li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium uppercase tracking-[.06em] text-text-muted">
+              Enter your password to confirm
+            </label>
+            <div className="relative">
+              <input
+                type={showPw ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && password) handleConfirm(); }}
+                placeholder="Your current password"
+                autoComplete="current-password"
+                className="w-full h-9 px-3 pr-9 rounded-md border border-border bg-bg-input text-[13px] text-text placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPw((s) => !s)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text transition-colors"
+              >
+                {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <section className="bg-bg-card border border-red-500/30 rounded-lg p-6 flex flex-col gap-4">
+        <header className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-[15px] font-semibold text-red-600 dark:text-red-400">
+              Danger Zone
+            </h3>
+            <p className="text-[13px] text-text-muted mt-0.5">
+              Irreversible actions that affect all application data
+            </p>
+          </div>
+        </header>
+
+        <div className="flex items-start justify-between gap-4 flex-wrap border border-border rounded-md p-4">
+          <div>
+            <p className="text-[13px] font-medium">Clear all application data</p>
+            <p className="text-[12px] text-text-muted mt-0.5">
+              Permanently delete all projects, issues, notes, files, and every
+              other business record. Your account credentials are preserved.
+            </p>
+          </div>
+          <Button variant="danger" type="button" onClick={handleOpen}>
+            <Trash2 className="w-3.5 h-3.5" /> Clear data
+          </Button>
+        </div>
+      </section>
     </>
   );
 }

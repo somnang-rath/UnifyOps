@@ -4,6 +4,7 @@ import { User, UserSchema } from './schemas/user.schema';
 import { ApiToken, ApiTokenSchema } from './schemas/api-token.schema';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { ActivityModule } from '../activity/activity.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { UsersController } from './users.controller';
       { name: User.name, schema: UserSchema },
       { name: ApiToken.name, schema: ApiTokenSchema },
     ]),
+    ActivityModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 const API =
   process.env.API_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
-  "http://172.16.0.48:4000/api/v1"
+  "http://192.168.8.23:4000/api/v1"
 
 /**
  * Same-origin proxy for the refresh endpoint. Lets the frontend silently
