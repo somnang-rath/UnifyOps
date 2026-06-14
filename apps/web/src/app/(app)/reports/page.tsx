@@ -4,21 +4,25 @@ import { useRouter } from 'next/navigation';
 import { useReports, useReportMutations } from '@/hooks/use-reports';
 import { ReportCard } from '@/components/feature/reports/report-card';
 import { NewReportModal } from '@/components/feature/reports/new-report-modal';
-import type { ReportTemplate } from '@/components/feature/reports/new-report-modal';
+import { ImportReportModal } from '@/components/feature/reports/import-report-modal';
+import type { ParsedReport } from '@/components/feature/reports/import-report-modal';
+import type { ReportTemplate as BuiltinTemplate } from '@/components/feature/reports/new-report-modal';
+import type { ReportTemplate } from '@/schemas/report';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { Calendar, ChevronLeft, ChevronRight, FileBarChart2, LayoutGrid, MonitorPlay, Plus } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, FileBarChart2, FileJson, LayoutGrid, MonitorPlay, Plus } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 12;
 
 export default function ReportsPage() {
   const router = useRouter();
   const { data: reports, isLoading } = useReports();
-  const { create, remove, triggerRun } = useReportMutations();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [page, setPage] = useState(0);
+  const { create, remove, triggerRun, duplicate } = useReportMutations();
+  const [modalOpen, setModalOpen]   = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [page, setPage]             = useState(0);
 
-  const handleCreate = async (tmpl: ReportTemplate) => {
+  const handleCreate = async (tmpl: BuiltinTemplate) => {
     const t = await create.mutateAsync({
       name: tmpl.id === 'blank' ? 'Untitled Report' : tmpl.label,
       description: tmpl.description,
@@ -33,6 +37,50 @@ export default function ReportsPage() {
     setModalOpen(false);
     router.push(`/reports/${t._id}/edit`);
   };
+
+  const handleCreateFromSaved = async (saved: ReportTemplate) => {
+    const t = await create.mutateAsync({
+      name: saved.name,
+      description: saved.description,
+      pageSize: saved.pageSize,
+      orientation: saved.orientation,
+      background: saved.background,
+      elements: saved.elements,
+      pages: saved.pages,
+      groups: saved.groups,
+      margins: saved.margins,
+      header: saved.header,
+      footer: saved.footer,
+      schedule: { enabled: false, frequency: 'monthly', hour: 8 },
+      recipients: [],
+      permissions: saved.permissions ?? { allowDownload: true, allowedFormats: ['pdf'] },
+    });
+    setModalOpen(false);
+    router.push(`/reports/${t._id}/edit`);
+  };
+
+  const handleImport = async (data: ParsedReport) => {
+    const t = await create.mutateAsync({
+      name:        data.name,
+      description: data.description,
+      pageSize:    data.pageSize,
+      orientation: data.orientation,
+      background:  data.background,
+      elements:    data.elements,
+      pages:       data.pages,
+      groups:      data.groups,
+      margins:     data.margins,
+      header:      data.header,
+      footer:      data.footer,
+      schedule:    { enabled: false, frequency: 'monthly', hour: 8 },
+      recipients:  [],
+      permissions: data.permissions ?? { allowDownload: true, allowedFormats: ['pdf'] },
+    });
+    setImportOpen(false);
+    router.push(`/reports/${t._id}/edit`);
+  };
+
+  const savedTemplates = reports?.filter((r) => r.isTemplate) ?? [];
 
   const scheduledCount = reports?.filter((r) => r.schedule.enabled).length ?? 0;
   const totalPages = Math.ceil((reports?.length ?? 0) / ITEMS_PER_PAGE);
@@ -66,6 +114,13 @@ export default function ReportsPage() {
             <MonitorPlay className="w-4 h-4" />
             Display
           </Link>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-bg-card text-sm text-text-sub hover:bg-bg-hover transition-colors"
+          >
+            <FileJson className="w-4 h-4" />
+            Import
+          </button>
           <Button onClick={() => setModalOpen(true)} variant="primary" className="gap-2" disabled={create.isPending}>
             <Plus className="w-4 h-4" />
             New Report
@@ -134,6 +189,7 @@ export default function ReportsPage() {
                 template={t}
                 onRun={() => triggerRun.mutate(t._id)}
                 onDelete={() => remove.mutate(t._id)}
+                onDuplicate={() => duplicate.mutate(t._id)}
               />
             ))}
           </div>
@@ -182,6 +238,15 @@ export default function ReportsPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreate={handleCreate}
+        savedTemplates={savedTemplates}
+        onCreateFromSaved={handleCreateFromSaved}
+      />
+
+      {/* Import modal */}
+      <ImportReportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImport}
       />
     </div>
   );

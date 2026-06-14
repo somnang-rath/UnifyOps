@@ -6,11 +6,12 @@ import { reportsApi, useReportMutations } from '@/hooks/use-reports';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
-  Calendar, Camera, Clock, Download, Edit2,
-  History, ImagePlus, Loader2, MoreHorizontal, Play,
-  Trash2, Trash, Users, Zap,
+  BookTemplate, Calendar, Camera, Clock, Copy, Download, Edit2,
+  FileJson, History, ImagePlus, Loader2, MoreHorizontal, Play,
+  Share2, Trash2, Trash, Users, Zap,
 } from 'lucide-react';
 import { QuickScheduleModal } from './quick-schedule-modal';
+import { ShareReportModal } from './share-report-modal';
 import { ImageCropModal } from '@/components/feature/sheets/image-crop-modal';
 
 const FREQ_LABELS: Record<string, string> = {
@@ -26,16 +27,19 @@ interface Props {
   template: ReportTemplate;
   onRun: () => void;
   onDelete: () => void;
+  onDuplicate?: () => void;
 }
 
-export function ReportCard({ template, onRun, onDelete }: Props) {
+export function ReportCard({ template, onRun, onDelete, onDuplicate }: Props) {
   const [menuOpen, setMenuOpen]           = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [downloading, setDownloading]     = useState(false);
   const [scheduleOpen, setScheduleOpen]   = useState(false);
+  const [shareOpen, setShareOpen]         = useState(false);
   const [uploading, setUploading]         = useState(false);
   const [cropSrc, setCropSrc]             = useState<string | null>(null);
+  const [savingTmpl, setSavingTmpl]       = useState(false);
 
   const menuRef      = useRef<HTMLDivElement>(null);
   const coverMenuRef = useRef<HTMLDivElement>(null);
@@ -91,6 +95,16 @@ export function ReportCard({ template, onRun, onDelete }: Props) {
   const handleRemoveCover = async () => {
     setCoverMenuOpen(false);
     await update.mutateAsync({ id: template._id, body: { thumbnail: '' } });
+  };
+
+  const handleToggleTemplate = async () => {
+    setMenuOpen(false);
+    setSavingTmpl(true);
+    try {
+      await update.mutateAsync({ id: template._id, body: { isTemplate: !template.isTemplate } });
+    } finally {
+      setSavingTmpl(false);
+    }
   };
 
   const cpoMode        = template.perRecipientUrlConfig?.enabled && !!template.perRecipientUrlConfig?.listUrl;
@@ -257,6 +271,18 @@ export function ReportCard({ template, onRun, onDelete }: Props) {
             </span>
           ) : null}
 
+          {template.isTemplate && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-accent-50 text-accent-700 border border-accent-200 dark:bg-accent-950/40 dark:text-accent-400 dark:border-accent-800">
+              <BookTemplate className="w-2.5 h-2.5" /> Template
+            </span>
+          )}
+
+          {(template.grants?.length ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-bg-subtle text-text-muted border border-border">
+              <Share2 className="w-2.5 h-2.5" /> Shared
+            </span>
+          )}
+
           <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-text-muted">
             <Clock className="w-2.5 h-2.5" />
             {new Date(template.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -320,6 +346,39 @@ export function ReportCard({ template, onRun, onDelete }: Props) {
                   </button>
 
                   <button
+                    onClick={() => { setMenuOpen(false); onDuplicate?.(); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-bg-hover text-left"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-text-muted" />
+                    Duplicate
+                  </button>
+
+                  <button
+                    onClick={() => { setMenuOpen(false); setShareOpen(true); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-bg-hover text-left"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-text-muted" />
+                    Share
+                    {(template.grants?.length ?? 0) > 0 && (
+                      <span className="ml-auto text-[10px] font-bold text-accent-600">{template.grants!.length}</span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleToggleTemplate}
+                    disabled={savingTmpl}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-bg-hover text-left disabled:opacity-40"
+                  >
+                    {savingTmpl
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" />
+                      : <BookTemplate className={cn('w-3.5 h-3.5', template.isTemplate ? 'text-accent-600' : 'text-text-muted')} />}
+                    <span>{template.isTemplate ? 'Remove from templates' : 'Save as template'}</span>
+                    {template.isTemplate && (
+                      <span className="ml-auto text-[10px] font-bold text-accent-600">ON</span>
+                    )}
+                  </button>
+
+                  <button
                     onClick={handleDownload}
                     disabled={downloading}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-bg-hover text-left disabled:opacity-40"
@@ -328,6 +387,14 @@ export function ReportCard({ template, onRun, onDelete }: Props) {
                       ? <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" />
                       : <Download className="w-3.5 h-3.5 text-text-muted" />}
                     <span>Download PDF</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setMenuOpen(false); reportsApi.exportJson(template); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-bg-hover text-left"
+                  >
+                    <FileJson className="w-3.5 h-3.5 text-text-muted" />
+                    Export JSON
                   </button>
 
                   <Link href={`/reports/${template._id}/history`} onClick={() => setMenuOpen(false)}>
@@ -367,6 +434,13 @@ export function ReportCard({ template, onRun, onDelete }: Props) {
         onClose={() => setScheduleOpen(false)}
         template={template}
       />
+
+      {shareOpen && (
+        <ShareReportModal
+          template={template}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </div>
   );
 }

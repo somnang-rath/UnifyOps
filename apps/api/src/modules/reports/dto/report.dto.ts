@@ -210,6 +210,7 @@ export const CreateReportTemplateSchema = z.object({
   margins: ReportMarginsSchema.default({}),
   header:  ReportHeaderSchema.default({}),
   footer:  ReportFooterSchema.default({}),
+  isTemplate: z.boolean().optional(),
 });
 
 export const UpdateReportTemplateSchema = CreateReportTemplateSchema.partial();
@@ -243,3 +244,19 @@ export const AddBlocklistEntrySchema = z
   .refine((d) => d.email || d.userId, { message: 'email or userId required' });
 
 export type AddBlocklistEntryDto = z.infer<typeof AddBlocklistEntrySchema>;
+
+// ── Access grants ─────────────────────────────────────────────────────────────
+
+/**
+ * Body for POST /reports/:id/grants
+ * Must supply either userId (specific user) or role (whole team).
+ */
+export const AddGrantSchema = z
+  .object({
+    userId: z.string().optional(),
+    role: z.string().max(100).optional(),
+    level: z.enum(['view', 'edit']).default('view'),
+  })
+  .refine((d) => d.userId || d.role, { message: 'userId or role is required' });
+
+export type AddGrantDto = z.infer<typeof AddGrantSchema>;

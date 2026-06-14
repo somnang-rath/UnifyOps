@@ -205,6 +205,16 @@ export interface ReportPerRecipientUrlConfig {
   dataUrlTemplate: string;
 }
 
+/** Access grant — view/edit access for a specific user or a whole team role. */
+export interface ReportGrant {
+  id: string;
+  /** Set when granting to a specific user. */
+  userId?: string;
+  /** Set when granting to an entire team role ('admin', 'cpo', 'dev', etc.). */
+  role?: string;
+  level: 'view' | 'edit';
+}
+
 /** An entry in the report send blocklist. */
 export interface ReportBlocklistEntry {
   id: string;
@@ -248,6 +258,10 @@ export interface ReportTemplate {
   /** List of users/emails that must never receive this report. */
   blocklist?: ReportBlocklistEntry[];
   permissions: ReportPermissions;
+  /** When true, appears as a selectable template in the "New Report" modal. */
+  isTemplate?: boolean;
+  /** Access grants — users/roles that can view or edit this report. */
+  grants?: ReportGrant[];
   createdAt: string;
   updatedAt: string;
 }

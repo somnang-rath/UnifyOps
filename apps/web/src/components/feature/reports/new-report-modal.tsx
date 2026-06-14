@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, X, FileText, Zap, BarChart2, Activity } from 'lucide-react';
+import { Loader2, X, FileText, Zap, BarChart2, Activity, BookTemplate } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { ReportElement } from '@/schemas/report';
+import type { ReportElement, ReportTemplate as SavedTemplate } from '@/schemas/report';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -461,24 +461,48 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onCreate: (template: ReportTemplate) => Promise<void>;
+  /** User-saved reports marked as templates */
+  savedTemplates?: SavedTemplate[];
+  onCreateFromSaved?: (saved: SavedTemplate) => Promise<void>;
 }
 
-export function NewReportModal({ open, onClose, onCreate }: Props) {
-  const [selected, setSelected] = useState<string>('blank');
-  const [loading, setLoading] = useState(false);
+export function NewReportModal({ open, onClose, onCreate, savedTemplates = [], onCreateFromSaved }: Props) {
+  const [selected, setSelected]         = useState<string>('blank');
+  const [selectedSaved, setSelectedSaved] = useState<string | null>(null);
+  const [loading, setLoading]           = useState(false);
 
   if (!open) return null;
 
-  const picked = REPORT_TEMPLATES.find((t) => t.id === selected)!;
+  const isBuiltIn = !selectedSaved;
+  const picked    = REPORT_TEMPLATES.find((t) => t.id === selected)!;
 
   const handleCreate = async () => {
     setLoading(true);
     try {
-      await onCreate(picked);
+      if (selectedSaved && onCreateFromSaved) {
+        const tmpl = savedTemplates.find((t) => t._id === selectedSaved)!;
+        await onCreateFromSaved(tmpl);
+      } else {
+        await onCreate(picked);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const selectBuiltin = (id: string) => { setSelected(id); setSelectedSaved(null); };
+  const selectSaved   = (id: string) => { setSelectedSaved(id); };
+
+  const footerInfo = selectedSaved
+    ? (() => {
+        const t = savedTemplates.find((s) => s._id === selectedSaved);
+        return t
+          ? `${t.elements.length} elements · ${t.pageSize} ${t.orientation}`
+          : '';
+      })()
+    : picked.elements.length > 0
+      ? `${picked.elements.length} pre-built elements · ${picked.pageSize} ${picked.orientation}`
+      : `Empty canvas · ${picked.pageSize} ${picked.orientation}`;
 
   return (
     <div
@@ -501,42 +525,104 @@ export function NewReportModal({ open, onClose, onCreate }: Props) {
           </button>
         </div>
 
-        {/* Template grid */}
-        <div className="p-6 grid grid-cols-3 gap-4">
-          {REPORT_TEMPLATES.map((tmpl) => (
-            <button
-              key={tmpl.id}
-              onClick={() => setSelected(tmpl.id)}
-              className={[
-                'flex flex-col rounded-xl border-2 overflow-hidden text-left transition-all',
-                selected === tmpl.id
-                  ? 'border-accent-600 shadow-md ring-2 ring-accent-600/20'
-                  : 'border-border hover:border-accent-300 hover:shadow-sm',
-              ].join(' ')}
-            >
-              {/* Preview thumbnail */}
-              <div className="h-36 bg-bg-subtle p-2">
-                {tmpl.preview}
+        <div className="overflow-y-auto max-h-[60vh] p-6 space-y-6">
+          {/* User-saved templates section */}
+          {savedTemplates.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <BookTemplate className="w-3.5 h-3.5 text-accent-600" />
+                <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                  My Templates
+                </p>
               </div>
-              {/* Label */}
-              <div className="px-3 py-2.5 border-t border-border bg-bg-card">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-accent-600">{tmpl.icon}</span>
-                  <span className="text-xs font-semibold text-text">{tmpl.label}</span>
-                </div>
-                <p className="text-[11px] text-text-muted leading-snug">{tmpl.description}</p>
+              <div className="grid grid-cols-3 gap-3">
+                {savedTemplates.map((tmpl) => (
+                  <button
+                    key={tmpl._id}
+                    onClick={() => selectSaved(tmpl._id)}
+                    className={[
+                      'flex flex-col rounded-xl border-2 overflow-hidden text-left transition-all',
+                      selectedSaved === tmpl._id
+                        ? 'border-accent-600 shadow-md ring-2 ring-accent-600/20'
+                        : 'border-border hover:border-accent-300 hover:shadow-sm',
+                    ].join(' ')}
+                  >
+                    <div
+                      className="h-28 flex items-center justify-center relative overflow-hidden"
+                      style={{ background: tmpl.background ?? '#f8fafc' }}
+                    >
+                      {tmpl.thumbnail
+                        ? <img src={tmpl.thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                        : (
+                          <div className="flex flex-col gap-1.5 px-4 py-3 w-full" style={{ color: '#94a3b8' }}>
+                            <div className="h-2 w-2/5 rounded-full bg-current opacity-40" />
+                            <div className="h-1.5 w-3/5 rounded-full bg-current opacity-25" />
+                            <div className="flex gap-1 h-8 mt-1 opacity-30">
+                              {[50, 75, 40, 88, 60].map((h, i) => (
+                                <div key={i} className="flex-1 rounded-t bg-current" style={{ height: `${h}%` }} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      <div className="absolute top-1.5 left-1.5">
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent-600 text-white">
+                          My template
+                        </span>
+                      </div>
+                    </div>
+                    <div className="px-3 py-2.5 border-t border-border bg-bg-card">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <BookTemplate className="w-3.5 h-3.5 text-accent-600" />
+                        <span className="text-xs font-semibold text-text truncate">{tmpl.name}</span>
+                      </div>
+                      <p className="text-[11px] text-text-muted leading-snug line-clamp-1">
+                        {tmpl.description || `${tmpl.elements.length} elements`}
+                      </p>
+                    </div>
+                  </button>
+                ))}
               </div>
-            </button>
-          ))}
+            </div>
+          )}
+
+          {/* Built-in templates */}
+          <div>
+            {savedTemplates.length > 0 && (
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
+                Built-in Templates
+              </p>
+            )}
+            <div className="grid grid-cols-3 gap-4">
+              {REPORT_TEMPLATES.map((tmpl) => (
+                <button
+                  key={tmpl.id}
+                  onClick={() => selectBuiltin(tmpl.id)}
+                  className={[
+                    'flex flex-col rounded-xl border-2 overflow-hidden text-left transition-all',
+                    isBuiltIn && selected === tmpl.id
+                      ? 'border-accent-600 shadow-md ring-2 ring-accent-600/20'
+                      : 'border-border hover:border-accent-300 hover:shadow-sm',
+                  ].join(' ')}
+                >
+                  <div className="h-36 bg-bg-subtle p-2">
+                    {tmpl.preview}
+                  </div>
+                  <div className="px-3 py-2.5 border-t border-border bg-bg-card">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-accent-600">{tmpl.icon}</span>
+                      <span className="text-xs font-semibold text-text">{tmpl.label}</span>
+                    </div>
+                    <p className="text-[11px] text-text-muted leading-snug">{tmpl.description}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-bg-subtle">
-          <div className="text-xs text-text-muted">
-            {picked.elements.length > 0
-              ? `${picked.elements.length} pre-built elements · ${picked.pageSize} ${picked.orientation}`
-              : `Empty canvas · ${picked.pageSize} ${picked.orientation}`}
-          </div>
+          <div className="text-xs text-text-muted">{footerInfo}</div>
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
               Cancel

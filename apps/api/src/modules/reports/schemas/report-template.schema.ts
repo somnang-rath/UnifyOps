@@ -226,6 +226,17 @@ export interface ReportBlocklistEntry {
   addedAt: string; // ISO timestamp
 }
 
+/** Access grant — share view/edit access with a specific user or an entire team role. */
+export interface ReportGrant {
+  /** UUID generated on creation */
+  id: string;
+  /** Target is either a specific user… */
+  userId?: Types.ObjectId;
+  /** …or every member of a role ('admin', 'cpo', 'dev', etc.) */
+  role?: string;
+  level: 'view' | 'edit';
+}
+
 export interface ReportPermissions {
   allowDownload: boolean;
   allowedFormats: ReportFormat[];
@@ -290,6 +301,14 @@ export class ReportTemplate {
   /** Users / emails that should NEVER receive this report. */
   @Prop({ type: Object, default: [] })
   blocklist: ReportBlocklistEntry[];
+
+  /** When true, this report appears as a selectable template in the "New Report" modal. */
+  @Prop({ default: false })
+  isTemplate: boolean;
+
+  /** Access grants — share view/edit access with users or team roles. */
+  @Prop({ type: Object, default: [] })
+  grants: ReportGrant[];
 
   @Prop({ type: Object, default: { allowDownload: true, allowedFormats: ['pdf'] } })
   permissions: ReportPermissions;

@@ -16,6 +16,8 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   AddBlocklistEntrySchema,
   AddBlocklistEntryDto,
+  AddGrantSchema,
+  AddGrantDto,
   CreateReportTemplateSchema,
   UpdateReportTemplateSchema,
   FetchDatasourceSchema,
@@ -76,6 +78,12 @@ export class ReportsController {
   }
 
   // ── Run / generate ────────────────────────────────────────────────────────
+
+  /** Duplicate a report. Returns the new copy (owned by caller; schedule/grants cleared). */
+  @Post(':id/duplicate')
+  duplicate(@CurrentUser() u: { id: string }, @Param('id') id: string) {
+    return this.svc.duplicate(u.id, id);
+  }
 
   /** Generate PDF (no email send). */
   @Post(':id/run')
@@ -190,6 +198,29 @@ export class ReportsController {
       emailField:   dto.emailField   ?? 'email',
       nameField:    dto.nameField,
     });
+  }
+
+  // ── Access grants ─────────────────────────────────────────────────────────
+
+  /** Grant view or edit access to a user or an entire team role. */
+  @Post(':id/grants')
+  @UsePipes(new ZodValidationPipe(AddGrantSchema))
+  addGrant(
+    @CurrentUser() u: { id: string },
+    @Param('id') id: string,
+    @Body() dto: AddGrantDto,
+  ) {
+    return this.svc.addGrant(u.id, id, dto);
+  }
+
+  /** Revoke a previously granted access entry. */
+  @Delete(':id/grants/:grantId')
+  removeGrant(
+    @CurrentUser() u: { id: string },
+    @Param('id') id: string,
+    @Param('grantId') grantId: string,
+  ) {
+    return this.svc.removeGrant(u.id, id, grantId);
   }
 
   // ── Blocklist management ──────────────────────────────────────────────────

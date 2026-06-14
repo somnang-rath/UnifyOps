@@ -5,6 +5,7 @@ import { toast } from '@/stores/toast-store';
 import type {
   ReportTemplate,
   ReportRun,
+  ReportGrant,
   DeliveryPage,
   ReportBlocklistEntry,
 } from '@/schemas/report';
@@ -23,6 +24,15 @@ const reportsService = {
     api.patch<ReportTemplate>(`/reports/${id}`, body).then((r) => r.data),
 
   remove: (id: string) => api.delete(`/reports/${id}`).then((r) => r.data),
+
+  duplicate: (id: string) =>
+    api.post<ReportTemplate>(`/reports/${id}/duplicate`).then((r) => r.data),
+
+  addGrant: (id: string, body: { userId?: string; role?: string; level: 'view' | 'edit' }) =>
+    api.post<ReportGrant>(`/reports/${id}/grants`, body).then((r) => r.data),
+
+  removeGrant: (id: string, grantId: string) =>
+    api.delete(`/reports/${id}/grants/${grantId}`).then((r) => r.data),
 
   /** Generate PDF only (no email). */
   triggerRun: (id: string) =>
@@ -99,6 +109,32 @@ const reportsService = {
     const a = document.createElement('a');
     a.href = url;
     a.download = `${name.replace(/[^a-z0-9\-_ ]/gi, '_')}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  },
+
+  exportJson(template: ReportTemplate): void {
+    const payload = {
+      __prism_report: true,
+      __version: 1,
+      name:        template.name,
+      description: template.description,
+      pageSize:    template.pageSize,
+      orientation: template.orientation,
+      background:  template.background,
+      elements:    template.elements,
+      pages:       template.pages  ?? [],
+      groups:      template.groups ?? [],
+      margins:     template.margins,
+      header:      template.header,
+      footer:      template.footer,
+      permissions: template.permissions,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${template.name.replace(/[^a-z0-9\-_ ]/gi, '_')}_report.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   },
@@ -185,6 +221,11 @@ export function useReportMutations() {
       onSuccess: () => { inv(); toast('Report template deleted'); },
     }),
 
+    duplicate: useMutation({
+      mutationFn: reportsService.duplicate,
+      onSuccess: () => { inv(); toast('Report duplicated'); },
+    }),
+
     triggerRun: useMutation({
       mutationFn: reportsService.triggerRun,
       onSuccess: (run) => {
@@ -240,6 +281,45 @@ export function useFetchCpoList(templateId: string | undefined) {
       nameField?: string;
     }) => reportsService.fetchCpoList(templateId!, body),
   });
+}
+
+// ── Grant mutations ───────────────────────────────────────────────────────────
+
+export function useGrantMutations(templateId: string) {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ['reports', 'byId', templateId] });
+
+  return {
+    add: useMutation({
+      mutationFn: (body: { userId?: string; role?: string; level: 'view' | 'edit' }) =>
+        reportsService.addGrant(templateId, body),
+      onSuccess: (grant) => {
+        qc.setQueryData<ReportTemplate>(['reports', 'byId', templateId], (old) =>
+          old ? { ...old, grants: [...(old.grants ?? []), grant] } : old,
+        );
+        refresh();
+        toast('Access granted');
+      },
+      onError: () => toast('Failed to grant access', 'error'),
+    }),
+
+    remove: useMutation({
+      mutationFn: (grantId: string) => reportsService.removeGrant(templateId, grantId),
+      onMutate: async (grantId) => {
+        await qc.cancelQueries({ queryKey: ['reports', 'byId', templateId] });
+        const prev = qc.getQueryData<ReportTemplate>(['reports', 'byId', templateId]);
+        qc.setQueryData<ReportTemplate>(['reports', 'byId', templateId], (old) =>
+          old ? { ...old, grants: (old.grants ?? []).filter((g) => g.id !== grantId) } : old,
+        );
+        return { prev };
+      },
+      onSuccess: () => { refresh(); toast('Access revoked'); },
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev) qc.setQueryData(['reports', 'byId', templateId], ctx.prev);
+        toast('Failed to revoke access', 'error');
+      },
+    }),
+  };
 }
 
 // ── Blocklist mutations ───────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ import {
   ReportTemplateDocument,
   ReportRecipient,
   ReportBlocklistEntry,
+  ReportGrant,
   ReportRecipientDataFilter,
   ReportDataRecipientsConfig,
   ReportPerRecipientUrlConfig,
@@ -33,6 +34,7 @@ import {
 } from './schemas/report-delivery-log.schema';
 import {
   AddBlocklistEntryDto,
+  AddGrantDto,
   CreateReportTemplateDto,
   FetchDatasourceDto,
   UpdateReportTemplateDto,
@@ -109,9 +111,15 @@ export class ReportsService {
 
   async list(userId: string) {
     const uid = new Types.ObjectId(userId);
-    return this.templateModel
-      .find({ $or: [{ ownerId: uid }, { 'recipients.userId': uid }] })
-      .lean();
+    const user = await this.userModel.findById(uid).lean();
+    const userRole = (user as any)?.role as string | undefined;
+    const orClauses: object[] = [
+      { ownerId: uid },
+      { 'recipients.userId': uid },
+      { 'grants.userId': uid },
+    ];
+    if (userRole) orClauses.push({ 'grants.role': userRole });
+    return this.templateModel.find({ $or: orClauses }).lean();
   }
 
   async byId(userId: string, id: string) {
@@ -119,8 +127,39 @@ export class ReportsService {
     if (!doc) throw new NotFoundException();
     const isOwner     = String(doc.ownerId) === userId;
     const isRecipient = (doc.recipients ?? []).some((r) => String(r.userId) === userId);
-    if (!isOwner && !isRecipient) throw new ForbiddenException();
+    const hasGrant    = ((doc as any).grants ?? []).some((g: ReportGrant) => String(g.userId) === userId);
+    if (!isOwner && !isRecipient && !hasGrant) throw new ForbiddenException();
     return doc;
+  }
+
+  /** Clone a report. The copy belongs to the caller; schedule/recipients/grants are cleared. */
+  async duplicate(userId: string, id: string) {
+    const doc = await this.byId(userId, id); // enforces access
+    const copy = await this.templateModel.create({
+      ownerId:      new Types.ObjectId(userId),
+      name:         `${doc.name} (Copy)`,
+      description:  doc.description,
+      thumbnail:    doc.thumbnail,
+      pageSize:     doc.pageSize,
+      orientation:  doc.orientation,
+      background:   doc.background,
+      elements:     doc.elements,
+      pages:        doc.pages,
+      groups:       doc.groups,
+      margins:      doc.margins,
+      header:       doc.header,
+      footer:       doc.footer,
+      schedule:     { enabled: false, frequency: 'monthly', hour: 8 },
+      recipients:   [],
+      dataRecipientsConfig:   { enabled: false, emailField: '', nameField: '', dataPath: '', url: '' },
+      recipientDataFilter:    { enabled: false, fieldPath: '' },
+      perRecipientUrlConfig:  { enabled: false, listUrl: '', listDataPath: '', idField: 'id', emailField: 'email', nameField: '', dataUrlTemplate: '' },
+      blocklist:    [],
+      permissions:  doc.permissions,
+      isTemplate:   false,
+      grants:       [],
+    });
+    return copy.toObject();
   }
 
   async update(ownerId: string, id: string, dto: UpdateReportTemplateDto) {
@@ -171,6 +210,30 @@ export class ReportsService {
     await this.templateModel.findByIdAndUpdate(templateId, {
       $pull: { blocklist: { id: entryId } },
     });
+  }
+
+  // ── Access grants ─────────────────────────────────────────────────────────
+
+  async addGrant(ownerId: string, templateId: string, dto: AddGrantDto): Promise<ReportGrant> {
+    const doc = await this.templateModel.findById(templateId).lean();
+    if (!doc) throw new NotFoundException();
+    if (String(doc.ownerId) !== ownerId) throw new ForbiddenException();
+
+    const grant: ReportGrant = {
+      id: randomUUID(),
+      userId: dto.userId ? new Types.ObjectId(dto.userId) : undefined,
+      role: dto.role,
+      level: dto.level,
+    };
+    await this.templateModel.findByIdAndUpdate(templateId, { $push: { grants: grant } });
+    return grant;
+  }
+
+  async removeGrant(ownerId: string, templateId: string, grantId: string) {
+    const doc = await this.templateModel.findById(templateId).lean();
+    if (!doc) throw new NotFoundException();
+    if (String(doc.ownerId) !== ownerId) throw new ForbiddenException();
+    await this.templateModel.findByIdAndUpdate(templateId, { $pull: { grants: { id: grantId } } });
   }
 
   // ── Widget data ───────────────────────────────────────────────────────────
