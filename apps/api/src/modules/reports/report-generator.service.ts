@@ -407,6 +407,12 @@ export class ReportGeneratorService implements OnModuleDestroy {
         this.browser = b;
         this.launching = null;
         return b;
+      })
+      .catch((err) => {
+        // Clear the rejected promise so subsequent calls can retry the launch
+        // instead of permanently returning this error.
+        this.launching = null;
+        throw err;
       });
     return this.launching;
   }

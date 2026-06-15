@@ -349,9 +349,14 @@ export function computeAutoLayout(
     // hintedAvgRowH and packs too many rows into continuation pages.
     const safeFormula      = calcRowsFitH(tEl, stretchedH - effectiveBottom - IND - footerH);
     const effectiveHintFit = hintFit != null ? Math.min(hintFit, safeFormula) : null;
-    // Subtract footerH so that when el.h was expanded to include the summary
-    // footer row, the formula doesn't over-count rows and skip pagination.
-    const origRowsFit      = effectiveHintFit ?? calcRowsFitH(tEl, tEl.h - footerH);
+    // Clamp el.h to the usable page capacity before computing origRowsFit.
+    // When autoHeight was on before the user enabled autoPageBreak, el.h is
+    // inflated to fit ALL rows (possibly far exceeding canvasH). Using that
+    // inflated height in calcRowsFitH would conclude "all rows fit" and skip
+    // pagination entirely. Clamping to stretchedH − effectiveBottom ensures
+    // overflow is detected even when el.h > canvasH.
+    const effectiveOrigH   = Math.min(tEl.h, stretchedH - effectiveBottom);
+    const origRowsFit      = effectiveHintFit ?? calcRowsFitH(tEl, effectiveOrigH - footerH);
 
     // ── Special case: footer-safe DOM hint says ALL rows fit ──────────────────
     //  The underflow detection in element-table.tsx can raise hintFit to

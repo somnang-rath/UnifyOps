@@ -242,9 +242,13 @@ export default function ReportEditPage() {
   }, [serverTemplate]);
 
   const patch = useCallback((changes: Partial<ReportTemplate>) => {
+    // Eagerly update ref synchronously so prepare() reads the freshly-laid-out
+    // template immediately after prepareForExport() resolves, before React flushes
+    // its batched updates (in React 18, setLocal's updater runs asynchronously).
+    if (localRef.current) localRef.current = { ...localRef.current, ...changes };
     setLocal((prev) => {
       const next = prev ? { ...prev, ...changes } : prev;
-      localRef.current = next;
+      localRef.current = next; // keep in sync with settled React state
       return next;
     });
     setDirty(true);

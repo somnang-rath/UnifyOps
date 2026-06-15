@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReportElement, DataWidgetType } from '@/schemas/report';
 import {
@@ -9,7 +9,6 @@ import {
   Cell,
   ComposedChart,
   Label,
-  Legend,
   Line,
   LineChart,
   Pie,
@@ -298,9 +297,24 @@ export function ElementChart({ element }: Props) {
     ? <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
     : null;
 
-  const legendEl = showLegend
-    ? <Legend iconSize={8} iconType="circle" wrapperStyle={{ fontSize: 10 }} verticalAlign="top" />
-    : null;
+  // Custom legend items — rendered as HTML outside of <ResponsiveContainer> so we
+  // never use recharts' <Legend> class component. In recharts v3.x, Legend.componentDidUpdate
+  // dispatches to an internal Redux store on every measurement; if getBoundingClientRect()
+  // returns slightly-different sub-pixel values across frames the store cycles indefinitely,
+  // producing React's "Maximum update depth exceeded" crash. Rendering our own HTML legend
+  // completely removes that code path.
+  const customLegendItems: { label: string; color: string }[] =
+    chartType === 'bar-line'
+      ? [
+          { label: (p.barLabel  ?? 'Count') as string, color: accent },
+          { label: (p.lineLabel ?? 'Value') as string, color: lineColor },
+        ]
+      : chartType === 'pie'
+        ? series.map((s, i) => ({ label: s.name, color: s.color ?? PIE_PALETTE[i % PIE_PALETTE.length] }))
+        : chartType === 'line'
+          ? [{ label: (p.barLabel ?? 'Value') as string, color: accent }]
+          : series.map((s, i) => ({ label: s.name, color: p.singleColor ? accent : (s.color ?? accent) }));
+  const showCustomLegend = showLegend || (chartType === 'pie' && pieLabelPos !== 'outside');
 
   // bar-h derived values (computed once, used in chartBody)
   // hBarValueW: fixed-width value column — matches the PDF renderer's valueW defaults
@@ -415,8 +429,20 @@ export function ElementChart({ element }: Props) {
           </div>
         </div>
       ) : (
+      <>
+        {/* Custom legend — HTML outside recharts so Legend's Redux dispatch loop never runs */}
+        {showCustomLegend && customLegendItems.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', padding: '0 8px 4px', flexShrink: 0 }}>
+            {customLegendItems.map((item, idx) => (
+              <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: lSize, fontFamily: lFamily || undefined }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0, display: 'inline-block' }} />
+                <span style={{ color: lColor }}>{item.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
       <div className="flex-1 min-h-0 p-1">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" debounce={50}>
           {chartType === 'pie' ? (
             <PieChart>
               <Pie
@@ -452,9 +478,6 @@ export function ElementChart({ element }: Props) {
                 )}
               </Pie>
               <Tooltip contentStyle={TT_STYLE} />
-              {(p.showLegend || pieLabelPos !== 'outside') && (
-                <Legend iconSize={8} iconType="circle" wrapperStyle={{ fontSize: lSize, fontFamily: lFamily || undefined }} />
-              )}
             </PieChart>
 
           ) : chartType === 'line' ? (
@@ -463,7 +486,6 @@ export function ElementChart({ element }: Props) {
               <XAxis dataKey="name" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={TT_STYLE} />
-              {legendEl}
               <Line type="monotone" dataKey="value" stroke={accent} strokeWidth={2}
                 dot={{ r: 3, fill: accent, strokeWidth: 0 }} activeDot={{ r: 4 }}
                 isAnimationActive={false} />
@@ -545,7 +567,6 @@ export function ElementChart({ element }: Props) {
               />
 
               <Tooltip contentStyle={TT_STYLE} />
-              <Legend iconSize={8} iconType="circle" wrapperStyle={{ fontSize: lSize, fontFamily: lFamily || undefined }} verticalAlign="top" />
 
               <Bar
                 yAxisId="left"
@@ -575,7 +596,6 @@ export function ElementChart({ element }: Props) {
               <XAxis dataKey="name" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={TT_STYLE} />
-              {legendEl}
               <Bar dataKey="value" radius={[3, 3, 0, 0]} isAnimationActive={false}>
                 {series.map((s, i) => <Cell key={i} fill={p.singleColor ? accent : (s.color ?? accent)} />)}
               </Bar>
@@ -583,8 +603,9 @@ export function ElementChart({ element }: Props) {
           )}
         </ResponsiveContainer>
       </div>
+      </>
       )}
-    </>
+  </>
   );
 
   return (
@@ -636,3 +657,8 @@ export function ElementChart({ element }: Props) {
     </>
   );
 }
+
+// Prevent recharts' Legend.componentDidUpdate dispatch loop: chart element props
+// are reference-stable across auto-layout passes, so skip re-renders when nothing
+// actually changed (recharts dispatches on every render of its connected components).
+export const ElementChartMemo = memo(ElementChart);

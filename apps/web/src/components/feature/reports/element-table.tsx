@@ -425,11 +425,13 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
         </div>
       )}
 
-      {/* Table area — clips when autoPageBreak is on; unconstrained when autoHeight is on */}
+      {/* Table area — clips when autoPageBreak is on; unconstrained when autoHeight is on.
+          When a footer is shown but rows still overflow (INDICATOR_H > 0), we must still
+          clip so the overflow indicator is visible and auto-pagination can trigger. */}
       <div
         ref={tableAreaRef}
-        className={p.autoHeight ? '' : showFooter ? 'flex-1' : p.autoPageBreak !== false ? 'overflow-hidden flex-1' : 'overflow-auto flex-1'}
-        style={{ maxHeight: (!p.autoHeight && !showFooter && INDICATOR_H > 0) ? `calc(100% - ${INDICATOR_H}px)` : undefined }}
+        className={p.autoHeight ? '' : (showFooter && INDICATOR_H === 0) ? 'flex-1' : p.autoPageBreak !== false ? 'overflow-hidden flex-1' : 'overflow-auto flex-1'}
+        style={{ maxHeight: (!p.autoHeight && INDICATOR_H > 0) ? `calc(100% - ${INDICATOR_H}px)` : undefined }}
       >
         <table className="w-full border-collapse" style={{ fontSize: fs, lineHeight: 1.2, tableLayout }}>
           <colgroup>
