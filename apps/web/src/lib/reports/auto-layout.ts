@@ -483,12 +483,16 @@ export function computeAutoLayout(
 
     // Usable height per continuation page: full canvas minus header/footer overlays and page margins.
     const contPageH   = canvasH - effectiveTop - effectiveBottom;
-    // Reserve footerH on every continuation page — we don't know which is last ahead of time,
-    // and the summary footer only renders on the last slice.  Being conservative here ensures
-    // the last page always has room for the footer without clipping it.
+    // Non-last continuation pages do not show the footer — use their full capacity.
     const contRowsFit = hintedAvgRowH != null
-      ? Math.max(1, Math.floor((contPageH - CONT_BADGE - IND - headerH - urlBarH - footerH) / hintedAvgRowH))
-      : calcRowsFitH(tEl, contPageH - CONT_BADGE - IND - footerH);
+      ? Math.max(1, Math.floor((contPageH - CONT_BADGE - IND - headerH - urlBarH) / hintedAvgRowH))
+      : calcRowsFitH(tEl, contPageH - CONT_BADGE - IND);
+    // The LAST continuation page shows the footer — reserve footerH only there.
+    const contRowsFitLast = footerH > 0
+      ? (hintedAvgRowH != null
+        ? Math.max(1, Math.floor((contPageH - CONT_BADGE - IND - headerH - urlBarH - footerH) / hintedAvgRowH))
+        : calcRowsFitH(tEl, contPageH - CONT_BADGE - IND - footerH))
+      : contRowsFit;
 
     // Source table fills the page (stretchedH) so the DOM measurement can correctly
     // count how many rows fit at their natural height.  Rows are no longer stretched
@@ -614,13 +618,28 @@ export function computeAutoLayout(
 
     while (sliceStart < allRows.length) {
       lastSliceStart     = sliceStart;
-      const isLast       = sliceStart + contRowsFit >= allRows.length;
-      const sliceEnd     = isLast ? undefined : sliceStart + contRowsFit;
-      const insertIdx    = sourcePage + 1 + insertedCount;
+      // Use the footer-safe capacity to determine if this is the last slice, then
+      // use the non-footer capacity for non-last slices (they don't show the footer).
+      const remaining       = allRows.length - sliceStart;
+      const isLast          = remaining <= contRowsFitLast;
+      // For non-last slices with a footer, cap at (remaining − contRowsFitLast) to
+      // guarantee at least contRowsFitLast rows remain for the proper footer-bearing
+      // last page.  Without this cap a non-last slice could consume ALL remaining rows
+      // (sliceEnd ≥ allRows.length), making element-table show the footer on a page
+      // that was sized WITHOUT footer headroom — the last few rows overflow behind it.
+      // Skip the cap when contRowsFitLast === contRowsFit (no footer penalty) to
+      // avoid turning [25, 1] distributions into [1, 25] when no footer is present.
+      const effectiveContFit = isLast
+        ? contRowsFitLast
+        : contRowsFitLast < contRowsFit
+          ? Math.min(contRowsFit, remaining - contRowsFitLast)
+          : contRowsFit;
+      const sliceEnd        = isLast ? undefined : sliceStart + effectiveContFit;
+      const insertIdx       = sourcePage + 1 + insertedCount;
 
       // Natural content height for each continuation slice (no blank gap at bottom).
       // Last slice adds footer row height; non-last pages show the overflow indicator.
-      const sliceRowCount = isLast ? allRows.length - sliceStart : contRowsFit;
+      const sliceRowCount = isLast ? remaining : effectiveContFit;
       const thisContH = Math.min(
         contPageH,
         hintedAvgRowH != null

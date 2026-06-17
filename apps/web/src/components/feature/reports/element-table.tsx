@@ -218,7 +218,13 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   // present on props). Without this guard the effect fires at the original small height
   // right after autoPageBreak is enabled, producing a wrong tiny fit count.
   useLayoutEffect(() => {
-    if (!onActualFit || p.isContinuation || !p.autoPageBreak) return;
+    // Guard: block when auto-break is explicitly off, when this is a continuation, or
+    // before computeAutoLayout has stretched the element (autoOriginalH not yet set).
+    // Previously `!p.autoPageBreak` was used, which also blocked the measurement when
+    // autoPageBreak is undefined — but source tables with undefined autoPageBreak are
+    // still actively paginated by computeAutoLayout (autoPageBreak !== false is the
+    // filter), so we must allow DOM measurement to feed accurate hints back via onActualFit.
+    if (!onActualFit || p.isContinuation || p.autoPageBreak === false) return;
     const ep = element.props as Record<string, unknown>;
     if (ep.autoOriginalH === undefined) return; // not yet stretched by computeAutoLayout
     const area  = tableAreaRef.current;
@@ -269,7 +275,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.length, element.h]);
+  }, [rows.length, element.h, p.footerRowEnabled]);
 
   // ── Auto-height: resize element to exactly fit its rendered rows ─────────
   // Fires for:

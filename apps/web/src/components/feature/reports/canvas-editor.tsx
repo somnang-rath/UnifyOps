@@ -7,6 +7,7 @@ import { useReportWidgetData } from '@/hooks/use-reports';
 import { useReportController } from '@/hooks/use-report-controller';
 import { api } from '@/lib/api';
 import { extractArrayAtPath } from '@/hooks/use-report-datasource';
+import { applyAggregation, formatKpiValue } from '@/lib/kpi-format';
 import type { StoredDatasource } from './data-source-panel';
 import { WidgetDataContext } from './widget-data-context';
 import { ELEMENTS } from './elements-sidebar';
@@ -820,6 +821,72 @@ function shouldShowHF(hf: { showOn?: string; skipPages?: number[] }, pgIdx: numb
   return true; // 'all' or undefined
 }
 
+// ── Datasource refresh helpers ────────────────────────────────────────────────
+
+function dsGetNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  if (!path.includes('.')) return obj[path];
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (cur == null || typeof cur !== 'object' || Array.isArray(cur)) return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+function dsRenderRowTemplate(tmpl: string, row: Record<string, unknown>): string {
+  return tmpl.replace(/\{([^|}]+)(\|round)?\}/g, (_match, key, mod) => {
+    const val = dsGetNestedValue(row, key.trim());
+    if (val === undefined || val === null) return _match;
+    if (mod === '|round') {
+      const num = typeof val === 'number' ? val : parseFloat(String(val));
+      if (!isNaN(num)) return String(Math.round(num));
+    }
+    return String(val);
+  });
+}
+
+function dsRenderTemplate(
+  template: string,
+  values: (string | number)[],
+  firstRow?: Record<string, unknown>,
+): string {
+  let result = template;
+  values.forEach((v, i) => {
+    result = result.replace(new RegExp(`\\{value${i}\\}`, 'g'), String(v));
+  });
+  if (values.length > 0) result = result.replace(/\{value\}/g, String(values[0]));
+  if (firstRow) {
+    result = result.replace(/\{([^|}]+)(\|round)?\}/g, (match, key, mod) => {
+      if (key === 'value' || /^value\d+$/.test(key)) return match;
+      const val = dsGetNestedValue(firstRow, key.trim());
+      if (val === undefined || val === null) return match;
+      if (mod === '|round') {
+        const num = typeof val === 'number' ? val : parseFloat(String(val));
+        if (!isNaN(num)) return String(Math.round(num));
+      }
+      return String(val);
+    });
+  }
+  return result;
+}
+
+function dsEvalSimpleExpr(row: Record<string, unknown>, expr: string): number {
+  const spMatch = expr.match(/^sumProduct\((\w+),\s*([\w.]+),\s*([\w.]+)\)$/);
+  if (spMatch) {
+    const arr = (row[spMatch[1]] as Record<string, unknown>[]) ?? [];
+    return arr.reduce((s, item) => s + Number(item[spMatch[2]] ?? 0) * Number(item[spMatch[3]] ?? 0), 0);
+  }
+  const sumMatch = expr.match(/^sum\((\w+),\s*([\w.]+)\)$/);
+  if (sumMatch) {
+    const arr = (row[sumMatch[1]] as Record<string, unknown>[]) ?? [];
+    return arr.reduce((s, item) => s + Number(item[sumMatch[2]] ?? 0), 0);
+  }
+  return Number(dsGetNestedValue(row, expr) ?? 0);
+}
+
+const DS_PALETTE = ['#6366f1', '#f59e0b', '#22c55e', '#ef4444', '#06b6d4', '#ec4899'];
+
 // ── Main editor ───────────────────────────────────────────────────────────────
 
 export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepareForExportRef, getLatestTemplate }: Props) {
@@ -1171,17 +1238,48 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
       return !!(el.props as Record<string, unknown>).dataUrl;
     });
 
-    if (sourceTables.length === 0 && groupedTables.length === 0) return elements;
+    // text/heading elements with a textDataSource URL
+    const textElements = elements.filter((el) => {
+      if (el.type !== 'text' && el.type !== 'heading') return false;
+      return !!(el.props as Record<string, unknown>).textDataSource &&
+        !!((el.props as Record<string, unknown>).textDataSource as Record<string, unknown>)?.url;
+    });
+
+    // data-widget and chart elements with a dataSource URL
+    const widgetElements = elements.filter((el) => {
+      if (el.type !== 'data-widget' && el.type !== 'chart') return false;
+      return !!((el.props as Record<string, unknown>).dataSource as Record<string, unknown> | undefined)?.url;
+    });
+
+    if (
+      sourceTables.length === 0 &&
+      groupedTables.length === 0 &&
+      textElements.length === 0 &&
+      widgetElements.length === 0
+    ) return elements;
+
+    // ── Helper: deduplicated URL fetch so the same URL is only hit once ──────
+    const urlCache = new Map<string, unknown>();
+    const fetchUrl = async (url: string, method = 'GET', headers: Record<string, string> = {}): Promise<unknown> => {
+      const cacheKey = `${method}:${url}`;
+      if (urlCache.has(cacheKey)) return urlCache.get(cacheKey);
+      try {
+        const { data: result } = await api.post<{ data: unknown }>('/reports/fetch-datasource', { url, method, headers });
+        urlCache.set(cacheKey, result.data);
+        return result.data;
+      } catch {
+        return null;
+      }
+    };
 
     const results = await Promise.all(
       sourceTables.map(async (el) => {
         const p  = el.props as Record<string, unknown>;
         const ds = p.dataSource as StoredDatasource;
         try {
-          const { data: result } = await api.post<{ data: unknown }>('/reports/fetch-datasource', {
-            url: ds.url, method: ds.method ?? 'GET', headers: ds.headers ?? {},
-          });
-          const rawRows = extractArrayAtPath(result.data, ds.dataPath ?? '');
+          const rawData = await fetchUrl(ds.url, ds.method ?? 'GET', ds.headers ?? {});
+          if (rawData == null) return null;
+          const rawRows = extractArrayAtPath(rawData, ds.dataPath ?? '');
           const rows = rawRows.slice(0, 500).map((row) => {
             const mapped: Record<string, string> = {};
             (ds.columnDefs ?? []).forEach(({ key, label, prefix, suffix }) => {
@@ -1209,11 +1307,10 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
           if (gp.dataHeaders) {
             try { headers = JSON.parse(gp.dataHeaders as string); } catch { /* ignore */ }
           }
-          const { data: result } = await api.post<{ data: unknown }>('/reports/fetch-datasource', {
-            url: gp.dataUrl, method: gp.dataMethod ?? 'GET', headers,
-          });
-          const rawData = extractArrayAtPath(result.data, (gp.dataPath as string) ?? '');
-          return { id: el.id, rawData };
+          const rawData = await fetchUrl(gp.dataUrl as string, (gp.dataMethod as string) ?? 'GET', headers);
+          if (rawData == null) return null;
+          const rows = extractArrayAtPath(rawData, (gp.dataPath as string) ?? '');
+          return { id: el.id, rawData: rows };
         } catch {
           return null;
         }
@@ -1221,10 +1318,128 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
     );
     const groupedUpdates = groupedResults.filter(Boolean) as { id: string; rawData: Record<string, unknown>[] }[];
 
-    if (updates.length === 0 && groupedUpdates.length === 0) return elements;
+    // Fetch text/heading datasources
+    const textResults = await Promise.all(
+      textElements.map(async (el) => {
+        const p   = el.props as Record<string, unknown>;
+        const tds = p.textDataSource as Record<string, unknown>;
+        try {
+          const rawData = await fetchUrl(
+            tds.url as string,
+            (tds.method as string) ?? 'GET',
+            (tds.headers as Record<string, string>) ?? {},
+          );
+          if (rawData == null) return null;
+          const tmpl      = (tds.template as string) ?? '{value}';
+          const joinMode  = !!(tds.joinMode);
+          let values: (string | number)[] = [];
+          let firstRow: Record<string, unknown> | undefined;
+
+          if (tds.sourceMode === 'root') {
+            const fieldKey = tds.rootField as string | undefined;
+            if (fieldKey && rawData && typeof rawData === 'object') {
+              const v = dsGetNestedValue(rawData as Record<string, unknown>, fieldKey);
+              if (typeof v === 'string' || typeof v === 'number') values = [v];
+            }
+          } else {
+            const allRows = extractArrayAtPath(rawData, (tds.dataPath as string) ?? '');
+            firstRow = allRows[0];
+            if (joinMode && tds.joinRowTemplate) {
+              const joined = allRows
+                .map((row) => dsRenderRowTemplate(tds.joinRowTemplate as string, row))
+                .join((tds.joinSeparator as string) ?? ', ');
+              values = [joined];
+            } else {
+              type AggDefRaw = { fieldKey: string; aggregation: string };
+              const aggDefs: AggDefRaw[] =
+                (tds.aggDefs as AggDefRaw[] | undefined)?.length
+                  ? (tds.aggDefs as AggDefRaw[])
+                  : tds.fieldKey
+                  ? [{ fieldKey: tds.fieldKey as string, aggregation: (tds.aggregation as string) ?? 'first' }]
+                  : [];
+              if (allRows.length > 0) {
+                values = aggDefs
+                  .filter((d) => d.fieldKey)
+                  .map((d) =>
+                    applyAggregation(allRows, d.fieldKey, d.aggregation as Parameters<typeof applyAggregation>[2]),
+                  );
+              }
+            }
+          }
+
+          if (values.length === 0) return null;
+          const content = dsRenderTemplate(tmpl, values, firstRow);
+          return { id: el.id, content };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const textUpdates = textResults.filter(Boolean) as { id: string; content: string }[];
+
+    // Fetch data-widget / chart datasources
+    const widgetResults = await Promise.all(
+      widgetElements.map(async (el) => {
+        const p  = el.props as Record<string, unknown>;
+        const ds = p.dataSource as Record<string, unknown>;
+        try {
+          const rawData = await fetchUrl(
+            ds.url as string,
+            (ds.method as string) ?? 'GET',
+            (ds.headers as Record<string, string>) ?? {},
+          );
+          if (rawData == null) return null;
+          const rows = extractArrayAtPath(rawData, (ds.dataPath as string) ?? '');
+          const newProps: Record<string, unknown> = {};
+
+          if (el.type === 'data-widget') {
+            if (ds.widgetMode === 'kpi') {
+              const raw = applyAggregation(
+                rows,
+                ds.valueKey as string,
+                (ds.aggregation as Parameters<typeof applyAggregation>[2]) ?? 'first',
+              );
+              newProps.kpiValue = formatKpiValue(raw, (ds.numberFormat as Parameters<typeof formatKpiValue>[1]) ?? 'raw', (ds.currencySymbol as string) ?? '$');
+            } else {
+              newProps.seriesData = rows.slice(0, 20).map((row, i) => ({
+                name:  ds.nameKey ? String(dsGetNestedValue(row, ds.nameKey as string) ?? '') : String(i),
+                value: Number(dsGetNestedValue(row, ds.valueKey as string) ?? 0),
+                color: DS_PALETTE[i % DS_PALETTE.length],
+              }));
+            }
+          } else if (el.type === 'chart') {
+            const chartRows = ds.expandNested
+              ? rows.flatMap((row) => {
+                  const nested = row[ds.expandNested as string];
+                  return Array.isArray(nested) ? (nested as Record<string, unknown>[]) : [];
+                })
+              : rows;
+            newProps.seriesData = chartRows.slice(0, 50).map((row, i) => ({
+              name:   String(dsGetNestedValue(row, ds.nameKey as string) ?? ''),
+              value:  ds.valueExpr
+                ? dsEvalSimpleExpr(row, ds.valueExpr as string)
+                : Number(dsGetNestedValue(row, ds.valueKey as string) ?? 0),
+              value2: ds.value2Key ? Number(dsGetNestedValue(row, ds.value2Key as string) ?? 0) : undefined,
+              color:  ds.colorKey && dsGetNestedValue(row, ds.colorKey as string)
+                ? String(dsGetNestedValue(row, ds.colorKey as string))
+                : DS_PALETTE[i % DS_PALETTE.length],
+            }));
+          }
+
+          return { id: el.id, props: newProps };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const widgetUpdates = widgetResults.filter(Boolean) as { id: string; props: Record<string, unknown> }[];
+
+    if (updates.length === 0 && groupedUpdates.length === 0 && textUpdates.length === 0 && widgetUpdates.length === 0) return elements;
 
     const freshMap        = new Map(updates.map((u) => [u.id, u.rows]));
     const groupedFreshMap = new Map(groupedUpdates.map((u) => [u.id, u.rawData]));
+    const textFreshMap    = new Map(textUpdates.map((u) => [u.id, u.content]));
+    const widgetFreshMap  = new Map(widgetUpdates.map((u) => [u.id, u.props]));
 
     return elements.map((el) => {
       const p = el.props as Record<string, unknown>;
@@ -1234,6 +1449,8 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
         return { ...el, props: { ...p, rows: freshMap.get(srcId) } };
       }
       if (groupedFreshMap.has(el.id)) return { ...el, props: { ...p, rawData: groupedFreshMap.get(el.id) } };
+      if (textFreshMap.has(el.id)) return { ...el, props: { ...p, content: textFreshMap.get(el.id) } };
+      if (widgetFreshMap.has(el.id)) return { ...el, props: { ...p, ...widgetFreshMap.get(el.id) } };
       return el;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1831,11 +2048,21 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
                               // to content height, then the handleActualFit RAF would re-stretch
                               // it, causing an infinite flicker loop.
                               // Only continuation/autoHeight tables get onHeightChange.
+                              //
+                              // Guard: endRow !== undefined means computeAutoLayout has produced
+                              // continuation pages for this source table. We must NOT auto-size
+                              // such a source table — it must stay at stretchedH so the row-count
+                              // DOM measurement remains accurate. Using !!ep.autoPageBreak here
+                              // was wrong: autoPageBreak can still be undefined (the handleAutoPaginate
+                              // 80 ms timer is often cleared before it fires), causing shouldAutoSize
+                              // to shrink the source and making auto page break appear broken,
+                              // especially after toggling the footer row (which clears the fit hint).
                               (() => {
                                 const ep = el.props as Record<string, unknown>;
                                 const isSourceAutoTable =
                                   el.type === 'table' &&
-                                  !!ep.autoPageBreak &&
+                                  ep.autoPageBreak !== false &&
+                                  ep.endRow !== undefined &&
                                   !ep.isContinuation &&
                                   !ep.autoGenerated;
                                 return isSourceAutoTable
