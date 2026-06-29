@@ -93,10 +93,46 @@ export default function NotesPage() {
     parentId: string | null
   } | null>(null)
   const skipNextLoadRef = useRef(false)
+  const persistRef = useRef(false)
   const emojiBtnRef = useRef<HTMLDivElement>(null)
   const tplBtnRef = useRef<HTMLDivElement>(null)
 
-  const { data: activeNote } = useNote(activeId)
+  const { data: activeNote, error: activeNoteError } = useNote(activeId)
+
+  // Restore the last-open note on mount so switching pages and coming back
+  // keeps your place instead of resetting to the empty "Select a note" screen.
+  // (Read from localStorage in an effect — it's unavailable during SSR.)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("notes-active-id")
+      if (saved) setActiveId(saved)
+    } catch {}
+  }, [])
+
+  // Persist the open note id whenever it changes. Skip the first run (mount,
+  // before the restore effect above has applied) so we don't clobber the
+  // stored value with the initial null.
+  useEffect(() => {
+    if (!persistRef.current) {
+      persistRef.current = true
+      return
+    }
+    try {
+      if (activeId) localStorage.setItem("notes-active-id", activeId)
+      else localStorage.removeItem("notes-active-id")
+    } catch {}
+  }, [activeId])
+
+  // If the restored note no longer exists (deleted), drop back to the empty state.
+  useEffect(() => {
+    if (
+      activeNoteError instanceof AxiosError &&
+      activeNoteError.response?.status === 404
+    ) {
+      setActiveId(null)
+      setDraft(emptyDraft())
+    }
+  }, [activeNoteError])
 
   // Load active note → draft (skip if we just saved and don't want a clobber)
   useEffect(() => {

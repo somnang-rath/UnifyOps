@@ -22,6 +22,7 @@ export default function TablesPage() {
 
   const searchParams = useSearchParams();
   const [activeId, setActiveId] = useState<string | null>(() => searchParams.get('open'));
+  const persistRef = useRef(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [deleting, setDeleting] = useState<WorkbookSummary | null>(null);
@@ -39,6 +40,32 @@ export default function TablesPage() {
     if (!isLoading && !isFetching && activeId && !workbooks.find((w) => w._id === activeId))
       setActiveId(null);
   }, [activeId, workbooks, isLoading, isFetching]);
+
+  // Restore the last-open workbook on mount so switching pages and coming back
+  // keeps your place. A `?open=` URL param (set at initial state) wins; otherwise
+  // fall back to the persisted id. (localStorage is unavailable during SSR.)
+  useEffect(() => {
+    try {
+      if (activeId) localStorage.setItem('tables-active-id', activeId);
+      else {
+        const saved = localStorage.getItem('tables-active-id');
+        if (saved) setActiveId(saved);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the open workbook so it re-opens when returning to this page.
+  useEffect(() => {
+    if (!persistRef.current) {
+      persistRef.current = true;
+      return;
+    }
+    try {
+      if (activeId) localStorage.setItem('tables-active-id', activeId);
+      else localStorage.removeItem('tables-active-id');
+    } catch {}
+  }, [activeId]);
 
   const downloadXlsx = async (w: WorkbookSummary) => {
     const blob = await api

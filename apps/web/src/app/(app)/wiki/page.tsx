@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
+import { AxiosError } from "axios"
 import {
   Eye,
   FileText,
@@ -46,6 +47,7 @@ export default function WikiPageRoute() {
   const { data: projects = [] } = useProjects()
   const [projectId, setProjectId] = useState("")
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [hydrated, setHydrated] = useState(false)
   const [draft, setDraft] = useState<Draft>(emptyDraft())
   const [mode, setMode] = useState<Mode>("preview")
   const [deleting, setDeleting] = useState(false)
@@ -65,12 +67,38 @@ export default function WikiPageRoute() {
     return () => document.removeEventListener("mousedown", onDoc)
   }, [treeOpen])
 
+  // Restore the last project + open page on mount so switching to another page
+  // and coming back keeps your place. (localStorage is unavailable during SSR,
+  // so read it in an effect rather than a lazy initializer.)
   useEffect(() => {
+    try {
+      const p = localStorage.getItem("wiki-project")
+      const a = localStorage.getItem("wiki-active")
+      if (p) setProjectId(p)
+      if (a) setActiveId(a)
+    } catch {}
+    setHydrated(true)
+  }, [])
+
+  // Auto-select the first project only once restore has run and nothing is set.
+  useEffect(() => {
+    if (!hydrated) return
     if (!projectId && projects.length) setProjectId(projects[0]._id)
-  }, [projects, projectId])
+  }, [projects, projectId, hydrated])
+
+  // Persist project + open page so they re-open when returning to this page.
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      if (projectId) localStorage.setItem("wiki-project", projectId)
+      else localStorage.removeItem("wiki-project")
+      if (activeId) localStorage.setItem("wiki-active", activeId)
+      else localStorage.removeItem("wiki-active")
+    } catch {}
+  }, [projectId, activeId, hydrated])
 
   const { data: pages = [] } = useWikiList(projectId, debouncedQ)
-  const { data: activePage } = useWikiPage(activeId)
+  const { data: activePage, error: activePageError } = useWikiPage(activeId)
   const m = useWikiMutations(projectId)
 
   useEffect(() => {
@@ -83,11 +111,25 @@ export default function WikiPageRoute() {
     setMode("preview")
   }, [activePage])
 
+  // If the restored page no longer exists (deleted), drop back to the empty state.
   useEffect(() => {
+    if (
+      activePageError instanceof AxiosError &&
+      activePageError.response?.status === 404
+    ) {
+      setActiveId(null)
+      setDraft(emptyDraft())
+    }
+  }, [activePageError])
+
+  // Switching project clears the current selection. Done in the handler (not a
+  // [projectId] effect) so restoring a saved project doesn't wipe the saved page.
+  const changeProject = (id: string) => {
+    setProjectId(id)
     setActiveId(null)
     setDraft(emptyDraft())
     setQ("")
-  }, [projectId])
+  }
 
   const projectOptions = [
     { value: "", label: "Select project…" },
@@ -155,7 +197,7 @@ export default function WikiPageRoute() {
           <Select
             inline
             value={projectId}
-            onValueChange={setProjectId}
+            onValueChange={changeProject}
             options={projectOptions}
             placeholder="Select project…"
           />
