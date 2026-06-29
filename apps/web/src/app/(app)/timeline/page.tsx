@@ -752,6 +752,7 @@ export default function TimelinePage() {
             frozen: { rows: 3, cols: 1 },
             hiddenRows: [], hiddenCols: [],
             gridlines: true, filter: null, condFmt: [], validations: [],
+            charts: [],
             color: null, hidden: false, index: 0,
           }],
           activeSheetId: sheetId,

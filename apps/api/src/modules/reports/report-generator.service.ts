@@ -653,7 +653,10 @@ function calcContTableHeight(el: ReportElement): number {
   const allRows = (p.rows as Record<string, string>[]) ?? [];
   const startRow = Math.max(0, (p.startRow as number) ?? 0);
   const endRow   = p.endRow as number | undefined;
-  const rowCount = allRows.slice(startRow, endRow).length;
+  // The summary footer is one extra ordinary row that appears on the last slice
+  // (endRow undefined = all remaining rows shown).
+  const footerExtra = (p.footerRowEnabled && endRow === undefined) ? 1 : 0;
+  const rowCount = allRows.slice(startRow, endRow).length + footerExtra;
 
   const hPy = (p.headerPaddingY as number) ?? 8;
   const hFs = (p.headerFontSize as number) ?? (p.fontSize as number) ?? 12;
@@ -665,12 +668,7 @@ function calcContTableHeight(el: ReportElement): number {
   const headerH    = hPy * 2 + Math.ceil(hFs * 1.2) + 2; // +2 for header border-bottom
   const rowH       = cPy * 2 + Math.ceil(fs  * 1.2) + 1; // +1 for row border-bottom
 
-  // Footer appears on the last continuation page (endRow undefined = all remaining rows shown)
-  const isLastSlice = endRow === undefined;
-  const _fFs    = (p.footerRowFontSize as number) ?? Math.max(9, Math.round(fs * 0.9));
-  const footerH = (p.footerRowEnabled && isLastSlice) ? cPy * 2 + _fFs + 2 : 0;
-
-  return CONT_BADGE + headerH + rowCount * rowH + footerH;
+  return CONT_BADGE + headerH + rowCount * rowH;
 }
 
 // ── Reposition auto-moved elements ────────────────────────────────────────────
@@ -774,7 +772,9 @@ function buildHtml(
         const rows     = (p.rows as unknown[]) ?? [];
         const startRow = Math.max(0, (p.startRow as number) ?? 0);
         const endRow   = p.endRow as number | undefined;
-        return rows.slice(startRow, endRow).length > 0;
+        // The summary footer is an extra row on the last slice (endRow undefined),
+        // so a footer-only slice is still visible content.
+        return rows.slice(startRow, endRow).length > 0 || (!!p.footerRowEnabled && endRow === undefined);
       }
       return true;
     });
@@ -804,7 +804,8 @@ function buildHtml(
             const rows     = (p.rows as unknown[]) ?? [];
             const startRow = Math.max(0, (p.startRow as number) ?? 0);
             const endRow   = p.endRow as number | undefined;
-            return rows.slice(startRow, endRow).length > 0;
+            // Keep footer-only slices (footer is an extra row on the last slice).
+            return rows.slice(startRow, endRow).length > 0 || (!!p.footerRowEnabled && endRow === undefined);
           }
           return true;
         })
@@ -1146,12 +1147,35 @@ function renderElementInner(
 
     case 'table': {
       const cols: string[] = (p.columns as string[]) ?? [];
-      const allRows: Record<string, string>[] = (p.rows as Record<string, string>[]) ?? [];
+      const realRows: Record<string, string>[] = (p.rows as Record<string, string>[]) ?? [];
+
+      // Summary footer is appended as one ordinary row (mirrors element-table.tsx),
+      // so pagination treats it like any other row — no "last page only" handling and
+      // no reserved footer height.  Aggregates are computed once over the REAL rows.
+      const footerEnabled = !!p.footerRowEnabled;
+      const footerCells = (p.footerCells as Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>) ?? {};
+      const footerLabel = (p.footerRowLabel as string) ?? 'Total';
+      const footerRowData: Record<string, string> | null = footerEnabled
+        ? (() => {
+            const out: Record<string, string> = {};
+            cols.forEach((c, ci) => {
+              const cfg = footerCells[c] ?? { fn: 'none' as FooterCellFn };
+              out[c] = cfg.fn === 'none' && ci === 0 ? footerLabel : computeFooterCellPdf(realRows, c, cfg);
+            });
+            return out;
+          })()
+        : null;
+
+      const allRows     = footerRowData ? [...realRows, footerRowData] : realRows;
+      const footerIndex = footerRowData ? realRows.length : -1;
+
       const startRow = Math.max(0, (p.startRow as number) ?? 0);
       const endRow   = p.endRow as number | undefined;
       const rows     = allRows.slice(startRow, endRow);
-      // Moved up so effectiveH (see below) and heightStyle can use it.
-      const showFooter = !!(p.footerRowEnabled) && (endRow === undefined || endRow >= allRows.length);
+      // The footer is always the last entry of allRows, so it is on this page only
+      // when the slice's last row is the footer index.
+      const footerOnPage = footerIndex >= 0 && rows.length > 0 && startRow + rows.length - 1 === footerIndex;
+      const dataRowCount = footerOnPage ? rows.length - 1 : rows.length;
 
       // Default colors mirror the canvas element-table.tsx defaults exactly:
       //  headerBg   → var(--bg-subtle)  ≈ #f3f4f6
@@ -1193,8 +1217,9 @@ function renderElementInner(
       const mergeColsSet = new Set(mergeCols);
       const spanMaps: Record<string, number[]> = {};
       if (mergeColsSet.size > 0) {
+        const dataRows = footerOnPage ? rows.slice(0, dataRowCount) : rows;
         for (const col of mergeColsSet) {
-          spanMaps[col] = computeSpans(rows.map((r) => String(r[col] ?? '')));
+          spanMaps[col] = computeSpans(dataRows.map((r) => String(r[col] ?? '')));
         }
       }
       const primaryMergeCol = mergeCols[0] ?? null;
@@ -1219,16 +1244,16 @@ function renderElementInner(
         active ? `inset 0 -${bw}px 0 0 ${color}` : '';
       const perRowH    = (p.equalRowHeight && p.rowHeight) ? (p.rowHeight as number) : 0;
 
-      // Self-correcting footer height: templates saved before the footer-height fix may have
-      // el.h that omits footerH, causing <tfoot> to be clipped in the PDF.  Compute the
-      // minimum content height and expand el.h if needed — makes the backend self-correcting
-      // regardless of what was persisted in the DB.
-      const fFs_est    = (p.footerRowFontSize as number | undefined) ?? Math.max(9, Math.round(fs * 0.9));
-      const fH_est     = showFooter ? cellPy * 2 + fFs_est + 2 : 0;
+      // Footer font size — used when rendering the synthetic footer row.
+      const fFs        = (p.footerRowFontSize as number | undefined) ?? Math.max(9, Math.round(fs * 0.9));
+      // Self-correcting height: the footer is one of the counted rows now, so its
+      // height is already in `rows.length * rH_est`.  Templates saved before this change
+      // may have el.h that omits the footer — expand el.h to the content minimum so the
+      // last row is never clipped in the PDF.
       const hH_est     = hPy * 2 + Math.ceil(hFs * 1.2) + 2;
       const rH_est     = perRowH > 0 ? perRowH : cellPy * 2 + Math.ceil(fs * 1.2) + 1;
-      const minElH     = contBadgeH + hH_est + rows.length * rH_est + fH_est;
-      const effectiveH = showFooter ? Math.max(el.h, minElH) : el.h;
+      const minElH     = contBadgeH + hH_est + rows.length * rH_est;
+      const effectiveH = footerOnPage ? Math.max(el.h, minElH) : el.h;
 
       // computeAutoLayout stretches auto-paginated source tables to fill the page so
       // the canvas can DOM-measure actual row heights. The PDF has no DOM measurement,
@@ -1279,17 +1304,26 @@ function renderElementInner(
 
       const tbody = rows.map((r, i) => {
         const globalI    = startRow + i;
+        const isFooter   = globalI === footerIndex;
         const isStripe   = !!(p.stripedRows && i % 2 === 1);
-        const isTotalRow = !!(p.showTotalRow && globalI === allRows.length - 1);
+        const isTotalRow = !!(p.showTotalRow && globalI === realRows.length - 1);
         let rowBg = (p.rowBg as string) ?? 'transparent';
-        if (isTotalRow && p.totalRowBg) rowBg = escapeHtml(p.totalRowBg as string);
-        else if (isStripe)              rowBg = (p.rowAltBg as string) ?? '#f3f4f6';
-        const rowFw = isTotalRow && p.totalRowBold !== false ? 'font-weight:bold;' : '';
-        const rowFg = isTotalRow && p.totalRowColor ? `color:${escapeHtml(p.totalRowColor as string)};` : '';
+        if (isFooter)                        rowBg = escapeHtml((p.footerRowBg as string) ?? '#f3f4f6');
+        else if (isTotalRow && p.totalRowBg) rowBg = escapeHtml(p.totalRowBg as string);
+        else if (isStripe)                   rowBg = (p.rowAltBg as string) ?? '#f3f4f6';
+        const rowFw = isFooter
+          ? ((p.footerRowBold as boolean) !== false ? 'font-weight:700;' : '')
+          : (isTotalRow && p.totalRowBold !== false ? 'font-weight:bold;' : '');
+        const rowFg = isFooter
+          ? `color:${escapeHtml((p.footerRowColor as string) ?? '#111111')};`
+          : (isTotalRow && p.totalRowColor ? `color:${escapeHtml(p.totalRowColor as string)};` : '');
+        const rowFs = isFooter ? `font-size:${fFs}px;` : '';
 
         // Row-number cell (merge-aware: spans same as primary merge column)
         let rowNumTd = '';
-        if (showRowNums) {
+        if (showRowNums && isFooter) {
+          rowNumTd = `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;${mkBS(bsR(showColB))}text-align:center;"></td>`;
+        } else if (showRowNums) {
           const numSpan = primaryMergeCol ? (spanMaps[primaryMergeCol]?.[i] ?? 1) : 1;
           if (numSpan === 0) {
             rowNumTd = ''; // covered by merged cell above
@@ -1316,24 +1350,24 @@ function renderElementInner(
         }
 
         const cells = cols.map((c, ci) => {
-          // Merge: skip cells covered by a span above
-          const mergeEnabled = mergeColsSet.has(c);
+          // Merge: skip cells covered by a span above (footer is never merged)
+          const mergeEnabled = mergeColsSet.has(c) && !isFooter;
           const span = mergeEnabled ? (spanMaps[c]?.[i] ?? 1) : 1;
           if (mergeEnabled && span === 0) return ''; // covered
 
           const rawVal   = r[c] ?? '';
           const val      = fmtNumber(rawVal, (p.colFormats as Record<string, string> | undefined)?.[c]);
           const align    = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
-          const colBg    = (p.colBgs as Record<string, string>)?.[c];
-          const isStatus = (p.statusColumns as string[] | undefined)?.includes(c);
+          const colBg    = isFooter ? undefined : (p.colBgs as Record<string, string>)?.[c];
+          const isStatus = !isFooter && (p.statusColumns as string[] | undefined)?.includes(c);
           // For merged cells, use the border at the last spanned row
           const lastRowIdx = mergeEnabled && span > 1 ? i + span - 1 : i;
           const rowspanAttr = span > 1 ? ` rowspan="${span}"` : '';
 
-          // Per-column styling
-          const colFs  = colFontSizes[c]    ? `font-size:${colFontSizes[c]}px;`                                    : '';
-          const colFg  = colTextColors[c]   ? `color:${escapeHtml(colTextColors[c])};`                              : '';
-          const colFf  = colFontFamilies[c] ? `font-family:${escapeHtml(normalizeFont(colFontFamilies[c]))};`       : '';
+          // Per-column styling (skipped for the footer row, which uses footer styling)
+          const colFs  = !isFooter && colFontSizes[c]    ? `font-size:${colFontSizes[c]}px;`                              : '';
+          const colFg  = !isFooter && colTextColors[c]   ? `color:${escapeHtml(colTextColors[c])};`                        : '';
+          const colFf  = !isFooter && colFontFamilies[c] ? `font-family:${escapeHtml(normalizeFont(colFontFamilies[c]))};` : '';
 
           let cellContent = escapeHtml(val);
           if (isStatus && val) {
@@ -1353,7 +1387,7 @@ function renderElementInner(
         }).join('');
 
         const trH = perRowH > 0 ? `height:${perRowH}px;` : '';
-        return `<tr style="background:${escapeHtml(rowBg)};${rowFw}${rowFg}${trH}">${rowNumTd}${cells}</tr>`;
+        return `<tr style="background:${escapeHtml(rowBg)};${rowFw}${rowFg}${rowFs}${trH}">${rowNumTd}${cells}</tr>`;
       }).join('');
 
       const outerStyle = outerB ? `border:${bw}px ${borderStyle} ${borderColor};border-radius:4px;` : '';
@@ -1362,44 +1396,11 @@ function renderElementInner(
       // the flex container and Puppeteer distributes the explicit tr heights correctly.
       const tableHeightStyle = perRowH > 0 ? 'height:100%;' : '';
 
-      // Footer row — inside the same <table> so column widths always align with data columns.
-      // showFooter was already declared above (moved up for effectiveH computation).
-      let tfootHtml = '';
-      if (showFooter) {
-        const footerBg    = escapeHtml((p.footerRowBg as string) ?? '#f3f4f6');
-        const footerColor = escapeHtml((p.footerRowColor as string) ?? '#111111');
-        const footerFw    = (p.footerRowBold as boolean) !== false ? 'font-weight:700;' : '';
-        const footerLabel = escapeHtml((p.footerRowLabel as string) ?? 'Total');
-        const footerCells = (p.footerCells as Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>) ?? {};
-
-        const rowNumTd = showRowNums
-          ? `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;border-top:${bw}px ${borderStyle} ${borderColor};${mkBS(bsR(showColB))}text-align:center;"></td>`
-          : '';
-
-        const cells = cols.map((c, ci) => {
-          const cfg     = footerCells[c] ?? { fn: 'none' as FooterCellFn };
-          const isFirst = ci === 0;
-          const rawFn   = computeFooterCellPdf(allRows, c, cfg);
-          const raw     = cfg.fn === 'none' && isFirst
-            ? footerLabel
-            : fmtNumber(rawFn, (p.colFormats as Record<string, string> | undefined)?.[c]);
-          const align = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
-          return `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;border-top:${bw}px ${borderStyle} ${borderColor};text-align:${align};${mkBS(bsR(showColB && ci < cols.length - 1))}">${escapeHtml(raw)}</td>`;
-        }).join('');
-
-        const footerFs = (p.footerRowFontSize as number | undefined) ?? Math.max(9, Math.round(fs * 0.9));
-        const footerTrH = perRowH > 0 ? `height:${perRowH}px;` : '';
-        tfootHtml = `<tfoot style="font-size:${footerFs}px;"><tr style="background:${footerBg};color:${footerColor};${footerFw}${footerTrH}">${rowNumTd}${cells}</tr></tfoot>`;
-      }
-
-      // When a summary footer is shown, the inner wrapper must NOT clip — the footer sits at
-      // the bottom of the same <table> and would be hidden by overflow:hidden if any body
-      // rows push the table taller than the wrapper.  auto-layout.ts already reserves footer
-      // height in the element bounds, so there is no real overflow to clip.
-      // Without a footer the overflow:hidden guard is still needed to prevent body rows from
-      // bleeding into header/footer overlay areas on non-last continuation pages.
-      const innerOverflow = showFooter ? '' : 'overflow:hidden;';
-      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<div style="flex:1;${innerOverflow}"><table style="width:100%;${tableHeightStyle}table-layout:${tblLayout};border-collapse:separate;border-spacing:0;font-size:${fs}px;line-height:1.2;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody>${tfootHtml}</table></div></div>`;
+      // The summary footer is rendered as the last <tbody> row (see footerRowData),
+      // so column widths always align and no separate <tfoot> / overflow exception
+      // is needed.  Clipping stays on to keep rows out of header/footer overlay areas.
+      const innerOverflow = 'overflow:hidden;';
+      return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<div style="flex:1;${innerOverflow}"><table style="width:100%;${tableHeightStyle}table-layout:${tblLayout};border-collapse:separate;border-spacing:0;font-size:${fs}px;line-height:1.2;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div></div>`;
     }
 
     case 'grouped-table': {

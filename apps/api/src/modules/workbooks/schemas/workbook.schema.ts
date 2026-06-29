@@ -66,6 +66,21 @@ export interface SheetValidationRule {
   strict?: boolean;
 }
 
+export interface SheetChart {
+  id: string;
+  type: 'column' | 'bar' | 'line' | 'area' | 'pie' | 'scatter';
+  title?: string;
+  range: SheetRange;
+  headerRow: boolean;
+  headerCol: boolean;
+  legend: boolean;
+  stacked: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 @Schema({ _id: false })
 class Sheet {
   @Prop({ required: true }) id: string;
@@ -118,6 +133,9 @@ class Sheet {
 
   @Prop({ type: [Object], default: [] })
   validations: SheetValidationRule[];
+
+  @Prop({ type: [Object], default: [] })
+  charts: SheetChart[];
 }
 const SheetSchema = SchemaFactory.createForClass(Sheet);
 

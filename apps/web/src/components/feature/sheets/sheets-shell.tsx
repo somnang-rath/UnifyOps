@@ -38,6 +38,7 @@ import type {
   CellLink,
   CellStyle,
   Sheet,
+  SheetChart,
   SheetCondFmtRule,
   SheetFilterCriterion,
   SheetValidationRule,
@@ -67,6 +68,8 @@ import { CommentsPopover } from './comments-popover';
 import { useWorkbookComments } from '@/hooks/use-workbook-comments';
 import { ImportModal, type ImportResult } from './import-modal';
 import { KeyboardShortcutsModal } from './keyboard-shortcuts-modal';
+import { ChartConfigModal } from './chart-config-modal';
+import { ChartOverlay } from './chart-overlay';
 
 type Dir = 'up' | 'down' | 'left' | 'right' | null;
 
@@ -1590,6 +1593,91 @@ export function SheetsShell({ workbookId, onBack }: Props) {
     [mutateSheet],
   );
 
+  // ---- Charts ----
+
+  // The modal carries the in-progress chart plus whether it's a fresh insert
+  // (committed on save) or an edit of an existing chart on the sheet.
+  const [chartModal, setChartModal] = useState<{
+    chart: SheetChart;
+    isNew: boolean;
+  } | null>(null);
+
+  const openInsertChart = useCallback(() => {
+    if (!activeSheet) return;
+    const r = normalizeRange(sel.sr, sel.sc, sel.er, sel.ec);
+    // A single cell isn't a meaningful range — default to a small block anchored
+    // at the selection so the modal opens with something plottable.
+    const range =
+      r.r1 === r.r2 && r.c1 === r.c2
+        ? {
+            r1: r.r1,
+            c1: r.c1,
+            r2: Math.min(r.r1 + 4, activeSheet.rowCount - 1),
+            c2: Math.min(r.c1 + 1, activeSheet.colCount - 1),
+          }
+        : r;
+    setChartModal({
+      isNew: true,
+      chart: {
+        id: `ch_${Math.random().toString(36).slice(2, 9)}`,
+        type: 'column',
+        title: '',
+        range,
+        headerRow: true,
+        headerCol: true,
+        legend: true,
+        stacked: false,
+        // Float near the top-left of the grid viewport, nudged per existing count
+        // so a second chart doesn't land exactly on the first.
+        x: 60 + (activeSheet.charts?.length ?? 0) * 24,
+        y: 60 + (activeSheet.charts?.length ?? 0) * 24,
+        w: 480,
+        h: 300,
+      },
+    });
+  }, [activeSheet, sel]);
+
+  const saveChart = useCallback(
+    (chart: SheetChart, isNew: boolean) => {
+      mutateSheet(
+        (s) => {
+          const charts = s.charts ?? [];
+          return isNew
+            ? { ...s, charts: [...charts, chart] }
+            : { ...s, charts: charts.map((c) => (c.id === chart.id ? chart : c)) };
+        },
+        isNew ? 'insert chart' : 'edit chart',
+      );
+      setChartModal(null);
+    },
+    [mutateSheet],
+  );
+
+  const removeChart = useCallback(
+    (id: string) => {
+      mutateSheet(
+        (s) => ({ ...s, charts: (s.charts ?? []).filter((c) => c.id !== id) }),
+        'delete chart',
+      );
+    },
+    [mutateSheet],
+  );
+
+  const moveChart = useCallback(
+    (id: string, rect: { x: number; y: number; w: number; h: number }) => {
+      mutateSheet(
+        (s) => ({
+          ...s,
+          charts: (s.charts ?? []).map((c) =>
+            c.id === id ? { ...c, ...rect } : c,
+          ),
+        }),
+        'move chart',
+      );
+    },
+    [mutateSheet],
+  );
+
   // ---- Freeze ----
 
   const handleFreezeRows = useCallback(
@@ -2365,6 +2453,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
               filter: null,
               condFmt: [],
               validations: [],
+              charts: [],
             },
           ],
           activeSheetId: newId,
@@ -2715,6 +2804,11 @@ export function SheetsShell({ workbookId, onBack }: Props) {
             { label: 'Row below', onClick: handleInsertRowBelow },
             { label: 'Column left', onClick: handleInsertColLeft },
             { label: 'Column right', onClick: handleInsertColRight },
+          ],
+        },
+        {
+          items: [
+            { label: 'Chart…', onClick: openInsertChart },
           ],
         },
         {
@@ -3081,6 +3175,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         onInsertLink={() => setLinkModalOpen(true)}
         hasLink={!!activeCell?.link}
         onInsertComment={openCommentsAtActive}
+        onInsertChart={openInsertChart}
       />
       <input
         ref={insertImageRef}
@@ -3288,6 +3383,14 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         onEditCommit={commitEdit}
         onEditCancel={cancelEdit}
       />
+      <ChartOverlay
+        sheet={activeSheet}
+        computed={computed}
+        readOnly={readOnly}
+        onEdit={(chart) => setChartModal({ chart, isNew: false })}
+        onRemove={removeChart}
+        onMove={moveChart}
+      />
       </div>
       <div data-sh-no-print className="flex items-stretch border-t border-[#e1e3e6] bg-[#f8f9fa] select-none" style={{ minHeight: 28 }}>
         {/* Sheet tabs on the left */}
@@ -3453,6 +3556,18 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+
+      {chartModal && activeSheet && (
+        <ChartConfigModal
+          open
+          chart={chartModal.chart}
+          sheet={activeSheet}
+          computed={computed}
+          isNew={chartModal.isNew}
+          onClose={() => setChartModal(null)}
+          onSave={(chart) => saveChart(chart, chartModal.isNew)}
+        />
+      )}
 
       {listPopover && (
         <ValidationListPopover
@@ -3902,6 +4017,7 @@ function normalizeWorkbook(wb: Workbook): Workbook {
       filter: s.filter ?? null,
       condFmt: s.condFmt ?? [],
       validations: s.validations ?? [],
+      charts: s.charts ?? [],
     })),
   };
 }

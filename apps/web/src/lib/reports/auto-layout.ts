@@ -334,20 +334,13 @@ export function computeAutoLayout(
     const _hFs    = (_tElPp.headerFontSize as number) ?? (_tElPp.fontSize as number) ?? 12;
     const headerH = _hPy * 2 + Math.ceil(_hFs * 1.5) + 2;
 
-    // Footer row height — computed early so it can be used in both the special-case
-    // block (effectiveHintFit >= allRows.length) and Case 2 (allRows.length <= rowsFit).
-    const _fs     = (_tElPp.fontSize as number) ?? 12;
-    const _cellPy = (_tElPp.cellPaddingY as number) ?? 6;
-    const _fFs    = (_tElPp.footerRowFontSize as number) ?? Math.max(9, Math.round(_fs * 0.9));
-    const footerH = _tElPp.footerRowEnabled ? _cellPy * 2 + _fFs + 2 : 0;
+    // Summary footer is counted as one extra ordinary row appended to the data.
+    // It needs no reserved height: it flows like any other row and naturally lands
+    // on the last page (and onto a continuation page if it doesn't fit).
+    const footerExtra = _tElPp.footerRowEnabled ? 1 : 0;
+    const totalRows   = allRows.length + footerExtra;
 
-    // Cap the DOM-measured hint at the formula-safe row count (excluding footer
-    // clearance).  The DOM measurement in element-table.tsx has no awareness of
-    // the footer overlay — `available = areaH - theadH` uses the full canvas height —
-    // so hintFit can include rows that fall inside the footer area.  Those rows are
-    // hidden behind the footer in the PDF but are counted, which inflates
-    // hintedAvgRowH and packs too many rows into continuation pages.
-    const safeFormula      = calcRowsFitH(tEl, stretchedH - effectiveBottom - IND - footerH);
+    const safeFormula      = calcRowsFitH(tEl, stretchedH - effectiveBottom - IND);
     const effectiveHintFit = hintFit != null ? Math.min(hintFit, safeFormula) : null;
     // Clamp el.h to the usable page capacity before computing origRowsFit.
     // When autoHeight was on before the user enabled autoPageBreak, el.h is
@@ -356,7 +349,7 @@ export function computeAutoLayout(
     // pagination entirely. Clamping to stretchedH − effectiveBottom ensures
     // overflow is detected even when el.h > canvasH.
     const effectiveOrigH   = Math.min(tEl.h, stretchedH - effectiveBottom);
-    const origRowsFit      = effectiveHintFit ?? calcRowsFitH(tEl, effectiveOrigH - footerH);
+    const origRowsFit      = effectiveHintFit ?? calcRowsFitH(tEl, effectiveOrigH);
 
     // ── Special case: footer-safe DOM hint says ALL rows fit ──────────────────
     //  The underflow detection in element-table.tsx can raise hintFit to
@@ -365,7 +358,7 @@ export function computeAutoLayout(
     //  page and the guard `autoOriginalH !== undefined` stays satisfied for
     //  future DOM measurements), but we must NOT set an endRow or create any
     //  continuation pages — every row is shown on the source page.
-    if (effectiveHintFit !== null && effectiveHintFit >= allRows.length) {
+    if (effectiveHintFit !== null && effectiveHintFit >= totalRows) {
       // Fill the full page canvas — do NOT subtract marginBottom here.
       // Row stretching (perRowH in element-table.tsx + PDF generator) distributes
       // content within the element so rows never enter the margin area, while the
@@ -396,7 +389,7 @@ export function computeAutoLayout(
         if (belowIdsFull.size > 0) {
           // If all below elements fit on the same page right after the natural table
           // height, keep them there instead of creating an unnecessary new page.
-          const naturalH35 = Math.max(origTableH, Math.min(stretchedH, calcLastContH(tEl, allRows.length) + footerH));
+          const naturalH35 = Math.max(origTableH, Math.min(stretchedH, calcLastContH(tEl, totalRows)));
           const naturalBottom35 = tEl.y + naturalH35;
           const belowElsFull = workElements.filter((el) => belowIdsFull.has(el.id));
           const allFitFull = belowElsFull.every((el) => {
@@ -462,7 +455,7 @@ export function computeAutoLayout(
       continue; // no endRow, no continuation pages
     }
 
-    if (allRows.length <= origRowsFit) continue;
+    if (totalRows <= origRowsFit) continue;
 
     // Has overflow → stretch table to fill the full page canvas.
     // stretchedH, IND, CONT_BADGE, _tElPp, urlBarH, headerH already computed above.
@@ -483,16 +476,11 @@ export function computeAutoLayout(
 
     // Usable height per continuation page: full canvas minus header/footer overlays and page margins.
     const contPageH   = canvasH - effectiveTop - effectiveBottom;
-    // Non-last continuation pages do not show the footer — use their full capacity.
+    // The summary footer is one of the counted rows, so every continuation page uses
+    // the same capacity — no special "last page reserves footer height" rule.
     const contRowsFit = hintedAvgRowH != null
       ? Math.max(1, Math.floor((contPageH - CONT_BADGE - IND - headerH - urlBarH) / hintedAvgRowH))
       : calcRowsFitH(tEl, contPageH - CONT_BADGE - IND);
-    // The LAST continuation page shows the footer — reserve footerH only there.
-    const contRowsFitLast = footerH > 0
-      ? (hintedAvgRowH != null
-        ? Math.max(1, Math.floor((contPageH - CONT_BADGE - IND - headerH - urlBarH - footerH) / hintedAvgRowH))
-        : calcRowsFitH(tEl, contPageH - CONT_BADGE - IND - footerH))
-      : contRowsFit;
 
     // Source table fills the page (stretchedH) so the DOM measurement can correctly
     // count how many rows fit at their natural height.  Rows are no longer stretched
@@ -523,15 +511,15 @@ export function computeAutoLayout(
     //  Prefer keeping below-table elements on the same page when they fit after
     //  the natural (content-only) table height.  Only create a new page when
     //  the elements genuinely overflow the page boundary.
-    if (allRows.length <= rowsFit) {
+    if (totalRows <= rowsFit) {
       if (belowIds.size > 0) {
         const naturalH2 = Math.max(
           origTableH,
           Math.min(
             stretchedH,
-            (hintedAvgRowH != null
-              ? Math.ceil(urlBarH + headerH + allRows.length * hintedAvgRowH)
-              : calcLastContH(updatedTEl, allRows.length)) + footerH,
+            hintedAvgRowH != null
+              ? Math.ceil(urlBarH + headerH + totalRows * hintedAvgRowH)
+              : calcLastContH(updatedTEl, totalRows),
           ),
         );
         const naturalBottom2 = tEl.y + naturalH2;
@@ -616,35 +604,21 @@ export function computeAutoLayout(
     let lastSliceStart = rowsFit;
     let insertedCount  = 0;
 
-    while (sliceStart < allRows.length) {
+    while (sliceStart < totalRows) {
       lastSliceStart     = sliceStart;
-      // Use the footer-safe capacity to determine if this is the last slice, then
-      // use the non-footer capacity for non-last slices (they don't show the footer).
-      const remaining       = allRows.length - sliceStart;
-      const isLast          = remaining <= contRowsFitLast;
-      // For non-last slices with a footer, cap at (remaining − contRowsFitLast) to
-      // guarantee at least contRowsFitLast rows remain for the proper footer-bearing
-      // last page.  Without this cap a non-last slice could consume ALL remaining rows
-      // (sliceEnd ≥ allRows.length), making element-table show the footer on a page
-      // that was sized WITHOUT footer headroom — the last few rows overflow behind it.
-      // Skip the cap when contRowsFitLast === contRowsFit (no footer penalty) to
-      // avoid turning [25, 1] distributions into [1, 25] when no footer is present.
-      const effectiveContFit = isLast
-        ? contRowsFitLast
-        : contRowsFitLast < contRowsFit
-          ? Math.min(contRowsFit, remaining - contRowsFitLast)
-          : contRowsFit;
-      const sliceEnd        = isLast ? undefined : sliceStart + effectiveContFit;
+      const remaining       = totalRows - sliceStart;
+      const isLast          = remaining <= contRowsFit;
+      const sliceEnd        = isLast ? undefined : sliceStart + contRowsFit;
       const insertIdx       = sourcePage + 1 + insertedCount;
 
       // Natural content height for each continuation slice (no blank gap at bottom).
-      // Last slice adds footer row height; non-last pages show the overflow indicator.
-      const sliceRowCount = isLast ? remaining : effectiveContFit;
+      // The footer is one of the counted rows; non-last pages show the overflow indicator.
+      const sliceRowCount = isLast ? remaining : contRowsFit;
       const thisContH = Math.min(
         contPageH,
         hintedAvgRowH != null
-          ? Math.ceil(CONT_BADGE + urlBarH + headerH + sliceRowCount * hintedAvgRowH) + (isLast ? footerH : IND)
-          : CONT_BADGE + calcLastContH(updatedTEl, sliceRowCount) + (isLast ? footerH : IND),
+          ? Math.ceil(CONT_BADGE + urlBarH + headerH + sliceRowCount * hintedAvgRowH) + (isLast ? 0 : IND)
+          : CONT_BADGE + calcLastContH(updatedTEl, sliceRowCount) + (isLast ? 0 : IND),
       );
 
       workPages = [
@@ -690,11 +664,11 @@ export function computeAutoLayout(
 
     // ── 6. Move below-table elements to the last continuation page ────────────
     if (belowIds.size > 0) {
-      const lastBatchCount   = allRows.length - lastSliceStart;
+      const lastBatchCount   = totalRows - lastSliceStart;
       // Use measured average row height for more accurate placement of below-elements.
       const lastContContentH = hintedAvgRowH != null
-        ? Math.ceil(CONT_BADGE + headerH + urlBarH + footerH + lastBatchCount * hintedAvgRowH)
-        : CONT_BADGE + footerH + calcLastContH(updatedTEl, lastBatchCount);
+        ? Math.ceil(CONT_BADGE + headerH + urlBarH + lastBatchCount * hintedAvgRowH)
+        : CONT_BADGE + calcLastContH(updatedTEl, lastBatchCount);
 
       workElements = workElements.map((el) => {
         if (!belowIds.has(el.id)) return el;

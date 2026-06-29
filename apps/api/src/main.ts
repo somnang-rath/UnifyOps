@@ -17,7 +17,11 @@ async function bootstrap() {
 
   const rawOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000"
   // Support comma-separated list: WEB_ORIGIN=http://localhost:3000,http://192.168.100.100:3000
-  const allowedOrigins = rawOrigin.split(",").map((o) => o.trim())
+  // Drop blanks (e.g. a trailing comma) so a stray entry can't poison the allowlist.
+  const allowedOrigins = rawOrigin
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean)
 
   app.use(
     helmet({
@@ -39,7 +43,12 @@ async function bootstrap() {
     origin: (origin, cb) => {
       // Allow same-origin / server-to-server (no Origin header)
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-      cb(new Error(`CORS: origin ${origin} not allowed`));
+      // Reject by omitting the CORS headers — never throw here. A thrown error
+      // propagates to Express as a 500, so a disallowed origin would surface as
+      // "Internal server error" on the client instead of a clean CORS block.
+      // eslint-disable-next-line no-console
+      console.warn(`CORS: origin ${origin} not in WEB_ORIGIN allowlist`);
+      cb(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

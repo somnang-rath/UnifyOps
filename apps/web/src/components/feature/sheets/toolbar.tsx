@@ -105,6 +105,7 @@ interface Props {
   onInsertLink: () => void
   hasLink: boolean
   onInsertComment: () => void
+  onInsertChart: () => void
 }
 
 export interface BorderApply {
@@ -140,6 +141,7 @@ export function Toolbar({
   onInsertLink,
   hasLink,
   onInsertComment,
+  onInsertChart,
 }: Props) {
   const [fillOpen, setFillOpen] = useState(false)
   const [textOpen, setTextOpen] = useState(false)
@@ -398,7 +400,7 @@ export function Toolbar({
       <TbBtn title="Insert comment" onClick={onInsertComment}>
         <MessageSquarePlus className="w-[15px] h-[15px]" />
       </TbBtn>
-      <TbBtn title="Insert chart" disabled>
+      <TbBtn title="Insert chart" onClick={onInsertChart}>
         <BarChart3 className="w-[15px] h-[15px]" />
       </TbBtn>
       <TbBtn title="Create a filter" disabled>

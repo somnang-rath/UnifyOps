@@ -96,6 +96,21 @@ const ValidationRuleSchema = z.object({
   strict: z.boolean().optional(),
 });
 
+const ChartSchema = z.object({
+  id: z.string().min(1).max(40),
+  type: z.enum(['column', 'bar', 'line', 'area', 'pie', 'scatter']),
+  title: z.string().max(200).optional(),
+  range: RangeSchema,
+  headerRow: z.boolean().default(true),
+  headerCol: z.boolean().default(true),
+  legend: z.boolean().default(true),
+  stacked: z.boolean().default(false),
+  x: z.number().default(40),
+  y: z.number().default(40),
+  w: z.number().min(160).max(2000).default(480),
+  h: z.number().min(120).max(2000).default(300),
+});
+
 const MAX_CELLS_PER_SHEET = 100_000;
 
 const SheetSchema = z.object({
@@ -134,6 +149,7 @@ const SheetSchema = z.object({
   filter: SheetFilterSchema.nullable().default(null),
   condFmt: z.array(CondFmtRuleSchema).default([]),
   validations: z.array(ValidationRuleSchema).default([]),
+  charts: z.array(ChartSchema).max(50).default([]),
 });
 
 const NamedRangeSchema = z.object({

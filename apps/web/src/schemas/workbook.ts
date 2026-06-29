@@ -87,6 +87,33 @@ export interface SheetValidationRule {
   strict?: boolean;
 }
 
+export type ChartType =
+  | 'column'
+  | 'bar'
+  | 'line'
+  | 'area'
+  | 'pie'
+  | 'scatter';
+
+export interface SheetChart {
+  id: string;
+  type: ChartType;
+  title?: string;
+  range: SheetRange;
+  /** First row of the range holds series names. */
+  headerRow: boolean;
+  /** First column of the range holds category (x-axis) labels. */
+  headerCol: boolean;
+  legend: boolean;
+  /** Stack series (column/bar/area only). */
+  stacked: boolean;
+  /** Floating position/size in pixels, relative to the grid viewport. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Sheet {
   id: string;
   name: string;
@@ -110,6 +137,7 @@ export interface Sheet {
   filter: SheetFilter | null;
   condFmt: SheetCondFmtRule[];
   validations: SheetValidationRule[];
+  charts: SheetChart[];
 }
 
 export interface NamedRange {
