@@ -81,6 +81,41 @@ export interface SheetChart {
   h: number;
 }
 
+export interface PrintHeaderFooter {
+  left: string;
+  center: string;
+  right: string;
+}
+
+export interface PrintSetup {
+  paper: 'A4' | 'Letter' | 'Legal' | 'A3';
+  orientation: 'portrait' | 'landscape';
+  margins: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+    header: number;
+    footer: number;
+  };
+  scaling: {
+    mode: 'percent' | 'fitWidth' | 'fitPage';
+    percent: number;
+    fitWide: number;
+    fitTall: number;
+  };
+  printArea: SheetRange | null;
+  repeatRows: { from: number; to: number } | null;
+  repeatCols: { from: number; to: number } | null;
+  gridlines: boolean;
+  headings: boolean;
+  centerH: boolean;
+  centerV: boolean;
+  order: 'down' | 'over';
+  header: PrintHeaderFooter;
+  footer: PrintHeaderFooter;
+}
+
 @Schema({ _id: false })
 class Sheet {
   @Prop({ required: true }) id: string;
@@ -136,6 +171,11 @@ class Sheet {
 
   @Prop({ type: [Object], default: [] })
   charts: SheetChart[];
+
+  // ---- Print / page-setup state (optional; defaults applied client-side) ----
+
+  @Prop({ type: Object, default: null })
+  printSetup: PrintSetup | null;
 }
 const SheetSchema = SchemaFactory.createForClass(Sheet);
 

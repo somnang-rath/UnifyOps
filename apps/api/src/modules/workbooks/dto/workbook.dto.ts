@@ -111,6 +111,51 @@ const ChartSchema = z.object({
   h: z.number().min(120).max(2000).default(300),
 });
 
+const HeaderFooterSchema = z.object({
+  left: z.string().max(200).default(''),
+  center: z.string().max(200).default(''),
+  right: z.string().max(200).default(''),
+});
+
+const PrintSetupSchema = z.object({
+  paper: z.enum(['A4', 'Letter', 'Legal', 'A3']).default('A4'),
+  orientation: z.enum(['portrait', 'landscape']).default('portrait'),
+  margins: z
+    .object({
+      top: z.number().min(0).max(5).default(0.75),
+      right: z.number().min(0).max(5).default(0.7),
+      bottom: z.number().min(0).max(5).default(0.75),
+      left: z.number().min(0).max(5).default(0.7),
+      header: z.number().min(0).max(5).default(0.3),
+      footer: z.number().min(0).max(5).default(0.3),
+    })
+    .default({}),
+  scaling: z
+    .object({
+      mode: z.enum(['percent', 'fitWidth', 'fitPage']).default('percent'),
+      percent: z.number().min(10).max(400).default(100),
+      fitWide: z.number().int().min(1).max(50).default(1),
+      fitTall: z.number().int().min(1).max(50).default(1),
+    })
+    .default({}),
+  printArea: RangeSchema.nullable().default(null),
+  repeatRows: z
+    .object({ from: z.number().int().min(0), to: z.number().int().min(0) })
+    .nullable()
+    .default(null),
+  repeatCols: z
+    .object({ from: z.number().int().min(0), to: z.number().int().min(0) })
+    .nullable()
+    .default(null),
+  gridlines: z.boolean().default(false),
+  headings: z.boolean().default(false),
+  centerH: z.boolean().default(false),
+  centerV: z.boolean().default(false),
+  order: z.enum(['down', 'over']).default('down'),
+  header: HeaderFooterSchema.default({}),
+  footer: HeaderFooterSchema.default({}),
+});
+
 const MAX_CELLS_PER_SHEET = 100_000;
 
 const SheetSchema = z.object({
@@ -150,6 +195,9 @@ const SheetSchema = z.object({
   condFmt: z.array(CondFmtRuleSchema).default([]),
   validations: z.array(ValidationRuleSchema).default([]),
   charts: z.array(ChartSchema).max(50).default([]),
+
+  // Print / page setup
+  printSetup: PrintSetupSchema.nullable().default(null),
 });
 
 const NamedRangeSchema = z.object({

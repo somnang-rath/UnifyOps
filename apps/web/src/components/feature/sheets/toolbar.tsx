@@ -106,6 +106,7 @@ interface Props {
   hasLink: boolean
   onInsertComment: () => void
   onInsertChart: () => void
+  onPrint: () => void
 }
 
 export interface BorderApply {
@@ -142,6 +143,7 @@ export function Toolbar({
   hasLink,
   onInsertComment,
   onInsertChart,
+  onPrint,
 }: Props) {
   const [fillOpen, setFillOpen] = useState(false)
   const [textOpen, setTextOpen] = useState(false)
@@ -168,7 +170,7 @@ export function Toolbar({
       <TbBtn title="Redo (Ctrl+Y)" disabled={!canRedo} onClick={onRedo}>
         <Redo2 className="w-[16px] h-[16px]" />
       </TbBtn>
-      <TbBtn title="Print (Ctrl+P)" onClick={() => window.print()}>
+      <TbBtn title="Print (Ctrl+P)" onClick={onPrint}>
         <Printer className="w-[16px] h-[16px]" />
       </TbBtn>
       <TbBtn

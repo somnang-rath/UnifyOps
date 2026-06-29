@@ -59,6 +59,8 @@ interface Props {
   filterChips?: FilterChip[];
   filterRow?: number | null;
   filterRangeOutline?: { r1: number; c1: number; r2: number; c2: number } | null;
+  /** Page-break preview: column / row indices that begin a new printed page. */
+  pageBreaks?: { cols: number[]; rows: number[] } | null;
   onMouseDownCell: (r: number, c: number, shift: boolean) => void;
   onMouseOverCell: (r: number, c: number) => void;
   onMouseUp: () => void;
@@ -105,6 +107,7 @@ export function Grid({
   filterChips,
   filterRow,
   filterRangeOutline,
+  pageBreaks,
   onMouseDownCell,
   onMouseOverCell,
   onMouseUp,
@@ -864,6 +867,30 @@ export function Grid({
             style={{ top: rowGhostY, width: totalW, zIndex: 50 }}
           />
         )}
+
+        {/* Page-break preview — dashed blue lines where a new printed page starts */}
+        {pageBreaks &&
+          pageBreaks.cols.map(
+            (c) =>
+              colOffsets[c] != null && (
+                <div
+                  key={`pbc${c}`}
+                  className="absolute top-0 pointer-events-none border-l-2 border-dashed border-[#1a73e8]"
+                  style={{ left: colOffsets[c], height: totalH, zIndex: 9 }}
+                />
+              ),
+          )}
+        {pageBreaks &&
+          pageBreaks.rows.map(
+            (r) =>
+              rowOffsets[r] != null && (
+                <div
+                  key={`pbr${r}`}
+                  className="absolute left-0 pointer-events-none border-t-2 border-dashed border-[#1a73e8]"
+                  style={{ top: rowOffsets[r], width: totalW, zIndex: 9 }}
+                />
+              ),
+          )}
 
         {/* Filter range outline */}
         {filterRangeOutline && (

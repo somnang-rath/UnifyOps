@@ -37,6 +37,7 @@ import type {
   CellBorder,
   CellLink,
   CellStyle,
+  PrintSetup,
   Sheet,
   SheetChart,
   SheetCondFmtRule,
@@ -70,6 +71,9 @@ import { ImportModal, type ImportResult } from './import-modal';
 import { KeyboardShortcutsModal } from './keyboard-shortcuts-modal';
 import { ChartConfigModal } from './chart-config-modal';
 import { ChartOverlay } from './chart-overlay';
+import { PrintPreviewModal } from './print/print-preview-modal';
+import { withPrintDefaults } from '@/lib/sheets/print/print-types';
+import { pageBreakIndices, usedRange } from '@/lib/sheets/print/paginate';
 
 type Dir = 'up' | 'down' | 'left' | 'right' | null;
 
@@ -175,6 +179,12 @@ export function SheetsShell({ workbookId, onBack }: Props) {
 
   // Import modal
   const [importing, setImporting] = useState(false);
+
+  // Print preview modal
+  const [printOpen, setPrintOpen] = useState(false);
+
+  // Page-break preview overlay (View menu toggle)
+  const [pageBreakView, setPageBreakView] = useState(false);
 
   // Keyboard shortcuts modal
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -297,6 +307,12 @@ export function SheetsShell({ workbookId, onBack }: Props) {
     [activeSheet, wb?.namedRanges],
   );
 
+  const pageBreaks = useMemo(() => {
+    if (!pageBreakView || !activeSheet) return null;
+    const range = activeSheet.printSetup?.printArea ?? usedRange(activeSheet);
+    return pageBreakIndices(activeSheet, activeSheet.printSetup, range);
+  }, [pageBreakView, activeSheet]);
+
   // Reset selection when sheet changes
   useEffect(() => {
     setSel({ sr: 0, sc: 0, er: 0, ec: 0 });
@@ -417,6 +433,35 @@ export function SheetsShell({ workbookId, onBack }: Props) {
       );
     },
     [mutateWb],
+  );
+
+  const setPrintArea = useCallback(() => {
+    const range = normalizeRange(sel.sr, sel.sc, sel.er, sel.ec);
+    mutateSheet(
+      (s) => ({
+        ...s,
+        printSetup: { ...withPrintDefaults(s.printSetup), printArea: range },
+      }),
+      'set print area',
+    );
+    toast('Print area set', 'success');
+  }, [sel, mutateSheet]);
+
+  const clearPrintArea = useCallback(() => {
+    mutateSheet(
+      (s) => ({
+        ...s,
+        printSetup: { ...withPrintDefaults(s.printSetup), printArea: null },
+      }),
+      'clear print area',
+    );
+  }, [mutateSheet]);
+
+  const savePrintSetup = useCallback(
+    (printSetup: PrintSetup) => {
+      mutateSheet((s) => ({ ...s, printSetup }), 'page setup');
+    },
+    [mutateSheet],
   );
 
   const undo = useCallback(() => {
@@ -2207,6 +2252,11 @@ export function SheetsShell({ workbookId, onBack }: Props) {
           saveNow();
           return;
         }
+        if (k === 'p') {
+          ev.preventDefault();
+          setPrintOpen(true);
+          return;
+        }
         if (k === 'f') {
           ev.preventDefault();
           setFindReplaceMode('find');
@@ -2637,10 +2687,19 @@ export function SheetsShell({ workbookId, onBack }: Props) {
               label: 'Download as XLSX',
               onClick: () => $downloadXLSX(),
             },
+            { label: 'Download as PDF…', onClick: () => setPrintOpen(true) },
             {
-              label: 'Print',
+              label: 'Print…',
               shortcut: 'Ctrl+P',
-              onClick: () => window.print(),
+              onClick: () => setPrintOpen(true),
+            },
+            { label: 'Page setup…', onClick: () => setPrintOpen(true) },
+            'divider',
+            { label: 'Set print area', onClick: () => setPrintArea() },
+            {
+              label: 'Clear print area',
+              onClick: () => clearPrintArea(),
+              disabled: !activeSheet?.printSetup?.printArea,
             },
           ],
         },
@@ -2745,6 +2804,12 @@ export function SheetsShell({ workbookId, onBack }: Props) {
                   (s) => ({ ...s, gridlines: !(s.gridlines !== false) }),
                   'toggle gridlines',
                 ),
+            },
+            {
+              label: pageBreakView
+                ? 'Hide page breaks'
+                : 'Page break preview',
+              onClick: () => setPageBreakView((v) => !v),
             },
           ],
         },
@@ -3176,6 +3241,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         hasLink={!!activeCell?.link}
         onInsertComment={openCommentsAtActive}
         onInsertChart={openInsertChart}
+        onPrint={() => setPrintOpen(true)}
       />
       <input
         ref={insertImageRef}
@@ -3278,6 +3344,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         }
         filterRow={activeSheet.filter?.range.r1 ?? null}
         filterRangeOutline={activeSheet.filter?.range ?? null}
+        pageBreaks={pageBreaks}
         onFilterChipClick={(col, x, y) => setFilterPopover({ col, x, y })}
         validationFor={(r, c) => ruleForCell(activeSheet, r, c)}
         onCheckboxToggle={toggleCheckboxCell}
@@ -3556,6 +3623,24 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+
+      {printOpen && activeSheet && (
+        <PrintPreviewModal
+          open
+          onClose={() => setPrintOpen(false)}
+          activeSheet={activeSheet}
+          allSheets={wb.sheets}
+          namedRanges={wb.namedRanges ?? []}
+          fileName={wb.name}
+          selection={
+            sel.sr === sel.er && sel.sc === sel.ec
+              ? null
+              : normalizeRange(sel.sr, sel.sc, sel.er, sel.ec)
+          }
+          readOnly={readOnly}
+          onSaveSetup={savePrintSetup}
+        />
+      )}
 
       {chartModal && activeSheet && (
         <ChartConfigModal

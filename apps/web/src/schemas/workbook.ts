@@ -114,6 +114,41 @@ export interface SheetChart {
   h: number;
 }
 
+export interface PrintHeaderFooter {
+  left: string;
+  center: string;
+  right: string;
+}
+
+export interface PrintSetup {
+  paper: 'A4' | 'Letter' | 'Legal' | 'A3';
+  orientation: 'portrait' | 'landscape';
+  margins: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+    header: number;
+    footer: number;
+  };
+  scaling: {
+    mode: 'percent' | 'fitWidth' | 'fitPage';
+    percent: number;
+    fitWide: number;
+    fitTall: number;
+  };
+  printArea: SheetRange | null;
+  repeatRows: { from: number; to: number } | null;
+  repeatCols: { from: number; to: number } | null;
+  gridlines: boolean;
+  headings: boolean;
+  centerH: boolean;
+  centerV: boolean;
+  order: 'down' | 'over';
+  header: PrintHeaderFooter;
+  footer: PrintHeaderFooter;
+}
+
 export interface Sheet {
   id: string;
   name: string;
@@ -138,6 +173,9 @@ export interface Sheet {
   condFmt: SheetCondFmtRule[];
   validations: SheetValidationRule[];
   charts: SheetChart[];
+
+  // Print / page setup (optional; defaults applied client-side)
+  printSetup?: PrintSetup | null;
 }
 
 export interface NamedRange {
