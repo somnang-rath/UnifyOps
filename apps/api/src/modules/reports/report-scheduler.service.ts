@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -13,23 +14,32 @@ import { ReportsService } from './reports.service';
 export class ReportSchedulerService {
   private readonly logger = new Logger(ReportSchedulerService.name);
 
+  /** Hours added to UTC so a template's `hour` is read as local wall-clock time. */
+  private readonly tzOffsetHours: number;
+
   constructor(
     @InjectModel(ReportTemplate.name)
     private templateModel: Model<ReportTemplateDocument>,
     @InjectModel(ReportRun.name)
     private runModel: Model<ReportRunDocument>,
     private reportsService: ReportsService,
-  ) {}
+    cfg: ConfigService,
+  ) {
+    this.tzOffsetHours = cfg.get<number>('REPORT_TZ_OFFSET_HOURS') ?? 7;
+  }
 
   // ── Hourly report dispatch ────────────────────────────────────────────────
 
   @Cron('0 * * * *')
   async runHourlyCheck() {
-    const now      = new Date();
-    const utcHour  = now.getUTCHours();
-    const utcDow   = now.getUTCDay();
-    const utcDom   = now.getUTCDate();
-    const utcMonth = now.getUTCMonth() + 1;
+    // Shift "now" by the configured offset, then read the UTC components of the
+    // shifted instant — these are the local wall-clock hour/day/month. A template
+    // with hour=8 therefore fires at 08:00 local time (UTC+7 by default), not 08:00 UTC.
+    const local = new Date(Date.now() + this.tzOffsetHours * 60 * 60 * 1000);
+    const utcHour  = local.getUTCHours();
+    const utcDow   = local.getUTCDay();
+    const utcDom   = local.getUTCDate();
+    const utcMonth = local.getUTCMonth() + 1;
 
     const f = { hour: utcHour, dayOfWeek: utcDow, dayOfMonth: utcDom, month: utcMonth };
     await this.runScheduled('daily',   f);

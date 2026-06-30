@@ -67,9 +67,21 @@ export class EmailService implements OnModuleInit {
     return `${this.webOrigin}${path.startsWith('/') ? path : `/${path}`}`;
   }
 
-  async send(msg: EmailMessage): Promise<void> {
+  /**
+   * Send one email.
+   *
+   * By default failures are swallowed (logged only) so fire-and-forget callers
+   * like notifications/invites never crash their flow. Pass `{ rethrow: true }`
+   * when the caller needs to know whether delivery actually succeeded — e.g. the
+   * reports dispatcher records a per-recipient 'success'/'failed' status and must
+   * not report a green success for a send that threw.
+   */
+  async send(msg: EmailMessage, opts?: { rethrow?: boolean }): Promise<void> {
     if (!this.transporter) {
       this.logger.debug(`[email skipped] -> ${msg.to}: ${msg.subject}`);
+      if (opts?.rethrow) {
+        throw new Error('Email transport not configured (SMTP_HOST is not set)');
+      }
       return;
     }
     try {
@@ -83,6 +95,7 @@ export class EmailService implements OnModuleInit {
       });
     } catch (err) {
       this.logger.error(`Email send failed -> ${msg.to}`, err as Error);
+      if (opts?.rethrow) throw err;
     }
   }
 
@@ -145,7 +158,9 @@ export class EmailService implements OnModuleInit {
     );
 
     for (const to of opts.recipientEmails) {
-      await this.send({ to, subject, text, html, attachments: [attachment] });
+      // rethrow so the reports dispatcher can mark this recipient as 'failed'
+      // instead of recording a false 'success' when SMTP delivery throws.
+      await this.send({ to, subject, text, html, attachments: [attachment] }, { rethrow: true });
     }
   }
 

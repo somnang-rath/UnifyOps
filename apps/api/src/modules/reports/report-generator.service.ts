@@ -1870,8 +1870,8 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
   // normalizeFont strips var(--xxx) CSS variable prefixes — they don't work in Puppeteer HTML
   const rawFont    = p.labelFontFamily as string | undefined;
   const fontFam    = rawFont ? `font-family:${escapeHtml(normalizeFont(rawFont))};` : '';
-  // Bar height as % of row — mirrors canvas barHeightScale prop (default 0.7)
-  const barHPct    = Math.round(((p.barHeightScale as number) ?? 0.7) * 100);
+  // Bar height as % of row — mirrors canvas barHeightScale prop (default 1 = bars touch)
+  const barHPct    = Math.round(((p.barHeightScale as number) ?? 1) * 100);
 
   const sorted  = sortDesc ? [...series].sort((a, b) => b.value - a.value) : series;
   const dataMax = Math.max(...sorted.map((s) => s.value), 1);
@@ -1900,8 +1900,9 @@ function renderBarHChartHtml(series: ChartSI[], p: Record<string, unknown>, acce
 
   // Each row uses flex:1 so bars fill the container height naturally — no fixed px height
   const rows = sorted.map((s) => {
-    // No Math.round — canvas uses raw fraction so tiny values (e.g. 0.88/3000 = 0.03%) remain visible
-    const pct   = s.value > 0 ? Math.max(0.3, Math.min(100, (s.value / axisMax) * 100)) : 0;
+    // No Math.round — canvas uses raw fraction so tiny values (e.g. 0.88/3000 = 0.03%) remain visible.
+    // minBarPct (default 2%) gives small-value bars a visible minimum length; mirrors canvas.
+    const pct   = s.value > 0 ? Math.max((p.minBarPct as number) ?? 2, Math.min(100, (s.value / axisMax) * 100)) : 0;
     const color = escapeHtml(singleColor ? accent : (s.color ?? accent));
     const barArea = showTrack
       ? `<div style="flex:1;height:${barHPct}%;background:#e5e7eb;border-radius:3px;overflow:hidden;">

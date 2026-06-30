@@ -172,6 +172,8 @@ export function ElementChart({ element }: Props) {
     barRowHeight?: number;
     barHeightScale?: number;
     barRowGap?: number;
+    scrollRows?: boolean;
+    minBarPct?: number;
     valueSuffix?: string;
     value2Suffix?: string;
     boldLabels?: boolean;
@@ -336,8 +338,11 @@ export function ElementChart({ element }: Props) {
   const hPadPx     = 16;  // matches PDF's padding:8px on all sides (8 top + 8 bottom)
   const hTotalGaps = Math.max(0, series.length - 1) * hRowGap;
   const hAvailH    = Math.max(series.length * 8, element.h - hTitlePx - hPadPx - hAxisPx - hTotalGaps);
-  const hRowH      = Math.round(hAvailH / series.length);
-  const hBarH      = Math.max(3, Math.round(hRowH * (p.barHeightScale ?? 0.7)));
+  // When scroll is on, each row uses a fixed pixel height (barRowHeight) and the rows
+  // area scrolls; otherwise the available height is divided equally (rows shrink to fit).
+  const hScroll    = !!p.scrollRows;
+  const hRowH      = hScroll ? ((p.barRowHeight as number) ?? 30) : Math.round(hAvailH / series.length);
+  const hBarH      = Math.max(3, Math.round(hRowH * (p.barHeightScale ?? 1)));
 
   // Dynamic margins for bar-line axis labels
   const blMargin = {
@@ -372,9 +377,10 @@ export function ElementChart({ element }: Props) {
       {chartType === 'bar-h' ? (
         <div className="flex-1 overflow-hidden flex flex-col p-2">
           {/* Data rows — explicit hRowH so sizing is identical to PDF's flex:1 distribution */}
-          <div className="flex flex-col" style={{ gap: hRowGap }}>
+          <div className="flex flex-col" style={{ gap: hRowGap, ...(hScroll ? { flex: 1, minHeight: 0, overflowY: 'auto' } : {}) }}>
             {series.map((s, i) => {
-              const pct      = Math.min(100, (s.value / hAxMax) * 100);
+              const rawPct   = (s.value / hAxMax) * 100;
+              const pct      = s.value > 0 ? Math.min(100, Math.max((p.minBarPct as number) ?? 2, rawPct)) : 0;
               const color    = p.singleColor ? accent : (s.color ?? accent);
               const numStr   = s.value.toLocaleString('en-US');
               const suffix   = p.valueSuffix ? ` ${p.valueSuffix}` : '';
@@ -382,7 +388,7 @@ export function ElementChart({ element }: Props) {
                 ? ` (${(s.value2 as number).toLocaleString('en-US')} ${p.value2Suffix})` : '';
               const valLabel = `${numStr}${suffix}${v2part}`;
               return (
-                <div key={i} style={{ height: hRowH, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div key={i} style={{ height: hRowH, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {/* Label */}
                   <div style={{ width: lWidth, fontSize: lSize, fontFamily: lFamily || undefined, color: lColor, fontWeight: hBarLabelFW, textAlign: hBarLabelTA, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.name}

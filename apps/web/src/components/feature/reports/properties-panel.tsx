@@ -1888,6 +1888,7 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                               <Toggle checked={!!(p?.singleColor)}   onChange={(v) => set({ singleColor: v })}   label="Single color for all bars" />
                               <Toggle checked={!!(p?.showBarTrack)}  onChange={(v) => set({ showBarTrack: v })}  label="Show background track" />
                               <Toggle checked={!!(p?.boldLabels)}    onChange={(v) => set({ boldLabels: v })}    label="Bold row labels" />
+                              <Toggle checked={!!(p?.scrollRows)}    onChange={(v) => set({ scrollRows: v })}    label="Scrollable rows (fixed row height)" />
 
                               {/* Value label format */}
                               {!!(p?.showBarValues) && (
@@ -1946,7 +1947,7 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                   <Label>Bar height scale (%)</Label>
                                   <PanelInput
                                     type="number"
-                                    value={Math.round(((p?.barHeightScale as number) ?? 0.7) * 100)}
+                                    value={Math.round(((p?.barHeightScale as number) ?? 1) * 100)}
                                     onChange={(e) => set({ barHeightScale: Math.min(100, Math.max(10, Number(e.target.value))) / 100 })}
                                     min={10} max={100}
                                   />
@@ -1968,14 +1969,25 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                                   />
                                 </div>
                               </div>
-                              <div>
-                                <Label>Element height (px)</Label>
-                                <PanelInput
-                                  type="number"
-                                  value={Math.round(selected.h)}
-                                  onChange={(e) => onElementChange({ ...(p ?? {}), _h: Number(e.target.value) })}
-                                  min={60} max={2000}
-                                />
+                              <div className="grid grid-cols-2 gap-x-2">
+                                <div>
+                                  <Label>Min bar width (%)</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={(p?.minBarPct as number) ?? 2}
+                                    onChange={(e) => set({ minBarPct: Math.min(50, Math.max(0, Number(e.target.value))) })}
+                                    min={0} max={50}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Element height (px)</Label>
+                                  <PanelInput
+                                    type="number"
+                                    value={Math.round(selected.h)}
+                                    onChange={(e) => onElementChange({ ...(p ?? {}), _h: Number(e.target.value) })}
+                                    min={60} max={2000}
+                                  />
+                                </div>
                               </div>
 
                               <SectionHeader>Title</SectionHeader>

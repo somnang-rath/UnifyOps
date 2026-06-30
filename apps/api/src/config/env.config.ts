@@ -20,6 +20,10 @@ export const envSchema = z.object({
   // Redis — optional. When set, report dispatch uses BullMQ (persistent, retryable).
   // When absent, dispatch falls back to in-process setImmediate (no retry on crash).
   REDIS_URL: z.string().url().optional(),
+  // Hours to add to UTC when interpreting a report's scheduled `hour` as local
+  // wall-clock time. Default 7 (Cambodia / ICT, UTC+7). The hourly cron compares
+  // the template hour against this shifted time, so "send at 08:00" means 08:00 local.
+  REPORT_TZ_OFFSET_HOURS: z.coerce.number().default(7),
 });
 
 export type Env = z.infer<typeof envSchema>;
