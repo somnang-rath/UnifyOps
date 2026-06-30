@@ -18,8 +18,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No host port mapping: the API reaches Redis over the compose network as
+    # redis:6379. Exposing 6379 on the host conflicts with any local Redis.
+    expose:
+      - "6379"
     volumes:
       - redis-data:/data
     healthcheck:

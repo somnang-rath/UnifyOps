@@ -6,7 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins: ['192.168.100.100'],
+  // Emit .next/standalone (server.js + minimal node_modules) for the Docker runner.
+  output: 'standalone',
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
     optimizePackageImports: ['lucide-react'],
