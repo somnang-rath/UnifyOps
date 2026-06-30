@@ -1973,7 +1973,9 @@ function renderPieChartHtml(series: ChartSI[], title: string, p: Record<string, 
   const pieLabelP  = (p.pieLabel      as string) ?? 'outside';
   const labelType  = (p.labelContent  as string) ?? 'name-percent';
   const showLine   = (p.labelLine as boolean) !== false && pieLabelP === 'outside';
-  const showLegend = !!(p.showLegend) || pieLabelP !== 'outside';
+  // Match the design canvas (recharts): the pie legend shows by default
+  // (showLegend ?? true) and always shows when labels aren't outside.
+  const showLegend = ((p.showLegend as boolean | undefined) ?? true) || pieLabelP !== 'outside';
 
   // Single-slice fallback
   if (series.length === 1) {
@@ -1999,7 +2001,12 @@ function renderPieChartHtml(series: ChartSI[], title: string, p: Record<string, 
   const cx = vb / 2, cy = vb / 2;
   // Outer radius: smaller when we have outside labels so they fit in the viewBox
   const r  = pieLabelP === 'outside' ? 88 : 110;
-  const ir = pieStyle === 'donut' ? Math.round(r * (innerPct / 100)) : 0;
+  // Match the design canvas (recharts): innerRadius % is relative to the chart's
+  // max-radius while the outer ring is locked at 55%, so the hole/outer ratio is
+  // innerPct/55 — NOT innerPct/100. Clamp so the hole never reaches the rim.
+  const ir = pieStyle === 'donut'
+    ? Math.min(r - 4, Math.round(r * (innerPct / 55)))
+    : 0;
 
   const slices: string[] = [];
   const labels: string[] = [];
@@ -2092,25 +2099,25 @@ function renderPieChartHtml(series: ChartSI[], title: string, p: Record<string, 
     centerEl = `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="${cfs}" font-weight="700" fill="${cfc}"${svgFont}>${cv}</text>`;
   }
 
-  // ── Bottom legend ─────────────────────────────────────────────────────
-  const legendHtml = showLegend ? `<div style="display:flex;flex-wrap:wrap;justify-content:center;padding-top:4px;flex-shrink:0;">
+  // ── Top legend (matches the design canvas: rendered above the chart, left-aligned) ──
+  const legendHtml = showLegend ? `<div style="display:flex;flex-wrap:wrap;gap:2px 12px;padding:0 8px 4px;flex-shrink:0;">
     ${series.map((s, i) => {
       const color = s.color ?? PALETTE[i % PALETTE.length];
-      return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px;margin-bottom:3px;">
+      return `<span style="display:inline-flex;align-items:center;gap:4px;">
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${escapeHtml(color)};flex-shrink:0;"></span>
-        <span style="font-size:9px;${fontFam}color:#374151;">${escapeHtml(s.name)}</span>
+        <span style="font-size:${lSize}px;${fontFam}color:${lColor};">${escapeHtml(s.name)}</span>
       </span>`;
     }).join('')}
   </div>` : '';
 
   return `<div style="width:100%;height:100%;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;">
     ${title ? `<div style="font-size:${titleSize}px;font-weight:600;${fontFam}color:${titleClr};text-align:${titleAlign};margin-bottom:6px;flex-shrink:0;">${title}</div>` : ''}
+    ${legendHtml}
     <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;">
       <svg viewBox="0 0 ${vb} ${vb}" style="width:auto;height:auto;max-width:100%;max-height:100%;">
         ${slices.join('')}${lines.join('')}${labels.join('')}${centerEl}
       </svg>
     </div>
-    ${legendHtml}
   </div>`;
 }
 

@@ -1414,7 +1414,7 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
                   return Array.isArray(nested) ? (nested as Record<string, unknown>[]) : [];
                 })
               : rows;
-            newProps.seriesData = chartRows.slice(0, 50).map((row, i) => ({
+            const seriesData = chartRows.slice(0, 50).map((row, i) => ({
               name:   String(dsGetNestedValue(row, ds.nameKey as string) ?? ''),
               value:  ds.valueExpr
                 ? dsEvalSimpleExpr(row, ds.valueExpr as string)
@@ -1424,6 +1424,20 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
                 ? String(dsGetNestedValue(row, ds.colorKey as string))
                 : DS_PALETTE[i % DS_PALETTE.length],
             }));
+            newProps.seriesData = seriesData;
+
+            // Horizontal bar charts size each row by element.h / rowCount. When a
+            // live datasource returns many rows, the saved element height squishes
+            // them into hairline bars. Grow the element height so each row keeps its
+            // configured pixel height (barRowHeight) — same formula as the panel's
+            // Row-height control. Only bar-h auto-grows; other chart types are fixed.
+            if (p.chartType === 'bar-h' && seriesData.length > 0) {
+              const count  = seriesData.length;
+              const rowH   = (p.barRowHeight as number) ?? 30;
+              const gap    = (p.barRowGap as number) ?? 6;
+              const titleH = p.title ? ((p.titleFontSize as number ?? 12) + 16) : 0;
+              newProps._autoH = count * rowH + (count - 1) * gap + 34 + titleH;
+            }
           }
 
           return { id: el.id, props: newProps };
@@ -1450,7 +1464,12 @@ export function CanvasEditor({ template, onChange, refreshDatasourcesRef, prepar
       }
       if (groupedFreshMap.has(el.id)) return { ...el, props: { ...p, rawData: groupedFreshMap.get(el.id) } };
       if (textFreshMap.has(el.id)) return { ...el, props: { ...p, content: textFreshMap.get(el.id) } };
-      if (widgetFreshMap.has(el.id)) return { ...el, props: { ...p, ...widgetFreshMap.get(el.id) } };
+      if (widgetFreshMap.has(el.id)) {
+        const { _autoH, ...freshProps } = widgetFreshMap.get(el.id)!;
+        const next = { ...el, props: { ...p, ...freshProps } };
+        if (typeof _autoH === 'number') next.h = _autoH;
+        return next;
+      }
       return el;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
