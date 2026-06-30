@@ -1216,97 +1216,74 @@ export function PropertiesPanel({ selected, template, onElementChange, onTemplat
                         </>
                       )}
 
-                      {/* Footer Row */}
-                      <SectionHeader>Footer Row</SectionHeader>
-                      <Toggle checked={!!(p?.footerRowEnabled)} onChange={(v) => set({ footerRowEnabled: v })} label="Add summary footer row" />
-                      {!!(p?.footerRowEnabled) && (() => {
-                        const footerCells = (p?.footerCells as Record<string, { fn: string; custom?: string; decimals?: number }>) ?? {};
-                        const FOOTER_FNS = ['none', 'sum', 'count', 'avg', 'min', 'max', 'custom'] as const;
-                        return (
-                          <>
-                            <div>
-                              <Label>Label text</Label>
-                              <PanelInput
-                                type="text"
-                                value={(p?.footerRowLabel as string) ?? 'Total'}
-                                onChange={(e) => set({ footerRowLabel: e.target.value })}
-                                placeholder="Total"
-                              />
-                            </div>
-
-                            {tCols.length > 0 && (
-                              <div>
-                                <Label>Per-column aggregate</Label>
-                                <div className="flex flex-col gap-1 mt-1">
-                                  {tCols.map((col) => {
-                                    const cfg = footerCells[col] ?? { fn: 'none' };
-                                    return (
-                                      <div key={col} className="flex items-center gap-1.5 min-w-0">
-                                        <span className="text-[10px] text-text-muted truncate flex-1 min-w-0">{col}</span>
-                                        <select
-                                          data-no-csel
-                                          value={cfg.fn}
-                                          onChange={(e) => set({ footerCells: { ...footerCells, [col]: { ...cfg, fn: e.target.value } } })}
-                                          className="text-[10px] px-1.5 py-1 rounded border border-border bg-bg-input flex-shrink-0 w-20"
-                                        >
-                                          {FOOTER_FNS.map(fn => (
-                                            <option key={fn} value={fn}>{fn === 'none' ? 'None' : fn.toUpperCase()}</option>
-                                          ))}
-                                        </select>
-                                        {cfg.fn === 'custom' && (
-                                          <input
-                                            type="text"
-                                            value={cfg.custom ?? ''}
-                                            onChange={(e) => set({ footerCells: { ...footerCells, [col]: { ...cfg, custom: e.target.value } } })}
-                                            placeholder="text"
-                                            className="text-[10px] px-1.5 py-1 rounded border border-border bg-bg-input flex-shrink-0 w-16"
-                                          />
-                                        )}
-                                        {['sum', 'avg', 'min', 'max'].includes(cfg.fn) && (
-                                          <input
-                                            type="number"
-                                            value={cfg.decimals ?? 2}
-                                            onChange={(e) => set({ footerCells: { ...footerCells, [col]: { ...cfg, decimals: Number(e.target.value) } } })}
-                                            title="Decimal places"
-                                            min={0}
-                                            max={8}
-                                            className="text-[10px] px-1 py-1 rounded border border-border bg-bg-input flex-shrink-0 w-10"
-                                          />
-                                        )}
-                                      </div>
-                                    );
-                                  })}
+                      {/* Calculation Row (appended totals row, works with Auto Page Break) */}
+                      <SectionHeader>Calculation Row</SectionHeader>
+                      <Toggle
+                        checked={!!(p?.showCalcRow)}
+                        label="Add calculation row"
+                        onChange={(v) => {
+                          if (v && !p?.calcRowOps) {
+                            // First enable: auto-default numeric columns to Sum.
+                            const rows = (p?.rows as Record<string, string>[]) ?? [];
+                            const ops: Record<string, string> = {};
+                            for (const c of tCols) {
+                              const vals = rows.map((r) => String(r[c] ?? '').trim());
+                              const allNumeric = vals.every((raw) => raw === '' || !isNaN(parseFloat(raw.replace(/[,$\s%]/g, ''))));
+                              const anyValue   = vals.some((raw) => raw !== '');
+                              if (allNumeric && anyValue) ops[c] = 'sum';
+                            }
+                            set({ showCalcRow: true, calcRowOps: ops });
+                          } else {
+                            set({ showCalcRow: v });
+                          }
+                        }}
+                      />
+                      {!!(p?.showCalcRow) && (
+                        <>
+                          <div>
+                            <Label>Label text</Label>
+                            <PanelInput value={(p?.calcRowLabel as string) ?? 'Total'} onChange={(e) => set({ calcRowLabel: e.target.value })} placeholder="Total" />
+                          </div>
+                          <p className="text-[9px] text-text-muted -mb-1">Aggregation per column</p>
+                          <div className="space-y-1">
+                            {tCols.map((col) => {
+                              const calcRowOps = (p?.calcRowOps as Record<string, string>) ?? {};
+                              return (
+                                <div key={col} className="flex items-center gap-1">
+                                  <span className="text-[9px] font-semibold text-text-muted truncate flex-1 min-w-0">{colLabels[col] ?? col}</span>
+                                  <select
+                                    value={calcRowOps[col] ?? 'none'}
+                                    onChange={(e) => {
+                                      const nx = { ...calcRowOps };
+                                      if (e.target.value === 'none') delete nx[col]; else nx[col] = e.target.value;
+                                      set({ calcRowOps: nx });
+                                    }}
+                                    className="w-24 px-1 py-1 text-[10px] rounded border border-border bg-bg-input focus:outline-none focus:border-accent-400 transition-colors flex-shrink-0"
+                                  >
+                                    <option value="none">—</option>
+                                    <option value="sum">Sum</option>
+                                    <option value="avg">Average</option>
+                                    <option value="count">Count</option>
+                                    <option value="min">Min</option>
+                                    <option value="max">Max</option>
+                                  </select>
                                 </div>
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-x-2">
-                              <div>
-                                <Label>Background</Label>
-                                <ColorInput value={(p?.footerRowBg as string) || '#f1f5f9'} onChange={(v) => set({ footerRowBg: v })} />
-                              </div>
-                              <div>
-                                <Label>Text color</Label>
-                                <ColorInput value={(p?.footerRowColor as string) || '#0f172a'} onChange={(v) => set({ footerRowColor: v })} />
-                              </div>
+                              );
+                            })}
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-2">
+                            <div>
+                              <Label>Background</Label>
+                              <ColorInput value={(p?.calcRowBg as string) || '#eef2ff'} onChange={(v) => set({ calcRowBg: v })} />
                             </div>
-                            <div className="grid grid-cols-2 gap-x-2 items-end">
-                              <div>
-                                <Label>Font size (px)</Label>
-                                <PanelInput
-                                  type="number"
-                                  value={(p?.footerRowFontSize as number) ?? ''}
-                                  onChange={(e) => set({ footerRowFontSize: e.target.value ? Number(e.target.value) : undefined })}
-                                  placeholder="auto"
-                                  min={7}
-                                  max={48}
-                                />
-                              </div>
-                              <Toggle checked={(p?.footerRowBold as boolean) !== false} onChange={(v) => set({ footerRowBold: v })} label="Bold" />
+                            <div>
+                              <Label>Text color</Label>
+                              <ColorInput value={(p?.calcRowColor as string) || '#1e1b4b'} onChange={(v) => set({ calcRowColor: v })} />
                             </div>
-                          </>
-                        );
-                      })()}
+                          </div>
+                          <Toggle checked={(p?.calcRowBold as boolean) !== false} onChange={(v) => set({ calcRowBold: v })} label="Bold text" />
+                        </>
+                      )}
 
                       {/* Cell padding */}
                       <SectionHeader>Cell Padding</SectionHeader>

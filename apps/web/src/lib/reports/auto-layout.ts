@@ -118,8 +118,7 @@ export function autoLayoutSig(elements: ReportElement[], canvasH = 0, marginTop 
       const p = (el.props ?? {}) as Record<string, unknown>;
       const rows          = (p.rows as unknown[]) ?? [];
       const effectiveH    = (p.autoOriginalH as number | undefined) ?? el.h;
-      const footerEnabled = !!(p.footerRowEnabled);
-      return `${el.id}|${effectiveH}|${el.y}|${rows.length}|${el.page ?? 0}|${footerEnabled}`;
+      return `${el.id}|${effectiveH}|${el.y}|${rows.length}|${el.page ?? 0}`;
     })
     .join('::');
 
@@ -334,11 +333,11 @@ export function computeAutoLayout(
     const _hFs    = (_tElPp.headerFontSize as number) ?? (_tElPp.fontSize as number) ?? 12;
     const headerH = _hPy * 2 + Math.ceil(_hFs * 1.5) + 2;
 
-    // Summary footer is counted as one extra ordinary row appended to the data.
-    // It needs no reserved height: it flows like any other row and naturally lands
-    // on the last page (and onto a continuation page if it doesn't fit).
-    const footerExtra = _tElPp.footerRowEnabled ? 1 : 0;
-    const totalRows   = allRows.length + footerExtra;
+    // The calc row (showCalcRow) is appended as one extra ordinary row in the
+    // renderers, so pagination must count it too — otherwise the last slice's
+    // endRow would clip it off the final page.
+    const calcExtra   = p.showCalcRow ? 1 : 0;
+    const totalRows   = allRows.length + calcExtra;
 
     const safeFormula      = calcRowsFitH(tEl, stretchedH - effectiveBottom - IND);
     const effectiveHintFit = hintFit != null ? Math.min(hintFit, safeFormula) : null;
@@ -659,7 +658,7 @@ export function computeAutoLayout(
 
       lastNewPageIdx = insertIdx;
       insertedCount++;
-      sliceStart     = sliceEnd ?? allRows.length;
+      sliceStart     = sliceEnd ?? totalRows;
     }
 
     // ── 6. Move below-table elements to the last continuation page ────────────

@@ -619,6 +619,519 @@
   cursor: pointer;
 }
 
+/* ---- Card priority badge + project chip (richer card info) ---- */
+.kb-card-priority {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.kb-card-project {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--kb-c, var(--a)) 12%, var(--bg-hover));
+  color: color-mix(in srgb, var(--kb-c, var(--a)) 75%, var(--text-sub));
+  line-height: 16px;
+  font-weight: 600;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Interactive checklist on card ---- */
+.kb-card-checklist {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.kb-check-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+.kb-check-summary:hover .kb-check-count {
+  color: var(--text);
+}
+.kb-check-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+.kb-check-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.3s var(--ease);
+}
+.kb-check-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
+  font-weight: 600;
+}
+.kb-check-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0 2px;
+  animation: kbFadeSlide 0.16s var(--ease);
+}
+@keyframes kbFadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.kb-check-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 4px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-sub);
+  line-height: 1.4;
+}
+.kb-check-item:hover {
+  background: var(--bg-hover);
+}
+.kb-check-item input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--a);
+  margin: 0;
+}
+.kb-check-item input[type='checkbox']:disabled {
+  cursor: default;
+}
+.kb-check-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.kb-check-add {
+  margin-top: 2px;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  outline: none;
+}
+.kb-check-add:focus {
+  border-color: var(--a);
+  box-shadow: 0 0 0 2px var(--a-50);
+}
+
+/* ---- Admin team-board switcher ---- */
+.kb-team-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.kb-team-switch-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+.kb-team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: var(--r-full);
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur);
+}
+.kb-team-chip:hover {
+  border-color: color-mix(in srgb, var(--a) 50%, var(--border));
+  color: var(--text);
+}
+.kb-team-chip.active {
+  border-color: var(--a);
+  background: color-mix(in srgb, var(--a) 10%, var(--bg-card));
+  color: var(--text);
+}
+
+/* ---- Compact density ---- */
+.kb-board.kb-compact .kb-card {
+  padding: 7px 10px;
+}
+.kb-board.kb-compact .kb-card-type {
+  margin-bottom: 2px;
+  font-size: 9.5px;
+}
+.kb-board.kb-compact .kb-card-title {
+  font-size: 12px;
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+.kb-board.kb-compact .kb-cards {
+  gap: 5px;
+}
+.kb-board.kb-compact .kb-card-checklist {
+  margin-top: 4px;
+}
+
+/* ============================================================
+   Calendar
+   ============================================================ */
+.cal-seg {
+  display: inline-flex;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 2px;
+  gap: 2px;
+}
+.cal-seg-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: calc(var(--r-md) - 2px);
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--dur);
+}
+.cal-seg-btn:hover {
+  color: var(--text);
+}
+.cal-seg-btn.active {
+  background: var(--bg-card);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(15, 15, 30, 0.12);
+}
+
+.cal-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.cal-nav-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  color: var(--text-sub);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--dur);
+}
+.cal-nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.cal-nav-label {
+  min-width: 150px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cal-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(15, 15, 30, 0.05);
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-head {
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+.cal-head-cell {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.cal-head-cell.weekend {
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
+
+.cal-body {
+  grid-auto-rows: minmax(116px, 1fr);
+}
+.cal-body-week {
+  grid-auto-rows: minmax(440px, 1fr);
+}
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  min-height: 0;
+  cursor: pointer;
+  transition: background var(--dur);
+  position: relative;
+}
+.cal-cell:nth-child(7n) {
+  border-right: none;
+}
+.cal-cell:hover {
+  background: var(--bg-hover);
+}
+.cal-cell.weekend {
+  background: color-mix(in srgb, var(--bg-subtle) 45%, transparent);
+}
+.cal-cell.weekend:hover {
+  background: var(--bg-hover);
+}
+.cal-cell.other {
+  background: var(--bg-subtle);
+}
+.cal-cell.other .cal-daynum {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+.cal-cell.is-today {
+  background: color-mix(in srgb, var(--a) 5%, var(--bg-card));
+}
+.cal-cell.drop {
+  background: color-mix(in srgb, var(--a) 12%, var(--bg-card));
+  box-shadow: inset 0 0 0 2px var(--a);
+}
+
+.cal-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+}
+.cal-daynum {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-sub);
+  padding: 2px;
+}
+.cal-daynum.today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--a);
+  color: #fff;
+}
+.cal-add-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: all var(--dur);
+}
+.cal-cell:hover .cal-add-btn {
+  opacity: 1;
+}
+.cal-add-btn:hover {
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.cal-events {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+.cal-body-week .cal-events {
+  overflow-y: auto;
+}
+.cal-event {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-sub);
+  background: color-mix(in srgb, var(--ev) 12%, var(--bg-card));
+  border-left: 2.5px solid var(--ev);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all var(--dur);
+}
+.cal-event:hover {
+  background: color-mix(in srgb, var(--ev) 22%, var(--bg-card));
+  transform: translateX(1px);
+}
+.cal-event-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ev);
+  flex-shrink: 0;
+}
+.cal-event-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-event-avatar {
+  margin-left: auto;
+}
+.cal-event.done {
+  opacity: 0.55;
+}
+.cal-event.done .cal-event-title {
+  text-decoration: line-through;
+}
+.cal-event.overdue {
+  background: color-mix(in srgb, #ef4444 12%, var(--bg-card));
+  border-left-color: #ef4444;
+  color: #ef4444;
+}
+.cal-event.overdue .cal-event-dot {
+  background: #ef4444;
+}
+
+.cal-more {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.cal-more:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 11.5px;
+  color: var(--text-sub);
+}
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.cal-pop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.cal-pop {
+  position: fixed;
+  z-index: 61;
+  width: 280px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 8px 28px rgba(15, 15, 30, 0.18);
+  padding: 10px;
+  animation: kbPopIn 0.14s var(--ease);
+}
+.cal-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.cal-pop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+.cal-pop-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--a);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all var(--dur);
+}
+.cal-pop-add:hover {
+  background: color-mix(in srgb, var(--a) 8%, transparent);
+  border-color: var(--a);
+}
+
 @layer components {
   .auth-input {
     width: 100%;

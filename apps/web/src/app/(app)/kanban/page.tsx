@@ -4,15 +4,19 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   CalendarDays,
+  CheckSquare,
+  ChevronDown,
   ChevronRight,
   Copy,
   Eye,
   Layers,
+  LayoutGrid,
   Link2,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
+  Rows3,
   Trash2,
 } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
@@ -78,6 +82,11 @@ export default function KanbanPage() {
     typeof window !== 'undefined' ? (localStorage.getItem('prism_kb_label') ?? '') : '',
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [density, setDensity] = useState<'comfy' | 'compact'>(() =>
+    typeof window !== 'undefined'
+      ? ((localStorage.getItem('prism_kb_density') as 'comfy' | 'compact') ?? 'comfy')
+      : 'comfy',
+  );
   const [creating, setCreating] = useState<string | null>(null);
   const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -108,6 +117,7 @@ export default function KanbanPage() {
   useEffect(() => { localStorage.setItem('prism_kb_project', projectId); }, [projectId]);
   useEffect(() => { localStorage.setItem('prism_kb_assignee', assignee); }, [assignee]);
   useEffect(() => { localStorage.setItem('prism_kb_label', labelFilter); }, [labelFilter]);
+  useEffect(() => { localStorage.setItem('prism_kb_density', density); }, [density]);
 
   // _dragId / _listDragId mirrors of the demo's module-level vars
   const dragIssueId = useRef<string | null>(null);
@@ -153,6 +163,11 @@ export default function KanbanPage() {
     [users],
   );
   const viewedUser = userMap.get(viewedUserId) ?? me;
+  const projectMap = useMemo(
+    () => new Map(projects.map((p) => [p._id, p.name])),
+    [projects],
+  );
+  const isAdmin = me.role === 'admin';
 
   // Raw list (already filtered server-side by project / specific assignee).
   // We layer client-side filters on top so they update instantly.
@@ -507,6 +522,30 @@ export default function KanbanPage() {
     );
   };
 
+  // ---- Checklist on card (PATCH issue.todos; optimistic via useIssueMutations) ----
+  const toggleCardTodo = (issue: Issue, todoId: string) => {
+    const next = (issue.todos ?? []).map((t) =>
+      t.id === todoId ? { ...t, done: !t.done } : t,
+    );
+    issueMut.update.mutate(
+      { id: issue._id, body: { todos: next } },
+      { onError: (e) => errorMsg(e, "Couldn't update checklist") },
+    );
+  };
+
+  const addCardTodo = (issue: Issue, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const next = [
+      ...(issue.todos ?? []),
+      { id: Math.random().toString(36).slice(2), text: trimmed, done: false },
+    ];
+    issueMut.update.mutate(
+      { id: issue._id, body: { todos: next } },
+      { onError: (e) => errorMsg(e, "Couldn't add checklist item") },
+    );
+  };
+
   const duplicateCard = async (issueId: string) => {
     const src = cards.find((c) => c._id === issueId);
     if (!src) return;
@@ -642,6 +681,22 @@ export default function KanbanPage() {
               ...projects.map((p) => ({ value: p._id, label: p.name })),
             ]}
           />
+          <Button
+            variant="outline"
+            size="sm"
+            className="py-2"
+            title={density === 'comfy' ? 'Switch to compact cards' : 'Switch to comfortable cards'}
+            onClick={() =>
+              setDensity((d) => (d === 'comfy' ? 'compact' : 'comfy'))
+            }
+          >
+            {density === 'comfy' ? (
+              <Rows3 className="w-3.5 h-3.5" />
+            ) : (
+              <LayoutGrid className="w-3.5 h-3.5" />
+            )}
+            {density === 'comfy' ? 'Compact' : 'Comfortable'}
+          </Button>
           {!readonly && (
             <Button
               variant="outline"
@@ -669,8 +724,46 @@ export default function KanbanPage() {
         </div>
       </div>
 
+      {/* Admin team-board switcher — jump between members' boards in one click */}
+      {isAdmin && users.length > 0 && (
+        <div className="kb-team-switch">
+          <span className="kb-team-switch-label">Team boards</span>
+          <button
+            type="button"
+            className={cn('kb-team-chip', assignee === 'me' && 'active')}
+            onClick={() => setAssignee('me')}
+            title="My board"
+          >
+            <Avatar name={me.name} src={me.avatar} size="sm" />
+            <span>My board</span>
+          </button>
+          {users
+            .filter(
+              (u): u is typeof u & { _id: string } => !!u._id && u._id !== me.id,
+            )
+            .map((u) => (
+              <button
+                key={u._id}
+                type="button"
+                className={cn('kb-team-chip', assignee === u._id && 'active')}
+                onClick={() => setAssignee(u._id)}
+                title={`${u.name}'s board`}
+              >
+                <Avatar name={u.name} src={u.avatar} size="sm" />
+                <span>{u.name}</span>
+              </button>
+            ))}
+        </div>
+      )}
+
       {/* Board grid */}
-      <div className={cn('kb-board', readonly && 'kb-readonly')}>
+      <div
+        className={cn(
+          'kb-board',
+          readonly && 'kb-readonly',
+          density === 'compact' && 'kb-compact',
+        )}
+      >
         {columns.map((col) => {
           const hex = colorHex(col.color);
           const items = grouped.get(col.id) ?? [];
@@ -848,9 +941,14 @@ export default function KanbanPage() {
                         key={i._id}
                         issue={i}
                         assignee={a ?? null}
+                        projectName={
+                          i.projectId ? projectMap.get(i.projectId) : undefined
+                        }
                         readonly={readonly}
                         selected={selected.has(i._id)}
                         active={activeCardId === i._id}
+                        onToggleTodo={(todoId) => toggleCardTodo(i, todoId)}
+                        onAddTodo={(text) => addCardTodo(i, text)}
                         onDragStart={(e) => {
                           if (readonly) {
                             e.preventDefault();
@@ -1428,12 +1526,22 @@ export default function KanbanPage() {
 
 /* ---------- Subcomponents ---------- */
 
+const PRIORITY_META: Record<string, { label: string; color: string }> = {
+  critical: { label: 'Critical', color: '#dc2626' },
+  high: { label: 'High', color: '#ef4444' },
+  medium: { label: 'Medium', color: '#f59e0b' },
+  low: { label: 'Low', color: '#22c55e' },
+};
+
 function KbCard({
   issue: i,
   assignee,
+  projectName,
   readonly,
   selected,
   active,
+  onToggleTodo,
+  onAddTodo,
   onDragStart,
   onDragEnd,
   onMenu,
@@ -1441,15 +1549,31 @@ function KbCard({
 }: {
   issue: Issue;
   assignee: { name: string; avatar?: string } | null;
+  projectName?: string;
   readonly: boolean;
   selected: boolean;
   active: boolean;
+  onToggleTodo: (todoId: string) => void;
+  onAddTodo: (text: string) => void;
   onDragStart: (e: React.DragEvent<HTMLAnchorElement>) => void;
   onDragEnd: (e: React.DragEvent<HTMLAnchorElement>) => void;
   onMenu: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onClick: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }) {
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [newItem, setNewItem] = useState('');
   const labels = (i.labels ?? []).slice(0, 2);
+  const todos = i.todos ?? [];
+  const total = todos.length;
+  const doneCount = todos.filter((t) => t.done).length;
+  const pct = total ? Math.round((doneCount / total) * 100) : 0;
+  const priority = PRIORITY_META[i.priority] ?? PRIORITY_META.medium;
+  // Stop the wrapping <Link> from navigating / the card's select handler
+  // from firing when the user interacts with the inline checklist.
+  const stop = (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
   // Title attribute provides a native tooltip with the description preview.
   const previewBody = (i.desc ?? '').trim().slice(0, 240);
   const tooltipTitle = previewBody ? `${i.title}\n\n${previewBody}` : i.title;
@@ -1498,35 +1622,107 @@ function KbCard({
           className="!w-[18px] !h-[18px]"
         />
         <span>{i.type}</span>
+        <span
+          className="kb-card-priority"
+          style={{
+            color: priority.color,
+            background: `color-mix(in srgb, ${priority.color} 14%, transparent)`,
+          }}
+          title={`Priority: ${priority.label}`}
+        >
+          {priority.label}
+        </span>
       </div>
       <div className="kb-card-title">{i.title}</div>
-      {(i.todos?.length ?? 0) > 0 && (() => {
-        const total = i.todos!.length;
-        const done = i.todos!.filter((t) => t.done).length;
-        const pct = Math.round((done / total) * 100);
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <div style={{
-              flex: 1,
-              height: 4,
-              borderRadius: 99,
-              background: 'var(--bg-subtle)',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${pct}%`,
-                borderRadius: 99,
-                background: pct === 100 ? '#22c55e' : 'var(--a)',
-                transition: 'width .3s',
-              }} />
+      {total > 0 && (
+        <div className="kb-card-checklist">
+          {/* Summary row — click to expand the tickable list */}
+          <button
+            type="button"
+            className="kb-check-summary"
+            aria-expanded={checklistOpen}
+            title={checklistOpen ? 'Hide checklist' : 'Show checklist'}
+            onClick={(e) => {
+              stop(e);
+              setChecklistOpen((o) => !o);
+            }}
+          >
+            <CheckSquare
+              size={12}
+              style={{
+                color: pct === 100 ? '#22c55e' : 'var(--text-muted)',
+                flexShrink: 0,
+              }}
+            />
+            <div className="kb-check-bar">
+              <div
+                className="kb-check-bar-fill"
+                style={{
+                  width: `${pct}%`,
+                  background: pct === 100 ? '#22c55e' : 'var(--a)',
+                }}
+              />
             </div>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 28, textAlign: 'right' }}>
-              {pct}%
+            <span className="kb-check-count">
+              {doneCount}/{total}
             </span>
-          </div>
-        );
-      })()}
+            <ChevronDown
+              size={12}
+              style={{
+                flexShrink: 0,
+                transition: 'transform .2s',
+                transform: checklistOpen ? 'rotate(180deg)' : 'none',
+                color: 'var(--text-muted)',
+              }}
+            />
+          </button>
+
+          {/* Expanded list — tick items inline */}
+          {checklistOpen && (
+            <div className="kb-check-items">
+              {todos.map((t) => (
+                <label
+                  key={t.id}
+                  className="kb-check-item"
+                  onClick={stop}
+                >
+                  <input
+                    type="checkbox"
+                    checked={t.done}
+                    disabled={readonly}
+                    onClick={stop}
+                    onChange={(e) => {
+                      stop(e);
+                      if (!readonly) onToggleTodo(t.id);
+                    }}
+                  />
+                  <span className={cn(t.done && 'kb-check-done')}>{t.text}</span>
+                </label>
+              ))}
+              {!readonly && (
+                <input
+                  type="text"
+                  className="kb-check-add"
+                  placeholder="+ Add item…"
+                  value={newItem}
+                  onClick={stop}
+                  onChange={(e) => setNewItem(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      stop(e);
+                      onAddTodo(newItem);
+                      setNewItem('');
+                    } else if (e.key === 'Escape') {
+                      stop(e);
+                      setNewItem('');
+                    }
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {i.dueDate && (() => {
         const due = new Date(i.dueDate);
         const today = new Date();
@@ -1551,6 +1747,11 @@ function KbCard({
       })()}
       <div className="kb-card-foot">
         <div className="kb-card-labels">
+          {projectName && (
+            <span className="kb-card-project" title={`Project: ${projectName}`}>
+              {projectName}
+            </span>
+          )}
           {labels.map((l) => (
             <span key={l} className="kb-card-mini-label">
               {l}

@@ -4,8 +4,6 @@ import { Wifi } from 'lucide-react';
 import type { ReportElement } from '@/schemas/report';
 import type { StoredDatasource } from './data-source-panel';
 
-type FooterCellFn = 'none' | 'sum' | 'count' | 'avg' | 'min' | 'max' | 'custom';
-
 function computeSpans(values: string[]): number[] {
   const spans = new Array(values.length).fill(0);
   let i = 0;
@@ -37,30 +35,39 @@ function fmtNumber(raw: string, fmt: string | undefined): string {
   }
 }
 
-function computeFooterCell(
-  rows: Record<string, string>[],
-  col: string,
-  cfg: { fn: FooterCellFn; custom?: string; decimals?: number },
-): string {
-  if (cfg.fn === 'none') return '';
-  if (cfg.fn === 'custom') return cfg.custom ?? '';
-  if (cfg.fn === 'count') return String(rows.length);
-  const nums = rows
-    .map(r => parseFloat(String(r[col] ?? '').replace(/[$,%\s]/g, '')))
-    .filter(n => !isNaN(n));
-  if (!nums.length) return '';
-  let v: number;
-  switch (cfg.fn) {
-    case 'sum': v = nums.reduce((a, b) => a + b, 0); break;
-    case 'avg': v = nums.reduce((a, b) => a + b, 0) / nums.length; break;
-    case 'min': v = Math.min(...nums); break;
-    case 'max': v = Math.max(...nums); break;
-    default: return '';
+export type CalcOp = 'none' | 'sum' | 'avg' | 'count' | 'min' | 'max';
+
+/**
+ * Aggregate one column across the given rows for the calculation row.
+ * Returns null for the 'none' op (cell left blank). 'count' counts non-empty
+ * cells; the numeric ops parse out commas / currency / percent signs first.
+ */
+export function aggregateColumn(rows: Record<string, string>[], col: string, op: CalcOp): number | null {
+  const nums: number[] = [];
+  let nonEmpty = 0;
+  for (const r of rows) {
+    const raw = String(r[col] ?? '').trim();
+    if (raw !== '') nonEmpty++;
+    const n = parseFloat(raw.replace(/[,$\s%]/g, ''));
+    if (!isNaN(n)) nums.push(n);
   }
-  const dp = cfg.decimals ?? 2;
-  return v % 1 === 0
-    ? v.toLocaleString('en-US')
-    : v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  switch (op) {
+    case 'sum':   return nums.reduce((a, b) => a + b, 0);
+    case 'avg':   return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+    case 'min':   return nums.length ? Math.min(...nums) : 0;
+    case 'max':   return nums.length ? Math.max(...nums) : 0;
+    case 'count': return nonEmpty;
+    default:      return null;
+  }
+}
+
+/** Display string for an aggregated value, honoring the column's number format. */
+export function calcCellDisplay(rows: Record<string, string>[], col: string, op: CalcOp, fmt: string | undefined): string {
+  const v = aggregateColumn(rows, col, op);
+  if (v === null) return '';
+  if (op === 'count') return String(v);
+  if (fmt && fmt !== 'none') return fmtNumber(String(v), fmt);
+  return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 
 interface Props {
@@ -114,6 +121,12 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     totalRowBg?: string;
     totalRowColor?: string;
     totalRowBold?: boolean;
+    showCalcRow?: boolean;
+    calcRowLabel?: string;
+    calcRowOps?: Record<string, CalcOp>;
+    calcRowBg?: string;
+    calcRowColor?: string;
+    calcRowBold?: boolean;
     fontSize?: number;
     fontFamily?: string;
     cellPaddingX?: number;
@@ -134,13 +147,6 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     repeatHeader?: boolean;
     autoPageBreak?: boolean;
     autoHeight?: boolean;
-    footerRowEnabled?: boolean;
-    footerRowBg?: string;
-    footerRowColor?: string;
-    footerRowBold?: boolean;
-    footerRowFontSize?: number;
-    footerRowLabel?: string;
-    footerCells?: Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>;
     mergeCols?: string[];
     colFormats?: Record<string, string>;
     colLabels?: Record<string, string>;
@@ -155,36 +161,36 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     { 'Column 1': 'Cell A2', 'Column 2': 'Cell B2', 'Column 3': 'Cell C2' },
   ];
 
-  // ── Summary footer as a synthetic last row ──────────────────────────────────
-  // The footer is appended to the row list as an ordinary row, so pagination treats
-  // it like any other row: it naturally lands on the last page, and if it doesn't
-  // fit it flows to a continuation page.  No "last-page only" handling or reserved
-  // footer height is needed.  Aggregates are computed once over the REAL rows.
-  const footerEnabled = !!p.footerRowEnabled;
-  const footerRowData: Record<string, string> | null = footerEnabled
-    ? (() => {
-        const out: Record<string, string> = {};
-        cols.forEach((col, ci) => {
-          const cfg = p.footerCells?.[col] ?? { fn: 'none' as FooterCellFn };
-          out[col] = cfg.fn === 'none' && ci === 0
-            ? (p.footerRowLabel ?? 'Total')
-            : computeFooterCell(realRows, col, cfg);
-        });
-        return out;
-      })()
-    : null;
+  // Calculation row — a synthetic last row that aggregates each column.  It is
+  // appended to the row list as an ordinary row so pagination treats it like any
+  // other row: it naturally lands on the last page and flows to a continuation
+  // page if it doesn't fit (works with Auto Page Break).
+  const showCalc = !!p.showCalcRow;
+  const calcIndex = realRows.length; // global index of the calc row in allRows
+  const calcRowData: Record<string, string> = {};
+  if (showCalc) {
+    for (const col of cols) {
+      const op = (p.calcRowOps?.[col] ?? 'none') as CalcOp;
+      calcRowData[col] = calcCellDisplay(realRows, col, op, p.colFormats?.[col]);
+    }
+  }
+  // Column that carries the "Total" label: the first column with no aggregation
+  // (its cell would otherwise be blank), falling back to the first column.
+  const calcLabelCol = showCalc
+    ? (() => { const i = cols.findIndex((c) => !calcRowData[c]); return i === -1 ? 0 : i; })()
+    : -1;
+  const calcRowLabel = p.calcRowLabel ?? 'Total';
 
-  const allRows     = footerRowData ? [...realRows, footerRowData] : realRows;
-  const footerIndex = footerRowData ? realRows.length : -1;
+  const allRows = showCalc ? [...realRows, calcRowData] : realRows;
 
   // Row slicing for pagination
   const startRow = Math.max(0, (p.startRow as number) ?? 0);
   const endRow   = p.endRow as number | undefined;
   const rows     = allRows.slice(startRow, endRow);
-  // The footer is always the last entry of allRows, so it is on this page only when
-  // the slice's last row is the footer index.
-  const footerOnPage = footerIndex >= 0 && rows.length > 0 && startRow + rows.length - 1 === footerIndex;
-  const dataRowCount = footerOnPage ? rows.length - 1 : rows.length;
+
+  // Is the synthetic calc row part of this page's slice? (it is always the last
+  // element of allRows, so it shows only on the final segment).
+  const calcInSlice = showCalc && rows.length > 0 && startRow + rows.length - 1 === calcIndex;
 
   // Remaining rows after this element's endRow (or 0 if no endRow)
   const remainingAfterEnd = endRow !== undefined ? Math.max(0, allRows.length - endRow) : 0;
@@ -204,11 +210,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   const outerB     = !!p.outerBorder;
   const statusCols = new Set(p.statusColumns ?? []);
 
-  // Footer font size — used when rendering the synthetic footer row (see footerRowData).
-  const fFs       = (p.footerRowFontSize as number) ?? Math.max(9, Math.round(fs * 0.9));
-
-  // Estimate how many rows fit in the element height.  The footer is counted as an
-  // ordinary row (it lives in allRows), so there is no separate footer reservation.
+  // Estimate how many rows fit in the element height.
   const urlBarH   = p.dataSource?.url ? 22 : 0;
   const headerH   = hPy * 2 + hFs + 2;
   const rowH      = cellPy * 2 + fs + 2;
@@ -258,7 +260,6 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
     // so the flex layout reduces the table-area clientHeight by exactly INDICATOR_H).
     // Do NOT subtract 24 again here — that was a double-deduction that caused the
     // underflow estimator to under-count by ~1 row, keeping unnecessary continuation pages.
-    // The footer is an ordinary body row now, so it is measured like any other row.
     const available = areaH - theadH;
     if (available <= 0) return;
 
@@ -291,7 +292,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.length, element.h, p.footerRowEnabled]);
+  }, [rows.length, element.h]);
 
   // ── Auto-height: resize element to exactly fit its rendered rows ─────────
   // Fires for:
@@ -316,7 +317,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
       contBadgeH +                            // "Continued from previous page" badge (0 on source)
       (p.dataSource?.url ? 22 : 0) +          // datasource URL badge
       thead.offsetHeight +
-      tbody.offsetHeight +                     // footer is the last tbody row when enabled
+      tbody.offsetHeight +
       (outerB ? 2 : 0) +                      // outer border
       INDICATOR_H,                            // overflow indicator (0 when no overflow)
     );
@@ -329,7 +330,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.autoHeight, shouldAutoSize, rows.length, overflowCount, p.fontSize, p.cellPaddingY,
       p.cellPaddingX, p.headerFontSize, p.headerPaddingY, p.showRowNumbers, p.outerBorder,
-      p.dataSource?.url, p.isContinuation, footerEnabled, element.h]);
+      p.dataSource?.url, p.isContinuation, element.h]);
 
   // Auto-trigger pagination when overflow is detected and autoPageBreak has never been set.
   // Fires once per data-load cycle; resets whenever the row count changes (API refresh).
@@ -363,13 +364,16 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
   const rowsPerPage = endRow !== undefined ? Math.max(1, rows.length) : rowsFit;
   const extraPageCount = overflowCount > 0 ? Math.ceil(overflowCount / rowsPerPage) : 0;
 
-  // Merge cells: precompute rowspan maps per merge column (operates on visible rows slice)
+  // Merge cells: precompute rowspan maps per merge column (operates on visible rows slice).
+  // The synthetic calc row is excluded from merge grouping so it never merges with the
+  // row above it; its span falls back to 1 (spanMaps[col][calcRi] is undefined).
   const mergeColsSet = new Set(p.mergeCols ?? []);
-  const dataRows     = footerOnPage ? rows.slice(0, dataRowCount) : rows;
+  const dataRows     = rows;
+  const mergeRows    = calcInSlice ? dataRows.slice(0, -1) : dataRows;
   const spanMaps: Record<string, number[]> = {};
   if (mergeColsSet.size > 0) {
     for (const col of mergeColsSet) {
-      spanMaps[col] = computeSpans(dataRows.map((r) => String(r[col] ?? '')));
+      spanMaps[col] = computeSpans(mergeRows.map((r) => String(r[col] ?? '')));
     }
   }
 
@@ -513,27 +517,25 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
             {rows.map((row, ri) => {
 
               const globalRi   = startRow + ri;
-              const isFooter   = globalRi === footerIndex;
-              const isTotalRow = !!(p.showTotalRow && globalRi === realRows.length - 1);
-              const isStripe   = !!(p.stripedRows && ri % 2 === 1);
+              const isCalcRow  = showCalc && globalRi === calcIndex;
+              const isTotalRow = !isCalcRow && !!(p.showTotalRow && globalRi === realRows.length - 1);
+              const isStripe   = !isCalcRow && !!(p.stripedRows && ri % 2 === 1);
 
               let rowBg = p.rowBg ?? 'transparent';
-              if (isFooter) rowBg = p.footerRowBg ?? 'var(--bg-subtle)';
+              if (isCalcRow && p.calcRowBg) rowBg = p.calcRowBg;
               else if (isTotalRow && p.totalRowBg) rowBg = p.totalRowBg;
               else if (isStripe) rowBg = p.rowAltBg ?? 'color-mix(in srgb, var(--text) 5%, transparent)';
 
-              const rowColor = isFooter
-                ? (p.footerRowColor ?? 'var(--text)')
-                : (isTotalRow && p.totalRowColor ? p.totalRowColor : undefined);
-              const rowFw    = isFooter
-                ? (p.footerRowBold !== false ? 'bold' : 'normal')
-                : (isTotalRow && p.totalRowBold !== false ? 'bold' : undefined);
+              const rowColor = isCalcRow && p.calcRowColor ? p.calcRowColor
+                : isTotalRow && p.totalRowColor ? p.totalRowColor : undefined;
+              const rowFw    = isCalcRow ? (p.calcRowBold !== false ? 'bold' : undefined)
+                : isTotalRow && p.totalRowBold !== false ? 'bold' : undefined;
 
               return (
-                <tr key={ri} style={{ background: rowBg, color: rowColor, fontWeight: rowFw, fontSize: isFooter ? fFs : undefined, ...(perRowH > 0 ? { height: perRowH } : {}) }}>
+                <tr key={ri} style={{ background: rowBg, color: rowColor, fontWeight: rowFw, ...(perRowH > 0 ? { height: perRowH } : {}) }}>
                   {p.showRowNumbers && (() => {
-                    // Footer row gets an empty row-number cell.
-                    if (isFooter) {
+                    // Calc row carries no row number.
+                    if (isCalcRow) {
                       return (
                         <td
                           key="__rownum"
@@ -541,7 +543,7 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
                             padding: `${cellPy}px ${cellPx}px`,
                             lineHeight: 1.2,
                             borderRight: showColB ? `${bw}px ${borderSt} ${borderClr}` : 'none',
-                            textAlign: 'center',
+                            borderBottom: 'none',
                           }}
                         />
                       );
@@ -587,15 +589,40 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
                     );
                   })()}
                   {cols.map((col, ci) => {
-                    const mergeEnabled = mergeColsSet.has(col) && !isFooter;
+                    // Calc row: plain aggregated value (or the Total label), never
+                    // merged or rendered as a status pill.
+                    if (isCalcRow) {
+                      const align = (p.colAligns?.[col] ?? 'left') as 'left' | 'center' | 'right';
+                      const content = ci === calcLabelCol ? (calcRowData[col] || calcRowLabel) : (calcRowData[col] ?? '');
+                      return (
+                        <td
+                          key={col}
+                          style={{
+                            padding: `${cellPy}px ${cellPx}px`,
+                            lineHeight: 1.2,
+                            borderRight: colBorderRight(ci),
+                            borderBottom: 'none',
+                            textAlign: align,
+                            background: p.colBgs?.[col] || undefined,
+                            verticalAlign: 'middle',
+                            fontSize: p.colFontSizes?.[col] ?? undefined,
+                            fontFamily: p.colFontFamilies?.[col] ?? undefined,
+                          }}
+                        >
+                          {content}
+                        </td>
+                      );
+                    }
+
+                    const mergeEnabled = mergeColsSet.has(col);
                     const span         = mergeEnabled ? (spanMaps[col]?.[ri] ?? 1) : 1;
 
                     // Cell is covered by a merged cell above — skip rendering
                     if (mergeEnabled && span === 0) return null;
 
                     const rawVal   = row[col] ?? '';
-                    const isStatus = statusCols.has(col) && !isFooter;
-                    const colBg    = isFooter ? undefined : p.colBgs?.[col];
+                    const isStatus = statusCols.has(col);
+                    const colBg    = p.colBgs?.[col];
                     const align    = (p.colAligns?.[col] ?? 'left') as 'left' | 'center' | 'right';
                     const val      = isStatus ? rawVal : fmtNumber(rawVal, p.colFormats?.[col]);
 
@@ -612,9 +639,9 @@ export function ElementTable({ element, onAutoPaginate, onActualFit, onHeightCha
                           textAlign: align,
                           background: colBg || undefined,
                           verticalAlign: 'middle',
-                          fontSize: isFooter ? undefined : (p.colFontSizes?.[col] ?? undefined),
-                          color: isFooter ? undefined : (p.colTextColors?.[col] ?? undefined),
-                          fontFamily: isFooter ? undefined : (p.colFontFamilies?.[col] ?? undefined),
+                          fontSize: p.colFontSizes?.[col] ?? undefined,
+                          color: p.colTextColors?.[col] ?? undefined,
+                          fontFamily: p.colFontFamilies?.[col] ?? undefined,
                         }}
                       >
                         {isStatus && val ? (() => {

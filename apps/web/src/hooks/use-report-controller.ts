@@ -694,15 +694,6 @@ export function useReportController({
     if (_w !== undefined)        patch.w        = _w as number;
     if (_h !== undefined)        patch.h        = _h as number;
     if (_rotation !== undefined) patch.rotation = _rotation as number;
-    // Toggling the footer row changes the total row count (the footer is now one
-    // extra ordinary row), so the previously stored DOM-measured row-fit hint is
-    // stale.  Clear it and reset the layout signature so computeAutoLayout re-measures
-    // from scratch rather than reusing a count that no longer matches the row set.
-    if ('footerRowEnabled' in rest) {
-      const { [selectedId]: _removed, ...remainingHints } = actualFitHintsRef.current;
-      actualFitHintsRef.current = remainingHints;
-      autoLayoutSigRef.current = '';
-    }
     updateElement(selectedId, patch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, allElements, updateElement]);

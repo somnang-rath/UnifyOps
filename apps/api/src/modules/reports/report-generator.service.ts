@@ -120,6 +120,38 @@ function fmtNumber(raw: string, fmt: string | undefined): string {
   }
 }
 
+type CalcOp = 'none' | 'sum' | 'avg' | 'count' | 'min' | 'max';
+
+/** Aggregate one column across the given rows for the calculation row. Mirrors
+ *  aggregateColumn in apps/web element-table.tsx — keep the two in sync. */
+function aggregateColumn(rows: Record<string, string>[], col: string, op: CalcOp): number | null {
+  const nums: number[] = [];
+  let nonEmpty = 0;
+  for (const r of rows) {
+    const raw = String(r[col] ?? '').trim();
+    if (raw !== '') nonEmpty++;
+    const n = parseFloat(raw.replace(/[,$\s%]/g, ''));
+    if (!isNaN(n)) nums.push(n);
+  }
+  switch (op) {
+    case 'sum':   return nums.reduce((a, b) => a + b, 0);
+    case 'avg':   return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+    case 'min':   return nums.length ? Math.min(...nums) : 0;
+    case 'max':   return nums.length ? Math.max(...nums) : 0;
+    case 'count': return nonEmpty;
+    default:      return null;
+  }
+}
+
+/** Display string for an aggregated value, honoring the column's number format. */
+function calcCellDisplay(rows: Record<string, string>[], col: string, op: CalcOp, fmt: string | undefined): string {
+  const v = aggregateColumn(rows, col, op);
+  if (v === null) return '';
+  if (op === 'count') return String(v);
+  if (fmt && fmt !== 'none') return fmtNumber(String(v), fmt);
+  return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
 function applyTextNumberFmt(
   raw: string,
   fmt: string | undefined,
@@ -310,34 +342,6 @@ const escapeHtml = (s: unknown) =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-
-type FooterCellFn = 'none' | 'sum' | 'count' | 'avg' | 'min' | 'max' | 'custom';
-
-function computeFooterCellPdf(
-  rows: Record<string, string>[],
-  col: string,
-  cfg: { fn: FooterCellFn; custom?: string; decimals?: number },
-): string {
-  if (cfg.fn === 'none') return '';
-  if (cfg.fn === 'custom') return cfg.custom ?? '';
-  if (cfg.fn === 'count') return String(rows.length);
-  const nums = rows
-    .map(r => parseFloat(String(r[col] ?? '').replace(/[$,%\s]/g, '')))
-    .filter(n => !isNaN(n));
-  if (!nums.length) return '';
-  let v: number;
-  switch (cfg.fn) {
-    case 'sum': v = nums.reduce((a, b) => a + b, 0); break;
-    case 'avg': v = nums.reduce((a, b) => a + b, 0) / nums.length; break;
-    case 'min': v = Math.min(...nums); break;
-    case 'max': v = Math.max(...nums); break;
-    default: return '';
-  }
-  const dp = cfg.decimals ?? 2;
-  return v % 1 === 0
-    ? v.toLocaleString('en-US')
-    : v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
-}
 
 // CSS variable names set by next/font → actual Google Fonts family name
 // Maps CSS variable names → Google Fonts family:wght spec used in the PDF <link> tag.
@@ -653,10 +657,10 @@ function calcContTableHeight(el: ReportElement): number {
   const allRows = (p.rows as Record<string, string>[]) ?? [];
   const startRow = Math.max(0, (p.startRow as number) ?? 0);
   const endRow   = p.endRow as number | undefined;
-  // The summary footer is one extra ordinary row that appears on the last slice
-  // (endRow undefined = all remaining rows shown).
-  const footerExtra = (p.footerRowEnabled && endRow === undefined) ? 1 : 0;
-  const rowCount = allRows.slice(startRow, endRow).length + footerExtra;
+  // The synthetic calc row renders on the final slice (endRow undefined) but is
+  // not in p.rows — count it so below-table elements aren't placed over it.
+  const calcExtra = p.showCalcRow && endRow === undefined ? 1 : 0;
+  const rowCount = allRows.slice(startRow, endRow).length + calcExtra;
 
   const hPy = (p.headerPaddingY as number) ?? 8;
   const hFs = (p.headerFontSize as number) ?? (p.fontSize as number) ?? 12;
@@ -759,6 +763,20 @@ function buildHtml(
   // Reposition auto-moved elements based on actual continuation row counts
   const allElements = repositionMovedElements(template.elements ?? [], marginTop);
 
+  // A continuation table slice is non-empty when it shows ≥1 real data row OR
+  // when it carries the appended calc row. The calc row is the last element of
+  // the row list, so it only ever lands on the final slice (endRow undefined) —
+  // that slice can have zero real rows (p.rows.slice is empty) yet must still
+  // render its own page. Without this, a calc-row-only continuation page is
+  // silently dropped from the PDF and the page count.
+  function contSliceHasContent(p: Record<string, unknown>): boolean {
+    const rows     = (p.rows as unknown[]) ?? [];
+    const startRow = Math.max(0, (p.startRow as number) ?? 0);
+    const endRow   = p.endRow as number | undefined;
+    if (rows.slice(startRow, endRow).length > 0) return true;
+    return !!p.showCalcRow && endRow === undefined;
+  }
+
   // Determine whether a page has any visible content.
   // A page is considered empty if:
   //   1. It has no elements at all, OR
@@ -769,12 +787,7 @@ function buildHtml(
     return pageEls.some((el) => {
       const p = el.props as Record<string, unknown>;
       if (el.type === 'table' && p.isContinuation && p.autoGenerated) {
-        const rows     = (p.rows as unknown[]) ?? [];
-        const startRow = Math.max(0, (p.startRow as number) ?? 0);
-        const endRow   = p.endRow as number | undefined;
-        // The summary footer is an extra row on the last slice (endRow undefined),
-        // so a footer-only slice is still visible content.
-        return rows.slice(startRow, endRow).length > 0 || (!!p.footerRowEnabled && endRow === undefined);
+        return contSliceHasContent(p);
       }
       return true;
     });
@@ -798,14 +811,11 @@ function buildHtml(
       const elements = allElements
         .filter((el) => {
           if ((el.page ?? 0) !== originalIdx) return false;
-          // Skip continuation table slices that have no data rows
+          // Skip continuation table slices that have no data rows (but keep the
+          // final calc-row-only slice — see contSliceHasContent).
           const p = el.props as Record<string, unknown>;
           if (el.type === 'table' && p.isContinuation && p.autoGenerated) {
-            const rows     = (p.rows as unknown[]) ?? [];
-            const startRow = Math.max(0, (p.startRow as number) ?? 0);
-            const endRow   = p.endRow as number | undefined;
-            // Keep footer-only slices (footer is an extra row on the last slice).
-            return rows.slice(startRow, endRow).length > 0 || (!!p.footerRowEnabled && endRow === undefined);
+            return contSliceHasContent(p);
           }
           return true;
         })
@@ -1149,33 +1159,28 @@ function renderElementInner(
       const cols: string[] = (p.columns as string[]) ?? [];
       const realRows: Record<string, string>[] = (p.rows as Record<string, string>[]) ?? [];
 
-      // Summary footer is appended as one ordinary row (mirrors element-table.tsx),
-      // so pagination treats it like any other row — no "last page only" handling and
-      // no reserved footer height.  Aggregates are computed once over the REAL rows.
-      const footerEnabled = !!p.footerRowEnabled;
-      const footerCells = (p.footerCells as Record<string, { fn: FooterCellFn; custom?: string; decimals?: number }>) ?? {};
-      const footerLabel = (p.footerRowLabel as string) ?? 'Total';
-      const footerRowData: Record<string, string> | null = footerEnabled
-        ? (() => {
-            const out: Record<string, string> = {};
-            cols.forEach((c, ci) => {
-              const cfg = footerCells[c] ?? { fn: 'none' as FooterCellFn };
-              out[c] = cfg.fn === 'none' && ci === 0 ? footerLabel : computeFooterCellPdf(realRows, c, cfg);
-            });
-            return out;
-          })()
-        : null;
+      // Calculation row — synthetic last row aggregating each column. Appended as
+      // an ordinary row so pagination (startRow/endRow slices) places it on the
+      // final page and flows it to a continuation page if it doesn't fit.
+      const showCalc   = !!p.showCalcRow;
+      const calcIndex  = realRows.length;
+      const calcOps    = (p.calcRowOps as Record<string, CalcOp> | undefined) ?? {};
+      const colFmts    = (p.colFormats as Record<string, string> | undefined) ?? {};
+      const calcRowData: Record<string, string> = {};
+      if (showCalc) {
+        for (const c of cols) calcRowData[c] = calcCellDisplay(realRows, c, calcOps[c] ?? 'none', colFmts[c]);
+      }
+      const calcLabelCol = showCalc
+        ? (() => { const i = cols.findIndex((c) => !calcRowData[c]); return i === -1 ? 0 : i; })()
+        : -1;
+      const calcRowLabel = (p.calcRowLabel as string) ?? 'Total';
 
-      const allRows     = footerRowData ? [...realRows, footerRowData] : realRows;
-      const footerIndex = footerRowData ? realRows.length : -1;
+      const allRows = showCalc ? [...realRows, calcRowData] : realRows;
 
       const startRow = Math.max(0, (p.startRow as number) ?? 0);
       const endRow   = p.endRow as number | undefined;
       const rows     = allRows.slice(startRow, endRow);
-      // The footer is always the last entry of allRows, so it is on this page only
-      // when the slice's last row is the footer index.
-      const footerOnPage = footerIndex >= 0 && rows.length > 0 && startRow + rows.length - 1 === footerIndex;
-      const dataRowCount = footerOnPage ? rows.length - 1 : rows.length;
+      const calcInSlice = showCalc && rows.length > 0 && startRow + rows.length - 1 === calcIndex;
 
       // Default colors mirror the canvas element-table.tsx defaults exactly:
       //  headerBg   → var(--bg-subtle)  ≈ #f3f4f6
@@ -1217,7 +1222,8 @@ function renderElementInner(
       const mergeColsSet = new Set(mergeCols);
       const spanMaps: Record<string, number[]> = {};
       if (mergeColsSet.size > 0) {
-        const dataRows = footerOnPage ? rows.slice(0, dataRowCount) : rows;
+        // Exclude the synthetic calc row from merge grouping (it is always last).
+        const dataRows = calcInSlice ? rows.slice(0, -1) : rows;
         for (const col of mergeColsSet) {
           spanMaps[col] = computeSpans(dataRows.map((r) => String(r[col] ?? '')));
         }
@@ -1244,16 +1250,7 @@ function renderElementInner(
         active ? `inset 0 -${bw}px 0 0 ${color}` : '';
       const perRowH    = (p.equalRowHeight && p.rowHeight) ? (p.rowHeight as number) : 0;
 
-      // Footer font size — used when rendering the synthetic footer row.
-      const fFs        = (p.footerRowFontSize as number | undefined) ?? Math.max(9, Math.round(fs * 0.9));
-      // Self-correcting height: the footer is one of the counted rows now, so its
-      // height is already in `rows.length * rH_est`.  Templates saved before this change
-      // may have el.h that omits the footer — expand el.h to the content minimum so the
-      // last row is never clipped in the PDF.
-      const hH_est     = hPy * 2 + Math.ceil(hFs * 1.2) + 2;
-      const rH_est     = perRowH > 0 ? perRowH : cellPy * 2 + Math.ceil(fs * 1.2) + 1;
-      const minElH     = contBadgeH + hH_est + rows.length * rH_est;
-      const effectiveH = footerOnPage ? Math.max(el.h, minElH) : el.h;
+      const effectiveH = el.h;
 
       // computeAutoLayout stretches auto-paginated source tables to fill the page so
       // the canvas can DOM-measure actual row heights. The PDF has no DOM measurement,
@@ -1270,9 +1267,9 @@ function renderElementInner(
 
       const tableBase = `left:${el.x}px;top:${el.y}px;width:${el.w}px;${heightStyle}transform:rotate(${el.rotation ?? 0}deg);z-index:${el.zIndex ?? 0};`;
 
-      const contBadge = isCont
-        ? `<div style="flex-shrink:0;padding:2px 8px;background:rgba(99,102,241,0.08);border-bottom:1px dashed #6366f1;font-size:9px;color:#6366f1;font-weight:600;">&#8617; Continued from previous page</div>`
-        : '';
+      // "Continued from previous page" badge is an editor-only aid — hidden in
+      // PDF/preview output (same as the URL badge below).
+      const contBadge = '';
 
       // URL badge is editor-only — hidden in PDF output
       const urlBadge = '';
@@ -1304,26 +1301,39 @@ function renderElementInner(
 
       const tbody = rows.map((r, i) => {
         const globalI    = startRow + i;
-        const isFooter   = globalI === footerIndex;
-        const isStripe   = !!(p.stripedRows && i % 2 === 1);
-        const isTotalRow = !!(p.showTotalRow && globalI === realRows.length - 1);
+        const isCalcRow  = showCalc && globalI === calcIndex;
+        const isStripe   = !isCalcRow && !!(p.stripedRows && i % 2 === 1);
+        const isTotalRow = !isCalcRow && !!(p.showTotalRow && globalI === realRows.length - 1);
         let rowBg = (p.rowBg as string) ?? 'transparent';
-        if (isFooter)                        rowBg = escapeHtml((p.footerRowBg as string) ?? '#f3f4f6');
+        if (isCalcRow && p.calcRowBg)        rowBg = escapeHtml(p.calcRowBg as string);
         else if (isTotalRow && p.totalRowBg) rowBg = escapeHtml(p.totalRowBg as string);
         else if (isStripe)                   rowBg = (p.rowAltBg as string) ?? '#f3f4f6';
-        const rowFw = isFooter
-          ? ((p.footerRowBold as boolean) !== false ? 'font-weight:700;' : '')
-          : (isTotalRow && p.totalRowBold !== false ? 'font-weight:bold;' : '');
-        const rowFg = isFooter
-          ? `color:${escapeHtml((p.footerRowColor as string) ?? '#111111')};`
-          : (isTotalRow && p.totalRowColor ? `color:${escapeHtml(p.totalRowColor as string)};` : '');
-        const rowFs = isFooter ? `font-size:${fFs}px;` : '';
+        const rowFw = isCalcRow ? (p.calcRowBold !== false ? 'font-weight:bold;' : '')
+          : isTotalRow && p.totalRowBold !== false ? 'font-weight:bold;' : '';
+        const rowFg = isCalcRow && p.calcRowColor ? `color:${escapeHtml(p.calcRowColor as string)};`
+          : isTotalRow && p.totalRowColor ? `color:${escapeHtml(p.totalRowColor as string)};` : '';
+
+        // Calc row: empty row-number cell + plain aggregated cells (no merge/pills).
+        if (isCalcRow) {
+          const calcNumTd = showRowNums
+            ? `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;${mkBS(bsR(showColB))}"></td>`
+            : '';
+          const calcCells = cols.map((c, ci) => {
+            const align   = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
+            const colBg   = (p.colBgs as Record<string, string>)?.[c];
+            const colFs   = colFontSizes[c]    ? `font-size:${colFontSizes[c]}px;`                              : '';
+            const colFf   = colFontFamilies[c] ? `font-family:${escapeHtml(normalizeFont(colFontFamilies[c]))};` : '';
+            const content = escapeHtml(ci === calcLabelCol ? (calcRowData[c] || calcRowLabel) : (calcRowData[c] ?? ''));
+            const cellBS  = mkBS(bsR(showColB && ci < cols.length - 1));
+            return `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;text-align:${align};vertical-align:middle;${colBg ? `background:${escapeHtml(colBg)};` : ''}${colFs}${colFf}${cellBS}">${content}</td>`;
+          }).join('');
+          const trH = perRowH > 0 ? `height:${perRowH}px;` : '';
+          return `<tr style="background:${escapeHtml(rowBg)};${rowFw}${rowFg}${trH}">${calcNumTd}${calcCells}</tr>`;
+        }
 
         // Row-number cell (merge-aware: spans same as primary merge column)
         let rowNumTd = '';
-        if (showRowNums && isFooter) {
-          rowNumTd = `<td style="padding:${cellPy}px ${cellPx}px;line-height:1.2;${mkBS(bsR(showColB))}text-align:center;"></td>`;
-        } else if (showRowNums) {
+        if (showRowNums) {
           const numSpan = primaryMergeCol ? (spanMaps[primaryMergeCol]?.[i] ?? 1) : 1;
           if (numSpan === 0) {
             rowNumTd = ''; // covered by merged cell above
@@ -1350,24 +1360,24 @@ function renderElementInner(
         }
 
         const cells = cols.map((c, ci) => {
-          // Merge: skip cells covered by a span above (footer is never merged)
-          const mergeEnabled = mergeColsSet.has(c) && !isFooter;
+          // Merge: skip cells covered by a span above
+          const mergeEnabled = mergeColsSet.has(c);
           const span = mergeEnabled ? (spanMaps[c]?.[i] ?? 1) : 1;
           if (mergeEnabled && span === 0) return ''; // covered
 
           const rawVal   = r[c] ?? '';
           const val      = fmtNumber(rawVal, (p.colFormats as Record<string, string> | undefined)?.[c]);
           const align    = escapeHtml(((p.colAligns as Record<string, string>)?.[c]) ?? 'left');
-          const colBg    = isFooter ? undefined : (p.colBgs as Record<string, string>)?.[c];
-          const isStatus = !isFooter && (p.statusColumns as string[] | undefined)?.includes(c);
+          const colBg    = (p.colBgs as Record<string, string>)?.[c];
+          const isStatus = (p.statusColumns as string[] | undefined)?.includes(c);
           // For merged cells, use the border at the last spanned row
           const lastRowIdx = mergeEnabled && span > 1 ? i + span - 1 : i;
           const rowspanAttr = span > 1 ? ` rowspan="${span}"` : '';
 
-          // Per-column styling (skipped for the footer row, which uses footer styling)
-          const colFs  = !isFooter && colFontSizes[c]    ? `font-size:${colFontSizes[c]}px;`                              : '';
-          const colFg  = !isFooter && colTextColors[c]   ? `color:${escapeHtml(colTextColors[c])};`                        : '';
-          const colFf  = !isFooter && colFontFamilies[c] ? `font-family:${escapeHtml(normalizeFont(colFontFamilies[c]))};` : '';
+          // Per-column styling
+          const colFs  = colFontSizes[c]    ? `font-size:${colFontSizes[c]}px;`                              : '';
+          const colFg  = colTextColors[c]   ? `color:${escapeHtml(colTextColors[c])};`                        : '';
+          const colFf  = colFontFamilies[c] ? `font-family:${escapeHtml(normalizeFont(colFontFamilies[c]))};` : '';
 
           let cellContent = escapeHtml(val);
           if (isStatus && val) {
@@ -1387,7 +1397,7 @@ function renderElementInner(
         }).join('');
 
         const trH = perRowH > 0 ? `height:${perRowH}px;` : '';
-        return `<tr style="background:${escapeHtml(rowBg)};${rowFw}${rowFg}${rowFs}${trH}">${rowNumTd}${cells}</tr>`;
+        return `<tr style="background:${escapeHtml(rowBg)};${rowFw}${rowFg}${trH}">${rowNumTd}${cells}</tr>`;
       }).join('');
 
       const outerStyle = outerB ? `border:${bw}px ${borderStyle} ${borderColor};border-radius:4px;` : '';
@@ -1396,9 +1406,7 @@ function renderElementInner(
       // the flex container and Puppeteer distributes the explicit tr heights correctly.
       const tableHeightStyle = perRowH > 0 ? 'height:100%;' : '';
 
-      // The summary footer is rendered as the last <tbody> row (see footerRowData),
-      // so column widths always align and no separate <tfoot> / overflow exception
-      // is needed.  Clipping stays on to keep rows out of header/footer overlay areas.
+      // Clipping stays on to keep rows out of header/footer overlay areas.
       const innerOverflow = 'overflow:hidden;';
       return `<div class="el" style="${tableBase}${outerStyle}${ff}overflow:hidden;display:flex;flex-direction:column;">${contBadge}${urlBadge}<div style="flex:1;${innerOverflow}"><table style="width:100%;${tableHeightStyle}table-layout:${tblLayout};border-collapse:separate;border-spacing:0;font-size:${fs}px;line-height:1.2;${ff}">${colgroup}<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div></div>`;
     }
@@ -1545,9 +1553,8 @@ function renderElementInner(
         }
       }
 
-      const contBadgeGT = isCont
-        ? `<div style="flex-shrink:0;padding:2px 8px;background:rgba(99,102,241,0.08);border-bottom:1px dashed #6366f1;font-size:9px;color:#6366f1;font-weight:600;">&#8617; Continued from previous page</div>`
-        : '';
+      // Editor-only "Continued from previous page" badge — hidden in PDF/preview.
+      const contBadgeGT = '';
 
       const outerStyle2 = outerB2 ? `border:${bLine};border-radius:4px;` : '';
       const tableBase2  = `left:${el.x}px;top:${el.y}px;width:${el.w}px;max-height:${el.h}px;transform:rotate(${el.rotation ?? 0}deg);z-index:${el.zIndex ?? 0};`;

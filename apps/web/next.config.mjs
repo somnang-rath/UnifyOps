@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins: ['192.168.100.101'],
+  allowedDevOrigins: ['192.168.100.100'],
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
     optimizePackageImports: ['lucide-react'],

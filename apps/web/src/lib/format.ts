@@ -107,3 +107,23 @@ export function buildCalendarMonth(
   }
   return cells.slice(0, 42);
 }
+
+/** Seven cells for the Sunday→Saturday week containing `anchor`. */
+export function buildCalendarWeek(anchor: Date): CalendarCell[] {
+  const todayIso = isoDay(new Date());
+  const month = anchor.getMonth();
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() - anchor.getDay()); // back to Sunday
+  const cells: CalendarCell[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const iso = isoDay(d);
+    cells.push({
+      date: d,
+      iso,
+      otherMonth: d.getMonth() !== month,
+      today: iso === todayIso,
+    });
+  }
+  return cells;
+}

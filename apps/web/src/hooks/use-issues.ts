@@ -166,6 +166,52 @@ export function useIssueMutations() {
     update: useMutation({
       mutationFn: ({ id, body }: { id: string; body: Partial<SaveBody> }) =>
         issuesService.update(id, body),
+      // Optimistically patch every cached issue (list rows + detail) so quick
+      // edits — e.g. ticking a checklist item on a Kanban card — feel instant.
+      onMutate: async ({ id, body }) => {
+        await qc.cancelQueries({ queryKey: ['issues'] });
+        await qc.cancelQueries({ queryKey: ['calendar'] });
+        const prev: Array<[QueryKey, unknown]> = [];
+        for (const [key, data] of qc.getQueriesData({ queryKey: ['issues'] })) {
+          if (!data) continue;
+          // Detail cache: ['issues','byId',id]
+          if (key.length === 3 && key[1] === 'byId') {
+            if (key[2] === id) {
+              prev.push([key, data]);
+              qc.setQueryData(key, { ...(data as Issue), ...body });
+            }
+            continue;
+          }
+          // List cache: ['issues', params]
+          if (key.length === 2 && typeof key[1] === 'object') {
+            const list = data as IssueListResponse;
+            if (!list.items?.some((i) => i._id === id)) continue;
+            prev.push([key, list]);
+            qc.setQueryData<IssueListResponse>(key, {
+              ...list,
+              items: list.items.map((i) =>
+                i._id === id ? ({ ...i, ...body } as Issue) : i,
+              ),
+            });
+          }
+        }
+        // Calendar caches: ['calendar', from, to] hold a flat Issue[] — patch in
+        // place so a drag-reschedule (dueDate change) moves the chip instantly.
+        for (const [key, data] of qc.getQueriesData<Issue[]>({
+          queryKey: ['calendar'],
+        })) {
+          if (!Array.isArray(data) || !data.some((i) => i._id === id)) continue;
+          prev.push([key, data]);
+          qc.setQueryData<Issue[]>(
+            key,
+            data.map((i) => (i._id === id ? ({ ...i, ...body } as Issue) : i)),
+          );
+        }
+        return { prev };
+      },
+      onError: (_e, _vars, ctx) => {
+        for (const [key, data] of ctx?.prev ?? []) qc.setQueryData(key, data);
+      },
       onSuccess: (issue) => {
         qc.setQueryData(['issues', 'byId', issue._id], issue);
         qc.invalidateQueries({ queryKey: ['issues'] });
