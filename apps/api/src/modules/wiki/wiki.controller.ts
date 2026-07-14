@@ -58,4 +58,15 @@ export class WikiController {
   remove(@CurrentUser() u: AuthUserPayload, @Param('id') id: string) {
     return this.wiki.remove(u.id, u.role, id);
   }
+
+  // ── Phase 3: publish to the public Space (ADR 0002 §3) ──
+  @Post(':id/publish')
+  publish(@CurrentUser() u: { id: string }, @Param('id') id: string) {
+    return this.wiki.publish(u.id, id);
+  }
+
+  @Delete(':id/publish')
+  unpublish(@CurrentUser() u: { id: string }, @Param('id') id: string) {
+    return this.wiki.unpublish(u.id, id);
+  }
 }

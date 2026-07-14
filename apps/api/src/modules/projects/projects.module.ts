@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Project, ProjectSchema } from './schemas/project.schema';
+import {
+  Workspace,
+  WorkspaceSchema,
+} from '../workspaces/schemas/workspace.schema';
+import { ProjectAccessModule } from './access/project-access.module';
 import { ProjectsService } from './projects.service';
 import { ProjectsController } from './projects.controller';
 import { UsersModule } from '../users/users.module';
@@ -10,7 +15,11 @@ import { AutomationsModule } from '../automations/automations.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Project.name, schema: ProjectSchema }]),
+    MongooseModule.forFeature([
+      { name: Project.name, schema: ProjectSchema },
+      { name: Workspace.name, schema: WorkspaceSchema },
+    ]),
+    ProjectAccessModule,
     UsersModule,
     IssuesModule,
     NotificationsModule,

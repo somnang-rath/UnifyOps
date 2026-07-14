@@ -44,8 +44,8 @@ export class IssuesController {
   }
 
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.issues.byId(id);
+  byId(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.issues.byId(user.id, id);
   }
 
   @Post()

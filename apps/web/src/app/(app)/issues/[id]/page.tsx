@@ -22,6 +22,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
 import { useIssue, useIssueMutations } from '@/hooks/use-issues';
+import { useAssistantContext } from '@/hooks/use-assistant-context';
 import { useUsers } from '@/hooks/use-users';
 import { useProjects } from '@/hooks/use-projects';
 import { IssueTypeIcon } from '@/components/feature/issue/icons';
@@ -49,6 +50,18 @@ export default function IssueDetailPage() {
   const { data: users = [] } = useUsers();
   const { data: projects = [] } = useProjects();
   const { comment: addComment, remove } = useIssueMutations();
+
+  // Ground the assistant on the issue currently open (AI assistant §12).
+  useAssistantContext(
+    issue
+      ? {
+          type: 'issue',
+          id: issue._id,
+          title: issue.title,
+          text: issue.desc?.slice(0, 20000),
+        }
+      : null,
+  );
 
   const submitComment = () => {
     const body = comment.trim();

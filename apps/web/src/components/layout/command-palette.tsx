@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   AlertCircle,
   BookOpen,
   Calendar,
   CheckSquare,
+  Columns2,
   Database,
   FileText,
   GitMerge,
@@ -16,6 +17,8 @@ import {
   Moon,
   PanelLeft,
   Plus,
+  RotateCcw,
+  Rows2,
   Search,
   Settings as SettingsIcon,
   StickyNote,
@@ -26,6 +29,7 @@ import { useIssues } from '@/hooks/use-issues';
 import { useProjects } from '@/hooks/use-projects';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useUIStore } from '@/stores/ui-store';
+import { useLayoutStore } from '@/stores/layout-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { useThemePrefs } from '@/hooks/use-theme-prefs';
 import { useLogout } from '@/lib/auth';
@@ -45,9 +49,13 @@ export function CommandPalette() {
   const open = useUIStore((s) => s.paletteOpen);
   const setPalette = useUIStore((s) => s.setPalette);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const toggleSidebarVisibility = useUIStore((s) => s.toggleSidebarVisibility);
+  const splitActive = useLayoutStore((s) => s.splitActive);
+  const resetLayout = useLayoutStore((s) => s.reset);
   const theme = useThemeStore((s) => s.theme);
   const { setTheme } = useThemePrefs();
   const router = useRouter();
+  const pathname = usePathname();
   const logout = useLogout();
 
   const [q, setQ] = useState('');
@@ -116,6 +124,42 @@ export function CommandPalette() {
       },
       {
         group: 'Actions',
+        Icon: PanelLeft,
+        title: 'Toggle primary side bar',
+        run: () => {
+          toggleSidebarVisibility();
+          close();
+        },
+      },
+      {
+        group: 'Actions',
+        Icon: Columns2,
+        title: 'Split editor right',
+        run: () => {
+          splitActive('right', pathname);
+          close();
+        },
+      },
+      {
+        group: 'Actions',
+        Icon: Rows2,
+        title: 'Split editor down',
+        run: () => {
+          splitActive('down', pathname);
+          close();
+        },
+      },
+      {
+        group: 'Actions',
+        Icon: RotateCcw,
+        title: 'Reset editor layout',
+        run: () => {
+          resetLayout();
+          close();
+        },
+      },
+      {
+        group: 'Actions',
         Icon: LogOut,
         title: 'Sign out',
         run: () => {
@@ -156,7 +200,19 @@ export function CommandPalette() {
       : [];
 
     return [...filteredActions, ...projItems, ...issueItems];
-  }, [debouncedQ, projects, issuesResp, theme, setTheme, toggleSidebar, logout]);
+  }, [
+    debouncedQ,
+    projects,
+    issuesResp,
+    theme,
+    setTheme,
+    toggleSidebar,
+    toggleSidebarVisibility,
+    splitActive,
+    resetLayout,
+    pathname,
+    logout,
+  ]);
 
   useEffect(() => {
     setSel(0);

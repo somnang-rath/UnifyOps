@@ -11,6 +11,7 @@
     "seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^10.4.0",
     "@nestjs/config": "^3.2.3",
@@ -32,6 +33,7 @@
     "mongoose": "^8.7.0",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^8.0.7",
+    "openai": "^6.46.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "puppeteer": "^24.43.1",

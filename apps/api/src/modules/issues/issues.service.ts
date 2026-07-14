@@ -15,14 +15,22 @@ import {
 import { UsersService } from '../users/users.service';
 import { ActivityService } from '../activity/activity.service';
 import { AutomationsService } from '../automations/automations.service';
+import { ProjectAccessService } from '../projects/access/project-access.service';
 
 const oid = (v?: string | null) =>
   v ? new Types.ObjectId(v) : undefined;
+
+/** True when `userId` is one of the (possibly-undefined) stakeholder ids. */
+const isStakeholder = (
+  userId: string,
+  ids: (Types.ObjectId | undefined | null)[],
+) => ids.some((id) => id && String(id) === userId);
 
 @Injectable()
 export class IssuesService {
   constructor(
     @InjectModel(Issue.name) private model: Model<IssueDocument>,
+    private access: ProjectAccessService,
     private notifs: NotificationsService,
     private users: UsersService,
     private activity: ActivityService,
@@ -48,7 +56,7 @@ export class IssuesService {
       .catch(() => {});
   }
 
-  async list(_userId: string, q: ListIssueQuery) {
+  async list(userId: string, q: ListIssueQuery) {
     const filter: FilterQuery<IssueDocument> = {};
     if (q.projectId) filter.projectId = new Types.ObjectId(q.projectId);
     if (q.assigneeId) filter.assigneeId = new Types.ObjectId(q.assigneeId);
@@ -62,9 +70,26 @@ export class IssuesService {
         { desc: { $regex: q.q, $options: 'i' } },
       ];
 
+    // Access scope (ADR 0003/0005), matching byId: issues in a project the
+    // caller can read, plus their own personal (project-less) issues. Combined
+    // via $and so it can't collide with the text-search $or above.
+    const me = new Types.ObjectId(userId);
+    const readableProjects = await this.access.readableProjectIds(userId);
+    const scopedFilter: FilterQuery<IssueDocument> = {
+      $and: [
+        filter,
+        {
+          $or: [
+            { projectId: { $in: readableProjects } },
+            { projectId: null, $or: [{ authorId: me }, { assigneeId: me }] },
+          ],
+        },
+      ],
+    };
+
     const skip = (q.page - 1) * q.limit;
     const items = await this.model
-      .find(filter)
+      .find(scopedFilter)
       .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(q.limit)
@@ -74,7 +99,7 @@ export class IssuesService {
       _id: 'open' | 'done';
       n: number;
     }>([
-      { $match: filter },
+      { $match: scopedFilter },
       {
         $group: {
           _id: {
@@ -100,9 +125,16 @@ export class IssuesService {
     };
   }
 
-  async byId(id: string) {
+  async byId(userId: string, id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
     const issue = await this.model.findById(id).lean();
     if (!issue) throw new NotFoundException();
+    // Project-linked → project read rule; personal (no project) → stakeholders.
+    const ok = issue.projectId
+      ? await this.access.canReadProjectById(userId, issue.projectId)
+      : isStakeholder(userId, [issue.authorId, issue.assigneeId]);
+    // 404 (not 403) on no-access so existence isn't leaked.
+    if (!ok) throw new NotFoundException();
     return issue;
   }
 
@@ -132,6 +164,8 @@ export class IssuesService {
   }
 
   async create(userId: string, dto: CreateIssueDto) {
+    // Creating inside a project requires membership; personal issues are free.
+    await this.access.assertProjectWritable(userId, dto.projectId ?? null);
     const issue = await this.model.create({
       ...dto,
       projectId: oid(dto.projectId ?? undefined),
@@ -195,6 +229,16 @@ export class IssuesService {
   async update(actorId: string, id: string, dto: UpdateIssueDto) {
     const issue = await this.model.findById(id);
     if (!issue) throw new NotFoundException();
+    // Write requires membership of the issue's project or being a stakeholder.
+    await this.access.assertCanWrite(
+      actorId,
+      issue.projectId ?? null,
+      isStakeholder(actorId, [issue.authorId, issue.assigneeId]),
+    );
+    // Re-parenting into another project also requires write on the target.
+    if ('projectId' in dto && dto.projectId) {
+      await this.access.assertProjectWritable(actorId, dto.projectId);
+    }
 
     const prevAssignee = issue.assigneeId ? String(issue.assigneeId) : null;
     const prevStatus = issue.status;
@@ -312,6 +356,16 @@ export class IssuesService {
   }
 
   async addComment(id: string, authorId: string, body: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const target = await this.model
+      .findById(id, { projectId: 1, authorId: 1, assigneeId: 1 })
+      .lean();
+    if (!target) throw new NotFoundException();
+    await this.access.assertCanWrite(
+      authorId,
+      target.projectId ?? null,
+      isStakeholder(authorId, [target.authorId, target.assigneeId]),
+    );
     const issue = await this.model.findByIdAndUpdate(
       id,
       {

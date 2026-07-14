@@ -27,8 +27,8 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.projects.byId(id);
+  byId(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.projects.byId(user.id, id);
   }
 
   @Post()

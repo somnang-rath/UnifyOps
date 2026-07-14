@@ -6,6 +6,11 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Project, ProjectDocument } from './schemas/project.schema';
+import {
+  Workspace,
+  WorkspaceDocument,
+} from '../workspaces/schemas/workspace.schema';
+import { ProjectAccessService } from './access/project-access.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Issue, IssueDocument } from '../issues/schemas/issue.schema';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
@@ -19,6 +24,9 @@ const slug = (s: string) =>
 export class ProjectsService {
   constructor(
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
+    @InjectModel(Workspace.name)
+    private workspaceModel: Model<WorkspaceDocument>,
+    private access: ProjectAccessService,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Issue.name) private issueModel: Model<IssueDocument>,
     private notifs: NotificationsService,
@@ -54,12 +62,22 @@ export class ProjectsService {
 
   async listForUser(userId: string) {
     const me = new Types.ObjectId(userId);
+    // Scope `internal`/`public` visibility to workspaces the user belongs to,
+    // so the instance behaves as isolated tenants rather than one shared pool.
+    // Owned / member projects stay visible regardless of workspace.
+    const myWorkspaces = await this.workspaceModel
+      .find({ $or: [{ ownerId: me }, { members: me }] }, { _id: 1 })
+      .lean();
+    const workspaceIds = myWorkspaces.map((w) => w._id);
     const projects = await this.projectModel
       .find({
         $or: [
           { ownerId: me },
           { members: me },
-          { visibility: { $in: ['internal', 'public'] } },
+          {
+            visibility: { $in: ['internal', 'public'] },
+            workspaceId: { $in: workspaceIds },
+          },
         ],
       })
       .sort({ updatedAt: -1 })
@@ -92,9 +110,26 @@ export class ProjectsService {
     }));
   }
 
-  async byId(id: string) {
+  /**
+   * The single source of truth for "can this user read this project", matching
+   * {@link listForUser}: owner OR member OR (internal/public visibility AND the
+   * project sits in a workspace the user belongs to). See ADR 0003.
+   */
+  async canRead(
+    userId: string,
+    project: Pick<
+      Project,
+      'ownerId' | 'members' | 'visibility' | 'workspaceId'
+    >,
+  ): Promise<boolean> {
+    return this.access.canReadProject(userId, project);
+  }
+
+  async byId(userId: string, id: string) {
     const p = await this.projectModel.findById(id).lean();
     if (!p) throw new NotFoundException();
+    // 404 (not 403) on no-access so we don't leak that the project exists.
+    if (!(await this.canRead(userId, p))) throw new NotFoundException();
     return p;
   }
 

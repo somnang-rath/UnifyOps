@@ -30,6 +30,10 @@ import { SearchModule } from './modules/search/search.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BackupsModule } from './modules/backups/backup.module';
 import { ErrorLogsModule } from './modules/error-logs/error-logs.module';
+import { InstanceModule } from './modules/instance/instance.module';
+import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { PublicModule } from './modules/public/public.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 
 // Register BullMQ globally only when REDIS_URL is configured.
 // Individual modules (ReportsModule) conditionally register their queues
@@ -80,6 +84,16 @@ const bullRootImport = process.env.REDIS_URL
     ReportsModule,
     BackupsModule,
     ErrorLogsModule,
+
+    // Instance / God Mode (server-wide admin)
+    InstanceModule,
+    WorkspacesModule,
+
+    // AI Assistant (in-app chat; configured from God Mode → AI)
+    AssistantModule,
+
+    // Public Space (anonymous read-only published content)
+    PublicModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

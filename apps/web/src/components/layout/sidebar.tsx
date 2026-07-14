@@ -16,18 +16,25 @@ import {
   PanelLeft,
   Search,
   Settings as SettingsIcon,
+  Sparkles,
   StickyNote,
   Trello,
   GitMerge,
   Users,
   Zap,
   Activity,
+  ShieldCheck,
 } from "lucide-react"
 import { UnifyOpsLogo } from "@/components/icons/logo"
 import { useAuthStore } from "@/stores/auth-store"
 import { useUIStore } from "@/stores/ui-store"
+import { useAssistantStore } from "@/stores/assistant-store"
+import { useAssistantConfig } from "@/hooks/use-assistant"
 import { useBadges } from "@/hooks/use-badges"
+import { useIsInstanceAdmin } from "@/hooks/use-instance-admin"
 import { cn } from "@/lib/utils"
+
+const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3001"
 
 const SUPER_ADMIN_EMAILS = new Set(['somnang.rath12@gmail.com', 'admin@demo.com'])
 
@@ -39,6 +46,7 @@ interface NavItem {
   Icon: React.ComponentType<{ className?: string }>
   adminOnly?: boolean
   superAdminOnly?: boolean
+  assistantOnly?: boolean
   badge?: BadgeKey
 }
 
@@ -68,6 +76,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/notes", label: "Notes", Icon: StickyNote },
       { href: "/tables", label: "Tables", Icon: Database },
       { href: "/reports", label: "Reports", Icon: FileBarChart2 },
+      { href: "/assistant", label: "Assistant", Icon: Sparkles, assistantOnly: true },
     ],
   },
   {
@@ -86,20 +95,26 @@ const NAV: { section: string; items: NavItem[] }[] = [
 export function Sidebar() {
   const pathname = usePathname()
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
+  const hidden = useUIStore((s) => s.sidebarHidden)
   const toggle = useUIStore((s) => s.toggleSidebar)
   const setPalette = useUIStore((s) => s.setPalette)
   const user = useAuthStore((s) => s.user)
   const isAdmin = user?.role === "admin"
   const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.has(user.email)
+  const isInstanceAdmin = useIsInstanceAdmin()
   const { data: badges } = useBadges()
+  const { data: assistant } = useAssistantConfig()
+  const openAssistant = useAssistantStore((s) => s.openPanel)
 
   return (
     <aside
       className={cn(
         "fixed inset-y-0 left-0 z-40 flex flex-col h-screen border-r border-[color:var(--sidebar-border)]",
-        "bg-[color:var(--sidebar-bg)] backdrop-blur-xl transition-[width] duration-300 ease-[cubic-bezier(.4,0,.2,1)]",
+        "bg-[color:var(--sidebar-bg)] backdrop-blur-xl transition-[width,transform] duration-300 ease-[cubic-bezier(.4,0,.2,1)]",
         collapsed ? "w-sb-collapsed" : "w-sb",
+        hidden && "-translate-x-full",
       )}
+      aria-hidden={hidden}
     >
       <div
         className={cn(
@@ -150,12 +165,35 @@ export function Sidebar() {
         )}
       </button>
 
+      {assistant?.enabled && (
+        <button
+          type="button"
+          onClick={() => openAssistant()}
+          title="Ask AI"
+          className={cn(
+            "flex items-center gap-2 mx-2.5 mb-2.5 px-2.5 py-1.5 rounded-sm text-[12px] font-medium text-accent-700 dark:text-[var(--a-200)]",
+            "bg-accent-50 dark:bg-[rgba(99,102,241,.15)] border border-accent/30",
+            "transition-colors duration-[var(--dur)] hover:border-accent",
+            collapsed && "justify-center px-0 py-2",
+          )}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          {!collapsed && <span className="flex-1 text-left">Ask AI</span>}
+          {!collapsed && (
+            <kbd className="font-mono text-[11px] bg-bg-hover border border-border rounded px-1.5 py-px text-text-muted">
+              ⌘/
+            </kbd>
+          )}
+        </button>
+      )}
+
       <nav className="flex-1 overflow-y-auto px-2.5 pb-4 flex flex-col gap-0.5">
         {NAV.map(({ section, items }) => {
           const visible = items.filter(
             (i) =>
               (!i.adminOnly || isAdmin) &&
-              (!i.superAdminOnly || isSuperAdmin),
+              (!i.superAdminOnly || isSuperAdmin) &&
+              (!i.assistantOnly || !!assistant?.enabled),
           )
           if (visible.length === 0) return null
           return (
@@ -213,6 +251,25 @@ export function Sidebar() {
           )
         })}
       </nav>
+
+      {isInstanceAdmin && (
+        <div className="px-2.5 pb-3 pt-1 border-t border-[color:var(--sidebar-border)]">
+          <a
+            href={`${ADMIN_URL}/god-mode`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="God Mode — instance admin"
+            className={cn(
+              "group flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-[13px] font-medium text-text-sub",
+              "transition-all duration-[var(--dur)] hover:bg-bg-hover hover:text-text",
+              collapsed && "justify-center px-2",
+            )}
+          >
+            <ShieldCheck className="w-4 h-4 flex-shrink-0 text-text-muted group-hover:text-text" />
+            {!collapsed && <span className="flex-1">God Mode</span>}
+          </a>
+        </div>
+      )}
     </aside>
   )
 }

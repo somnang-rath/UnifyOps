@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-white text-gray-900 antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    @apply bg-gray-950 text-gray-100;
+  }
+}
+
+/* Read-only rendering of published wiki HTML. Kept deliberately simple — the
+   content comes from the Tiptap editor (ADR 0002 §5). */
+.prose-space {
+  @apply text-[15px] leading-[1.75];
+}
+.prose-space h1 { @apply text-2xl font-bold mt-8 mb-3; }
+.prose-space h2 { @apply text-xl font-bold mt-7 mb-3; }
+.prose-space h3 { @apply text-lg font-semibold mt-6 mb-2; }
+.prose-space p { @apply my-3; }
+.prose-space ul { @apply list-disc pl-6 my-3; }
+.prose-space ol { @apply list-decimal pl-6 my-3; }
+.prose-space li { @apply my-1; }
+.prose-space a { @apply text-indigo-600 underline underline-offset-2 hover:text-indigo-500; }
+.prose-space blockquote { @apply border-l-4 border-gray-200 pl-4 italic text-gray-600 my-4; }
+.prose-space pre { @apply bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto my-4 text-[13px]; }
+.prose-space code { @apply font-mono text-[13px]; }
+.prose-space :not(pre) > code { @apply bg-gray-100 rounded px-1.5 py-0.5; }
+.prose-space img { @apply max-w-full rounded-lg my-4; }
+.prose-space hr { @apply border-gray-200 my-6; }
+.prose-space table { @apply border-collapse my-4 w-full; }
+.prose-space th,
+.prose-space td { @apply border border-gray-200 px-3 py-1.5 text-left; }
+
+@media (prefers-color-scheme: dark) {
+  .prose-space blockquote { @apply border-gray-700 text-gray-400; }
+  .prose-space :not(pre) > code { @apply bg-gray-800; }
+  .prose-space hr,
+  .prose-space th,
+  .prose-space td { @apply border-gray-800; }
+}

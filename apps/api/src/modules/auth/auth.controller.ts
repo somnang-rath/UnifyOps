@@ -26,12 +26,17 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 const REFRESH_COOKIE = 'unifyops_rt';
 
+// Scope the refresh cookie to a parent domain (e.g. `.example.com`) so web,
+// admin, and space on sibling subdomains share one session. Unset on localhost.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+
 function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/api/v1/auth',
+    domain: COOKIE_DOMAIN,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 }
@@ -106,7 +111,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE]);
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+    // Must mirror the set attributes (path + domain) or the browser keeps it.
+    res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth', domain: COOKIE_DOMAIN });
   }
 
   @Get('me')

@@ -27,14 +27,15 @@ export class MrsController {
 
   @Get()
   list(
+    @CurrentUser() u: { id: string },
     @Query(new ZodValidationPipe(ListMRQuerySchema)) q: ListMRQuery,
   ) {
-    return this.mrs.list(q);
+    return this.mrs.list(u.id, q);
   }
 
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.mrs.byId(id);
+  byId(@CurrentUser() u: { id: string }, @Param('id') id: string) {
+    return this.mrs.byId(u.id, id);
   }
 
   @Post()

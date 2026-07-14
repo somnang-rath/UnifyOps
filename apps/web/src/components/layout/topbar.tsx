@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { LogOut, Moon, Plus, Search, Sun, User } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { NotificationsBell } from '@/components/layout/notifications-panel';
+import { LayoutControls } from '@/components/layout/layout-controls';
 import { useAuthStore } from '@/stores/auth-store';
 import { useUIStore } from '@/stores/ui-store';
 import { useThemeStore } from '@/stores/theme-store';
@@ -66,6 +67,8 @@ export function Topbar() {
             <Moon className="w-4 h-4" />
           )}
         </button>
+
+        <LayoutControls />
 
         <NotificationsBell />
 

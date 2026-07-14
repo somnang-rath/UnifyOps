@@ -1,4 +1,5 @@
-import axios, { AxiosError, AxiosRequestConfig } from 'axios';
+import axios, { AxiosError } from 'axios';
+import { createApiClient } from '@prism/services';
 import { useAuthStore } from '@/stores/auth-store';
 import { toast } from '@/stores/toast-store';
 
@@ -9,16 +10,8 @@ declare module 'axios' {
   }
 }
 
-export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
-  withCredentials: true,
-});
-
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+/** Endpoints where a 401 is a genuine failure, not an expired access token. */
+const AUTH_PATHS = ['/auth/login', '/auth/refresh', '/auth/register'];
 
 let refreshing: Promise<string | null> | null = null;
 
@@ -37,6 +30,10 @@ async function doRefresh(): Promise<string | null> {
   }
 }
 
+/**
+ * Shared refresh entry point — dedupes concurrent callers (interceptor +
+ * app bootstrap in providers/layout) onto a single in-flight refresh.
+ */
 export function refreshAuth(): Promise<string | null> {
   refreshing ??= doRefresh().finally(() => {
     refreshing = null;
@@ -44,36 +41,21 @@ export function refreshAuth(): Promise<string | null> {
   return refreshing;
 }
 
-api.interceptors.response.use(
-  (r) => r,
-  async (error: AxiosError) => {
-    const original = error.config as AxiosRequestConfig & { _retry?: boolean };
-    const url = original?.url ?? '';
+export const api = createApiClient({
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  getToken: () => useAuthStore.getState().accessToken,
+  onRefresh: refreshAuth,
+  shouldRefresh: (error: AxiosError) => {
+    const url = error.config?.url ?? '';
+    return !AUTH_PATHS.some((p) => url.includes(p));
+  },
+  onError: (error: AxiosError) => {
     const status = error.response?.status;
-
-    if (
-      status === 401 &&
-      !original?._retry &&
-      !url.includes('/auth/login') &&
-      !url.includes('/auth/refresh') &&
-      !url.includes('/auth/register')
-    ) {
-      original._retry = true;
-      const token = await refreshAuth();
-      if (!token) return Promise.reject(error);
-      original.headers = {
-        ...(original.headers ?? {}),
-        Authorization: `Bearer ${token}`,
-      };
-      return api(original);
-    }
-
-    if (status && status >= 400 && status !== 401 && !original?._skipErrorToast) {
+    // 401 is handled by the refresh flow; only toast other 4xx/5xx.
+    if (status && status >= 400 && status !== 401) {
       const data = error.response?.data as { message?: string | string[] };
       const msg = Array.isArray(data?.message) ? data.message[0] : data?.message;
       toast(msg ?? 'Something went wrong', 'error');
     }
-
-    return Promise.reject(error);
   },
-);
+});

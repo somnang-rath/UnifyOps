@@ -24,6 +24,11 @@ export class Project {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   ownerId: Types.ObjectId;
 
+  // The workspace this project belongs to. Nullable during the migration to a
+  // workspace-scoped model; backfilled to a default workspace on startup.
+  @Prop({ type: Types.ObjectId, ref: 'Workspace', default: null, index: true })
+  workspaceId: Types.ObjectId | null;
+
   @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
   members: Types.ObjectId[];
 

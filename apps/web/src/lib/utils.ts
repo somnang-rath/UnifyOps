@@ -1,4 +1,4 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
+// Canonical Tailwind-aware `cn` now lives in @prism/ui and is shared across
+// web, admin, and space. Re-exported here so the 80+ `@/lib/utils` call sites
+// stay unchanged.
+export { cn, type ClassValue } from '@prism/ui/cn';
