@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const HEX = /^#[0-9a-f]{6}$/i;
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const CreateWorkspaceSchema = z.object({
   name: z.string().min(1).max(80).trim(),

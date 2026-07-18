@@ -24,9 +24,9 @@ export class WikiPage {
   isPublic: boolean;
 
   // Public slug that resolves the page in the Space app. Minted once on first
-  // publish and reused (unpublish keeps it). unique + sparse so unlimited rows
-  // may keep anchor: null while any non-null anchor is globally unique.
-  @Prop({ type: String, default: null, unique: true, sparse: true })
+  // publish and reused (unpublish keeps it). Uniqueness is enforced by the
+  // partial index below, NOT by `unique: true` here — see the note on that index.
+  @Prop({ type: String, default: null })
   anchor: string | null;
 
   @Prop({ type: Date, default: null })
@@ -38,3 +38,16 @@ export class WikiPage {
 export type WikiPageDocument = HydratedDocument<WikiPage>;
 export const WikiPageSchema = SchemaFactory.createForClass(WikiPage);
 WikiPageSchema.index({ projectId: 1, updatedAt: -1 });
+
+// Anchors are globally unique, but only once minted: every unpublished page
+// keeps `anchor: null` and those must not collide with each other.
+//
+// `unique + sparse` does NOT achieve that. A sparse index only skips documents
+// where the field is ABSENT — and `default: null` means the field is always
+// present, so the second unpublished page hit
+// `E11000 dup key: { anchor: null }`. A partial index keyed on $type: 'string'
+// is the correct tool: nulls are outside the index entirely.
+WikiPageSchema.index(
+  { anchor: 1 },
+  { unique: true, partialFilterExpression: { anchor: { $type: 'string' } } },
+);

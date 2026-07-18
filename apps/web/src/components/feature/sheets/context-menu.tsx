@@ -62,7 +62,7 @@ export function ContextMenu({ x, y, sections, onClose }: Props) {
   return (
     <div
       ref={ref}
-      className="fixed bg-white border border-border rounded-md shadow-lg py-1 z-[100] text-[13px] min-w-[240px]"
+      className="fixed bg-bg-card border border-border rounded-md shadow-lg py-1 z-[100] text-[13px] min-w-[240px]"
       style={{ top: pos.y, left: pos.x }}
       onContextMenu={(ev) => ev.preventDefault()}
     >

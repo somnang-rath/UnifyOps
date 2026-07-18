@@ -10,7 +10,11 @@ export interface UseCollaborativeDocOptions {
   documentName: string;
   /** WebSocket origin, e.g. process.env.NEXT_PUBLIC_LIVE_URL (`ws://localhost:3100`). */
   wsUrl: string;
-  /** JWT the live server verifies in onAuthenticate. May change on refresh. */
+  /**
+   * The scoped collab token from {@link useCollabToken} — aud=collab, bound to
+   * this documentName. Never the user's REST session token: the live server
+   * rejects those. May change as the token is renewed.
+   */
   token: string;
 }
 

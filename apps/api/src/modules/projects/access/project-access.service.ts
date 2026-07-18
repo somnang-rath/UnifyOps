@@ -41,6 +41,45 @@ export class ProjectAccessService {
     return (project.members ?? []).some((m) => String(m) === uid);
   }
 
+  // ── Workspace membership ──────────────────────────────────────────
+
+  /** Workspace membership: owner OR member. False for a missing/invalid id. */
+  async isWorkspaceMember(
+    userId: string,
+    workspaceId: Types.ObjectId | string | null | undefined,
+  ): Promise<boolean> {
+    if (!workspaceId || !Types.ObjectId.isValid(String(workspaceId)))
+      return false;
+    const me = new Types.ObjectId(userId);
+    const inWorkspace = await this.workspaceModel.exists({
+      _id: workspaceId,
+      $or: [{ ownerId: me }, { members: me }],
+    });
+    return Boolean(inWorkspace);
+  }
+
+  /**
+   * Gate for workspace-scoped reads/writes (ADR 0006). Throws 404 — not 403 —
+   * for a non-member, so a slug or id can't be used to enumerate workspaces.
+   */
+  async assertWorkspaceMember(
+    userId: string,
+    workspaceId: Types.ObjectId | string | null | undefined,
+  ): Promise<void> {
+    if (!(await this.isWorkspaceMember(userId, workspaceId))) {
+      throw new NotFoundException();
+    }
+  }
+
+  /** The id set of every workspace the user owns or belongs to. */
+  async myWorkspaceIds(userId: string): Promise<Types.ObjectId[]> {
+    const me = new Types.ObjectId(userId);
+    const rows = await this.workspaceModel
+      .find({ $or: [{ ownerId: me }, { members: me }] }, { _id: 1 })
+      .lean();
+    return rows.map((w) => w._id);
+  }
+
   /**
    * THE canonical read rule (ADR 0003): owner OR member OR (internal/public
    * visibility AND the project sits in a workspace the user belongs to).
@@ -52,12 +91,7 @@ export class ProjectAccessService {
     if (this.isProjectMember(userId, project)) return true;
     if (project.visibility === 'internal' || project.visibility === 'public') {
       if (!project.workspaceId) return false;
-      const me = new Types.ObjectId(userId);
-      const inWorkspace = await this.workspaceModel.exists({
-        _id: project.workspaceId,
-        $or: [{ ownerId: me }, { members: me }],
-      });
-      return Boolean(inWorkspace);
+      return this.isWorkspaceMember(userId, project.workspaceId);
     }
     return false;
   }
@@ -99,10 +133,7 @@ export class ProjectAccessService {
    */
   async readableProjectIds(userId: string): Promise<Types.ObjectId[]> {
     const me = new Types.ObjectId(userId);
-    const myWorkspaces = await this.workspaceModel
-      .find({ $or: [{ ownerId: me }, { members: me }] }, { _id: 1 })
-      .lean();
-    const workspaceIds = myWorkspaces.map((w) => w._id);
+    const workspaceIds = await this.myWorkspaceIds(userId);
     const projects = await this.projectModel
       .find(
         {

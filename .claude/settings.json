@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm build)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm -r build)",
+      "Bash(pnpm -r lint)",
+      "Bash(pnpm -r typecheck)",
+      "Bash(pnpm --filter *)",
+      "Bash(pnpm install)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm add *)",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(node *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(docker compose ps *)",
+      "Bash(docker compose logs *)",
+      "Bash(docker compose up -d *)",
+      "Bash(docker compose build *)",
+      "Bash(curl -s *)",
+      "Bash(curl -X GET *)",
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Grep",
+      "Glob",
+      "Edit(apps/**)",
+      "Edit(packages/**)",
+      "Edit(docs/**)",
+      "Edit(.claude/**)",
+      "Skill(scaffold-api-module)",
+      "Skill(scaffold-web-feature)",
+      "Skill(run)",
+      "Skill(verify)"
+    ],
+    "deny": [
+      "Read(./apps/*/.env)",
+      "Read(./.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-write.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.js\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

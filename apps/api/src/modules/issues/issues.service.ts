@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Issue, IssueDocument } from './schemas/issue.schema';
@@ -16,6 +21,7 @@ import { UsersService } from '../users/users.service';
 import { ActivityService } from '../activity/activity.service';
 import { AutomationsService } from '../automations/automations.service';
 import { ProjectAccessService } from '../projects/access/project-access.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 
 const oid = (v?: string | null) =>
   v ? new Types.ObjectId(v) : undefined;
@@ -35,7 +41,29 @@ export class IssuesService {
     private users: UsersService,
     private activity: ActivityService,
     private autos: AutomationsService,
+    private webhooks: WebhooksService,
   ) {}
+
+  /**
+   * Fan a lifecycle event out to the workspace's webhooks (docs/plan/03 §3).
+   * Fire-and-forget and best-effort: resolving the workspace or a failing
+   * receiver must never affect the issue write that triggered it.
+   */
+  private async dispatchWebhook(
+    projectId: Types.ObjectId | string | null | undefined,
+    event: string,
+    data: Record<string, unknown>,
+  ) {
+    if (!projectId) return; // personal issues have no workspace to notify
+    try {
+      const fields = await this.access.getAccessFields(projectId);
+      if (fields?.workspaceId) {
+        await this.webhooks.dispatch(fields.workspaceId, event, data);
+      }
+    } catch {
+      // swallow — webhooks are a side channel, not part of the write
+    }
+  }
 
   private logActivity(
     actorId: string,
@@ -170,6 +198,7 @@ export class IssuesService {
       ...dto,
       projectId: oid(dto.projectId ?? undefined),
       assigneeId: oid(dto.assigneeId ?? undefined),
+      parentId: oid(dto.parentId ?? undefined),
       authorId: new Types.ObjectId(userId),
       dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
     });
@@ -223,6 +252,14 @@ export class IssuesService {
       projectId: issue.projectId ? String(issue.projectId) : undefined,
     }).catch(() => {});
 
+    this.dispatchWebhook(issue.projectId, 'issue.created', {
+      issueId: String(issue._id),
+      title: issue.title,
+      status: issue.status,
+      priority: issue.priority,
+      projectId: issue.projectId ? String(issue.projectId) : undefined,
+    }).catch(() => {});
+
     return issue;
   }
 
@@ -257,6 +294,13 @@ export class IssuesService {
     if (dto.priority !== undefined) issue.priority = dto.priority;
     if (dto.labels !== undefined) issue.labels = dto.labels;
     if (dto.todos !== undefined) issue.todos = dto.todos as any;
+    if ('parentId' in dto) {
+      // Guard against a self-parent, which would make the sub-issue tree cyclic.
+      if (dto.parentId && dto.parentId === id) {
+        throw new BadRequestException('An issue cannot be its own parent');
+      }
+      issue.parentId = oid(dto.parentId ?? undefined) ?? undefined;
+    }
 
     await issue.save();
 

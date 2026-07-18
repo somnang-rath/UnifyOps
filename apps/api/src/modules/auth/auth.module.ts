@@ -10,6 +10,10 @@ import {
   RefreshToken,
   RefreshTokenSchema,
 } from './schemas/refresh-token.schema';
+import {
+  InstanceAdmin,
+  InstanceAdminSchema,
+} from '../instance/schemas/instance-admin.schema';
 
 @Module({
   imports: [
@@ -18,9 +22,14 @@ import {
     UsersModule,
     MongooseModule.forFeature([
       { name: RefreshToken.name, schema: RefreshTokenSchema },
+      // Schema only, not InstanceModule — an admin-audience login must verify
+      // instance admin status without the two modules importing each other.
+      { name: InstanceAdmin.name, schema: InstanceAdminSchema },
     ]),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
+  // WikiModule mints collab tokens through AuthService.
+  exports: [AuthService],
 })
 export class AuthModule {}

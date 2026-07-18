@@ -180,10 +180,16 @@ export function IssueModal({
         .filter(Boolean),
       todos,
     };
-    if (issue && issue._id)
-      await update.mutateAsync({ id: issue._id, body });
-    else await create.mutateAsync(body);
-    onClose();
+    try {
+      if (issue && issue._id)
+        await update.mutateAsync({ id: issue._id, body });
+      else await create.mutateAsync(body);
+      onClose();
+    } catch {
+      // The axios interceptor surfaces the error as a toast (e.g. a 403 when
+      // writing to a project you can read but aren't a member of — ADR 0005).
+      // Keep the modal open so the user can retry or pick a different project.
+    }
   });
 
   return (
@@ -198,7 +204,7 @@ export function IssueModal({
             Cancel
           </Button>
           <Button
-            variant="grad"
+            variant="primary"
             onClick={onSubmit}
             disabled={isSubmitting}
           >

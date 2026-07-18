@@ -8,7 +8,11 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"src/**/*.ts\" --fix",
-    "seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts"
+    "seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts",
+    "test:security": "node test/security.e2e.mjs",
+    "test:phase7": "node test/views-relations.e2e.mjs",
+    "test:phase8": "node test/integrations.e2e.mjs",
+    "test:e2e:all": "node test/security.e2e.mjs && node test/views-relations.e2e.mjs && node test/integrations.e2e.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
@@ -40,6 +44,7 @@
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sanitize-html": "^2.13.0",
     "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "speakeasy": "^2.0.0",
@@ -56,6 +61,7 @@
     "@types/nodemailer": "^8.0.0",
     "@types/passport-jwt": "^4.0.1",
     "@types/qrcode": "^1.5.6",
+    "@types/sanitize-html": "^2.13.0",
     "@types/speakeasy": "^2.0.10",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",

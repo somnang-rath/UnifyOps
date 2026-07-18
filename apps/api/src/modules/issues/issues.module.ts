@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Issue, IssueSchema } from './schemas/issue.schema';
+import {
+  IssueRelation,
+  IssueRelationSchema,
+} from './schemas/issue-relation.schema';
 import { IssuesService } from './issues.service';
+import { IssueLinksService } from './issue-links.service';
 import { IssuesController } from './issues.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
@@ -11,7 +16,10 @@ import { ProjectAccessModule } from '../projects/access/project-access.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Issue.name, schema: IssueSchema }]),
+    MongooseModule.forFeature([
+      { name: Issue.name, schema: IssueSchema },
+      { name: IssueRelation.name, schema: IssueRelationSchema },
+    ]),
     ProjectAccessModule,
     NotificationsModule,
     UsersModule,
@@ -19,7 +27,7 @@ import { ProjectAccessModule } from '../projects/access/project-access.module';
     AutomationsModule,
   ],
   controllers: [IssuesController],
-  providers: [IssuesService],
-  exports: [MongooseModule, IssuesService],
+  providers: [IssuesService, IssueLinksService],
+  exports: [MongooseModule, IssuesService, IssueLinksService],
 })
 export class IssuesModule {}

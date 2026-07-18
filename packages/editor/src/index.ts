@@ -13,6 +13,15 @@
 // Pure, framework-free schema (also re-exported via ./server for Node).
 export { editorExtensions, generateWikiHTML } from './extensions';
 
+// Standalone WYSIWYG markdown editor (non-collaborative) — used by comment /
+// description composers across the web app.
+export { RichTextEditor } from './RichTextEditor';
+export type {
+  RichTextEditorProps,
+  UploadedAttachment,
+  MentionUser,
+} from './RichTextEditor';
+
 // React client surface.
 export { CollaborativeEditor } from './CollaborativeEditor';
 export type {
@@ -24,6 +33,14 @@ export type {
   UseCollaborativeDocOptions,
   CollaborativeDocState,
 } from './useCollaborativeDoc';
+
+// Scoped, short-lived token for the live socket (docs/plan/01 §2).
+export { useCollabToken } from './useCollabToken';
+export type {
+  UseCollabTokenOptions,
+  CollabTokenState,
+  CollabTokenResponse,
+} from './useCollabToken';
 
 // Presence + helpers.
 export { userColor } from './color';

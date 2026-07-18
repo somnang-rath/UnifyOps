@@ -9,6 +9,7 @@ import { loadEnv } from './env';
 import { connectMongo, closeMongo, fetchState, storeState } from './db';
 import { makeOnAuthenticate } from './auth';
 import { makeOnStoreDocument } from './snapshot';
+import { startReauthSweeper } from './reauth';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -67,6 +68,10 @@ async function main(): Promise<void> {
     });
   });
 
+  // Collab tokens are short-lived, but the socket they opened is not: re-check
+  // authorization periodically so revoked access actually disconnects.
+  const stopReauth = startReauthSweeper(server, env);
+
   httpServer.listen(env.PORT, () => {
     console.log(`[live] Hocuspocus listening on :${env.PORT}`);
     console.log(
@@ -81,6 +86,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     console.log(`[live] ${signal} received — shutting down...`);
     try {
+      stopReauth();
       await server.destroy(); // closes connections and flushes pending stores
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
       await closeMongo();

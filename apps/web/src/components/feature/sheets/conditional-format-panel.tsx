@@ -59,7 +59,7 @@ export function ConditionalFormatPanel({
   };
 
   return (
-    <div className="fixed top-0 right-0 bottom-0 z-40 w-[340px] bg-white border-l border-border shadow-xl flex flex-col text-[13px]">
+    <div className="fixed top-0 right-0 bottom-0 z-40 w-[340px] bg-bg-card border-l border-border shadow-xl flex flex-col text-[13px]">
       <div className="flex items-center justify-between px-3 h-11 border-b border-border">
         <div className="font-medium">Conditional formatting</div>
         <button
@@ -182,7 +182,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                   value2: undefined,
                 })
               }
-              className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white"
+              className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input"
             >
               {COND_FMT_OPS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -200,7 +200,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                 onChange={(e) =>
                   onChange({ value: coerceInput(e.target.value) })
                 }
-                className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent"
+                className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent"
               />
             </Field>
           )}
@@ -212,7 +212,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                 onChange={(e) =>
                   onChange({ value2: coerceInput(e.target.value) })
                 }
-                className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent"
+                className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent"
               />
             </Field>
           )}
@@ -354,7 +354,7 @@ function RangeInput({
           (e.target as HTMLInputElement).blur();
         }
       }}
-      className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent font-mono"
+      className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent font-mono"
     />
   );
 }
@@ -377,7 +377,7 @@ function ColorSwatch({
         type="color"
         value={color ?? '#000000'}
         onChange={(e) => onChange(e.target.value)}
-        className="w-7 h-7 p-0 border border-border rounded bg-white cursor-pointer"
+        className="w-7 h-7 p-0 border border-border rounded bg-bg-input cursor-pointer"
         aria-label={label}
       />
       <button

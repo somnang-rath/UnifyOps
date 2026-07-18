@@ -15,7 +15,12 @@ import {
   InstanceAdmin,
   InstanceAdminDocument,
 } from '../instance/schemas/instance-admin.schema';
-import { CreateWorkspaceDto, UpdateWorkspaceDto } from './dto/workspace.dto';
+import { ProjectAccessService } from '../projects/access/project-access.service';
+import {
+  CreateWorkspaceDto,
+  SLUG,
+  UpdateWorkspaceDto,
+} from './dto/workspace.dto';
 
 const slugify = (s: string) =>
   s
@@ -38,6 +43,7 @@ export class WorkspacesService implements OnModuleInit {
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     @InjectModel(InstanceAdmin.name)
     private adminModel: Model<InstanceAdminDocument>,
+    private access: ProjectAccessService,
   ) {}
 
   /**
@@ -167,7 +173,9 @@ export class WorkspacesService implements OnModuleInit {
     return rows.map((r) => this.shape(r, counts.get(String(r._id)) ?? 0));
   }
 
-  async byId(id: string) {
+  /** UnGATED lookup — callers MUST apply their own access rule. */
+  private async byIdRaw(id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
     const w = await this.workspaceModel
       .findById(id)
       .populate('ownerId', 'name email')
@@ -175,6 +183,34 @@ export class WorkspacesService implements OnModuleInit {
     if (!w) throw new NotFoundException();
     const counts = await this.projectCounts([w._id]);
     return this.shape(w, counts.get(String(w._id)) ?? 0);
+  }
+
+  async byId(id: string) {
+    return this.byIdRaw(id);
+  }
+
+  /**
+   * Owner-or-member read (ADR 0006). 404 — never 403 — for a non-member, so a
+   * guessable slug can't be used to enumerate the instance's workspaces.
+   */
+  async byIdForUser(userId: string, id: string) {
+    await this.access.assertWorkspaceMember(userId, id);
+    return this.byIdRaw(id);
+  }
+
+  /**
+   * Resolve a workspace by its slug. Same owner-or-member gate as byIdForUser.
+   * A malformed slug 404s rather than 400s — it can't name a workspace, and the
+   * module's convention is to never distinguish "absent" from "not yours".
+   */
+  async bySlugForUser(userId: string, slug: string) {
+    const candidate = slug.toLowerCase();
+    if (!SLUG.test(candidate)) throw new NotFoundException();
+    const w = await this.workspaceModel
+      .findOne({ slug: candidate }, { _id: 1 })
+      .lean();
+    if (!w) throw new NotFoundException();
+    return this.byIdForUser(userId, String(w._id));
   }
 
   /** Full detail for the admin drawer: workspace + members + its projects. */

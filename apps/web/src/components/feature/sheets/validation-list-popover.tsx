@@ -43,7 +43,7 @@ export function ValidationListPopover({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-white border border-border rounded-md shadow-lg py-1 overflow-y-auto"
+      className="fixed z-50 bg-bg-card border border-border rounded-md shadow-lg py-1 overflow-y-auto"
       style={{ left, top, width: W, maxHeight: H }}
     >
       {values.length === 0 ? (

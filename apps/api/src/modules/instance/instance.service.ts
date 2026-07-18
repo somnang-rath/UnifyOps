@@ -18,6 +18,7 @@ import {
 } from './schemas/instance-admin.schema';
 import {
   AddAdminDto,
+  isSecretConfigKey,
   PUBLIC_CONFIG_KEYS,
   TestEmailDto,
   UpdateConfigDto,
@@ -106,33 +107,43 @@ export class InstanceService {
   }
 
   // ── Configuration (key/value) ─────────────────────────────────────
-  /** All config entries — admin only. Encrypted values are masked. */
+  /**
+   * All config entries — admin only. Secret values are never returned, only
+   * whether they are set. Secrecy is recomputed from the key on every read, so
+   * a row stored before SECRET_CONFIG_KEYS grew cannot leak.
+   */
   async getConfig() {
     const rows = await this.configModel.find().sort({ category: 1, key: 1 }).lean();
-    return rows.map((r) => ({
-      key: r.key,
-      category: r.category,
-      isEncrypted: r.isEncrypted,
-      value: r.isEncrypted ? null : r.value,
-      isSet: r.value != null && r.value !== '',
-    }));
+    return rows.map((r) => {
+      const secret = isSecretConfigKey(r.key) || r.isEncrypted;
+      return {
+        key: r.key,
+        category: r.category,
+        isEncrypted: secret,
+        value: secret ? null : r.value,
+        isSet: r.value != null && r.value !== '',
+      };
+    });
   }
 
   async updateConfig(dto: UpdateConfigDto) {
     await Promise.all(
-      dto.entries.map((e) =>
-        this.configModel.updateOne(
+      dto.entries.map((e) => {
+        const set: Record<string, unknown> = {
+          category: e.category,
+          isEncrypted: isSecretConfigKey(e.key),
+        };
+        // An empty value on a secret means "leave it alone": the admin UI shows
+        // masked fields as blank, so saving a form must not wipe the stored key.
+        const blankSecret = isSecretConfigKey(e.key) && !e.value;
+        if (!blankSecret) set.value = e.value;
+
+        return this.configModel.updateOne(
           { key: e.key },
-          {
-            $set: {
-              value: e.value,
-              category: e.category,
-              isEncrypted: e.isEncrypted,
-            },
-          },
+          { $set: set },
           { upsert: true },
-        ),
-      ),
+        );
+      }),
     );
     return this.getConfig();
   }

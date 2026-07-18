@@ -27,11 +27,21 @@ export const CreateIssueSchema = z.object({
     .nullable(),
   labels: z.array(z.string().min(1).max(40)).default([]),
   todos: z.array(TodoItemSchema).default([]),
+  /** Parent work item, making this a sub-issue. */
+  parentId: objectId.optional().nullable(),
 });
 export type CreateIssueDto = z.infer<typeof CreateIssueSchema>;
 
 export const UpdateIssueSchema = CreateIssueSchema.partial();
 export type UpdateIssueDto = z.infer<typeof UpdateIssueSchema>;
+
+export const RELATION_TYPES = ['blocks', 'relates_to', 'duplicate'] as const;
+
+export const CreateRelationSchema = z.object({
+  targetId: objectId,
+  type: z.enum(RELATION_TYPES),
+});
+export type CreateRelationDto = z.infer<typeof CreateRelationSchema>;
 
 export const ListIssueQuerySchema = z.object({
   projectId: objectId.optional(),

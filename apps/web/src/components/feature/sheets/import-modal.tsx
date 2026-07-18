@@ -193,7 +193,7 @@ export function ImportModal({ open, onClose, onImport }: Props) {
       footer={
         <>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
-          <Button variant="grad" disabled={!preview || loading} onClick={handleImport}>
+          <Button variant="primary" disabled={!preview || loading} onClick={handleImport}>
             {preview
               ? `Import (${preview.rows} rows × ${preview.cols} cols)`
               : 'Import'}

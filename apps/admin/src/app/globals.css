@@ -1,3 +1,7 @@
+/* Shared design tokens — the same palette, control sizing, density, motion, and
+   focus ring as web and space. Must precede Tailwind so app rules can override. */
+@import '@prism/ui/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,40 +14,32 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --canvas: #f6f8fb;
-  --surface: #ffffff;
-  --surface-2: #f1f4f8;
-  --surface-hover: #eef2f7;
-  --line: #e3e8ef;
-  --line-strong: #d3dae4;
-  --fg: #131824;
-  --fg-muted: #59616f;
-  --fg-subtle: #8a929f;
-  --brand: #2b82c6;
-  --brand-hover: #216ba8;
-  --brand-soft: #e7f1fb;
+
+  /* Admin's original names, now aliases of the shared tokens. Keeping both
+     means existing admin markup (bg-surface, text-fg) and shared @prism/ui
+     components (bg-bg-card, text-text) paint the same colours instead of
+     drifting into two products that merely look similar. */
+  --canvas: var(--bg);
+  --surface: var(--bg-card);
+  --surface-2: var(--bg-subtle);
+  --surface-hover: var(--bg-hover);
+  --line: var(--border);
+  --line-strong: var(--border-strong);
+  --fg: var(--text);
+  --fg-muted: var(--text-sub);
+  --fg-subtle: var(--text-muted);
+  --brand: var(--a);
+  --brand-hover: var(--a-600);
+  --brand-soft: var(--a-50);
   --brand-fg: #ffffff;
-  --ring: rgba(43, 130, 198, 0.35);
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.06);
+  --ring: var(--a-400);
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --canvas: #0d1017;
-  --surface: #161b23;
-  --surface-2: #1d232d;
-  --surface-hover: #222a35;
-  --line: #29313d;
-  --line-strong: #363f4d;
-  --fg: #e7eaef;
-  --fg-muted: #9aa3b0;
-  --fg-subtle: #69717e;
-  --brand: #54a6db;
-  --brand-hover: #6cb5e4;
-  --brand-soft: rgba(84, 166, 219, 0.14);
+  /* Surfaces/text/brand all come from the shared dark block in tokens.css via
+     the aliases above — nothing to restate here. */
   --brand-fg: #0d1017;
-  --ring: rgba(84, 166, 219, 0.4);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
 html,

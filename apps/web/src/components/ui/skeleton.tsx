@@ -1,28 +1,12 @@
 import { cn } from '@/lib/utils';
 
-export function Skeleton({ className }: { className?: string }) {
-  return (
-    <div
-      className={cn(
-        'animate-pulse rounded-md bg-bg-subtle',
-        className,
-      )}
-    />
-  );
-}
-
-export function SkeletonText({ lines = 3, className }: { lines?: number; className?: string }) {
-  return (
-    <div className={cn('flex flex-col gap-2', className)}>
-      {Array.from({ length: lines }).map((_, i) => (
-        <Skeleton
-          key={i}
-          className={cn('h-3', i === lines - 1 ? 'w-2/3' : 'w-full')}
-        />
-      ))}
-    </div>
-  );
-}
+/**
+ * Skeleton and SkeletonText now come from @prism/ui so web, admin, and space
+ * shimmer the same way. The page-shaped skeletons below stay here — they mirror
+ * this app's specific layouts and have no meaning in the other two.
+ */
+export { Skeleton, SkeletonText } from '@prism/ui';
+import { Skeleton, SkeletonText } from '@prism/ui';
 
 export function IssueDetailSkeleton() {
   return (

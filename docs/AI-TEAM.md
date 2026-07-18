@@ -1,7 +1,32 @@
 # Prism AI Team — Agents & Skills
 
 AI team for the **Prism → Plane** conversion (see `PLANE-CONVERSION-PLAN.md`).
-Agents live in `.claude/agents/`, skills in `.claude/skills/`.
+
+## The five layers
+
+| Layer | Lives in | What it does |
+| ----- | -------- | ------------ |
+| 1. Memory | `CLAUDE.md` → `.claude/rules/{architecture.rules,project,workflow}.md` | Loaded every session: boundaries, roadmap state, definition of done. |
+| 2. Knowledge | `.claude/skills/*/SKILL.md` | Playbooks pulled in on demand (`scaffold-api-module`, `scaffold-web-feature`). |
+| 3. Guardrails | `.claude/hooks/*.js` + `.claude/settings.json` | Deterministic, not AI: block destructive commands, nudge conventions, brief on start. |
+| 4. Delegation | `.claude/agents/*.md` | Seven specialists with their own context windows. |
+| 5. Distribution | `.claude-plugin/{plugin,marketplace}.json` | Packages layers 2–4 so a teammate installs the whole kit at once. |
+
+**Hooks** (layer 3, all in `.claude/hooks/`):
+- `guard.js` — PreToolUse. Denies `rm -rf /`, `dropDatabase`, force pushes, `docker compose down -v`,
+  non-localhost Mongo URIs, `pnpm seed`, and writes to `.env`/lockfile/build output.
+- `post-write.js` — PostToolUse. Reminds of the rule the edited path implicates (module registration,
+  `packages/` over copy-paste, public-endpoint field stripping, `@InstanceAdminGuard`).
+- `session-start.js` — SessionStart. Parses roadmap checkboxes and reports the current phase + ports.
+
+Guardrails still run in `bypassPermissions` mode — that is the point of layer 3.
+
+## Install (teammates)
+
+```
+/plugin marketplace add <repo-url>
+/plugin install prism-team@prism
+```
 
 ## The team
 

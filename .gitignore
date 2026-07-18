@@ -7,3 +7,4 @@ dist/
 .DS_Store
 coverage/
 uploads/
+.claude/settings.local.json

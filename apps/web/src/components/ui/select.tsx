@@ -10,14 +10,32 @@ export interface SelectOption<T extends string = string> {
   disabled?: boolean;
 }
 
+/**
+ * Sizes mirror Button/Input exactly (packages/ui). A Select sits next to a
+ * Button on every toolbar in the product, so the two must resolve to the same
+ * height, radius and border width from the same tokens — otherwise each new
+ * toolbar needs per-screen nudging to look level.
+ */
+const SIZE: Record<SelectSize, string> = {
+  xs: 'h-ctl-xs px-1.5 text-2xs gap-1',
+  sm: 'h-ctl-sm px-2 text-xs',
+  md: 'h-ctl-md px-2.5 text-sm',
+  lg: 'h-ctl-lg px-3.5 text-sm',
+};
+
+export type SelectSize = 'xs' | 'sm' | 'md' | 'lg';
+
 export interface SelectProps<T extends string = string> {
   value: T;
   onValueChange: (v: T) => void;
   options: SelectOption<T>[];
   placeholder?: string;
   inline?: boolean;
+  size?: SelectSize;
   disabled?: boolean;
   className?: string;
+  /** Accessible name for a Select with no visible <label> beside it. */
+  'aria-label'?: string;
 }
 
 export function Select<T extends string = string>({
@@ -26,8 +44,10 @@ export function Select<T extends string = string>({
   options,
   placeholder,
   inline,
+  size = 'md',
   disabled,
   className,
+  'aria-label': ariaLabel,
 }: SelectProps<T>) {
   const [open, setOpen] = React.useState(false);
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
@@ -146,7 +166,7 @@ export function Select<T extends string = string>({
       style={{ top: dropPos.top, bottom: dropPos.bottom, left: dropPos.left, minWidth: dropPos.width }}
       className={cn(
         'fixed max-h-[min(280px,50vh)] overflow-y-auto z-[9999]',
-        'bg-bg-card border-[1.5px] border-border rounded-sm shadow-lg p-1',
+        'bg-bg-card border border-border rounded-md shadow-lg p-1',
         'transition-[opacity,transform] duration-200 ease-[cubic-bezier(.16,1,.3,1)]',
         open
           ? 'opacity-100 translate-y-0 pointer-events-auto'
@@ -172,7 +192,7 @@ export function Select<T extends string = string>({
             }}
             className={cn(
               'flex items-center justify-between w-full text-left whitespace-nowrap',
-              'px-2.5 py-2 rounded-xs text-[13px] text-text bg-transparent border-0 cursor-pointer',
+              'px-2 h-ctl-md rounded-sm text-sm text-text bg-transparent border-0 cursor-pointer',
               'transition-colors duration-[120ms] ease-[cubic-bezier(.4,0,.2,1)]',
               'hover:bg-bg-hover disabled:opacity-50 disabled:cursor-not-allowed',
               isSel &&
@@ -202,6 +222,9 @@ export function Select<T extends string = string>({
         ref={btnRef}
         type="button"
         disabled={disabled}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onMouseDown={() => { isMouseFocusRef.current = true; }}
         onFocus={() => {
           if (!isMouseFocusRef.current) {
@@ -217,13 +240,15 @@ export function Select<T extends string = string>({
         onKeyDown={handleKeyDown}
         onClick={handleOpen}
         className={cn(
-          'flex items-center gap-2 rounded-sm border-[1.5px] border-border bg-bg-input text-text text-left text-[13px] cursor-pointer',
-          'transition-[border-color,box-shadow] duration-[var(--dur)] ease-[cubic-bezier(.4,0,.2,1)]',
-          'hover:border-[color:color-mix(in_srgb,var(--a)_50%,var(--border))]',
-          'focus-visible:outline-none focus-visible:border-accent focus-visible:shadow-[0_0_0_3px_rgba(99,102,241,.15)]',
-          'disabled:opacity-55 disabled:cursor-not-allowed',
-          inline ? 'min-w-[140px] w-auto px-3 py-2' : 'w-full px-3 py-[9px]',
-          open && 'border-accent shadow-[0_0_0_3px_rgba(99,102,241,.15)]',
+          // Same recipe as Input: 1px border, rounded-md, bg-bg-input, token focus.
+          'flex items-center justify-between gap-1.5 whitespace-nowrap',
+          'rounded-md border border-border bg-bg-input text-text text-left cursor-pointer',
+          'transition-colors duration-[var(--dur)] ease-[cubic-bezier(.4,0,.2,1)]',
+          'hover:border-border-strong focus:border-accent focus-visible:border-accent',
+          'disabled:opacity-50 disabled:cursor-not-allowed',
+          SIZE[size],
+          inline ? 'w-auto min-w-[120px] max-w-[180px]' : 'w-full',
+          open && 'border-accent',
         )}
       >
         <span
@@ -236,7 +261,7 @@ export function Select<T extends string = string>({
         </span>
         <ChevronDown
           className={cn(
-            'flex-shrink-0 w-3 h-3 text-text-muted transition-transform duration-200 ease-[cubic-bezier(.4,0,.2,1)]',
+            'shrink-0 w-3.5 h-3.5 text-text-muted transition-transform duration-200 ease-[cubic-bezier(.4,0,.2,1)]',
             open && 'rotate-180',
           )}
         />

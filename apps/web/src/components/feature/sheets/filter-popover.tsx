@@ -117,7 +117,7 @@ export function FilterPopover({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-white border border-border rounded-md shadow-lg flex flex-col text-[13px]"
+      className="fixed z-50 bg-bg-card border border-border rounded-md shadow-lg flex flex-col text-[13px]"
       style={{ left, top, width: POPOVER_W, height: POPOVER_H }}
     >
       <div className="px-2 py-1.5 border-b border-border flex items-center gap-1">
@@ -190,7 +190,7 @@ export function FilterPopover({
                     'w-4 h-4 rounded-sm border flex items-center justify-center shrink-0',
                     checked
                       ? 'bg-accent border-accent text-white'
-                      : 'border-border bg-white',
+                      : 'border-border bg-bg-input',
                   )}
                 >
                   {checked && <Check className="w-3 h-3" />}

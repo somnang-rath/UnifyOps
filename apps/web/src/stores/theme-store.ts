@@ -39,7 +39,10 @@ const read = <T extends string>(k: string, def: T): T => {
 export const useThemeStore = create<ThemeState>((set) => ({
   theme: read<Theme>('theme', 'dark'),
   accent: read<Accent>('accent', 'indigo'),
-  density: read<Density>('density', 'comfy'),
+  // Compact is the default (docs/plan/02-design-system.md §2.4): this is a tool
+  // people keep open all day, and more rows on screen is the point. `comfy`
+  // restores the roomier pre-v2 metrics for anyone who prefers them.
+  density: read<Density>('density', 'compact'),
   setTheme: (theme) => {
     apply('theme', theme);
     set({ theme });

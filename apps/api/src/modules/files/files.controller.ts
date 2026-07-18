@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   AuthUserPayload,
   CurrentUser,
@@ -109,7 +109,7 @@ export class FilesController {
   @Get()
   list(
     @CurrentUser() u: AuthUserPayload,
-    @Query(new ZodValidationPipe(ListFilesSchema)) q: ListFilesDto,
+    @Query(new ZodQueryPipe(ListFilesSchema)) q: ListFilesDto,
   ) {
     return this.files.listFiles(u, q);
   }

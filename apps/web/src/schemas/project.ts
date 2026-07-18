@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { NoteBlock } from './note';
 
 export const VISIBILITY = ['private', 'internal', 'public'] as const;
 export const PROJECT_COLORS = [
@@ -33,6 +34,15 @@ export const ProjectFormSchema = z.object({
 });
 export type ProjectFormInput = z.infer<typeof ProjectFormSchema>;
 
+/** A user-defined Kanban column. `id` equals the `status` of the cards in it. */
+export interface BoardList {
+  id: string;
+  name: string;
+  color: string;
+  wipLimit: number | null;
+  collapsed: boolean;
+}
+
 export interface Project {
   _id: string;
   name: string;
@@ -41,7 +51,13 @@ export interface Project {
   visibility: (typeof VISIBILITY)[number];
   color: string;
   ownerId: string;
+  /** The workspace this project belongs to. Null for pre-ADR-0006 orphans. */
+  workspaceId: string | null;
   members: string[];
+  /** Block-based Overview document. Present only on the single-project fetch, not the list. */
+  overview?: NoteBlock[];
+  /** Custom board columns. Empty/absent → client falls back to the default lists. */
+  boardLists?: BoardList[];
   issueCount?: number;
   doneCount?: number;
   createdAt: string;

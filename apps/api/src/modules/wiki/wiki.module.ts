@@ -12,6 +12,7 @@ import { InternalTokenGuard } from '../../common/guards/internal-token.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
 import { ProjectAccessModule } from '../projects/access/project-access.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -25,6 +26,8 @@ import { ProjectAccessModule } from '../projects/access/project-access.module';
     UsersModule,
     // The shared project-access rule (ADR 0004) — used by accessFor authz.
     ProjectAccessModule,
+    // Mints the scoped collab tokens handed to apps/live.
+    AuthModule,
   ],
   controllers: [WikiController, InternalWikiController],
   providers: [WikiService, InternalTokenGuard],

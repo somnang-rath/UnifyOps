@@ -10,7 +10,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { InternalTokenGuard } from '../../common/guards/internal-token.guard';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { WikiService } from './wiki.service';
 import {
   SnapshotContentDto,
@@ -41,7 +41,7 @@ export class InternalWikiController {
   @Get(':id/access')
   access(
     @Param('id') id: string,
-    @Query(new ZodValidationPipe(WikiAccessQuerySchema)) q: WikiAccessQuery,
+    @Query(new ZodQueryPipe(WikiAccessQuerySchema)) q: WikiAccessQuery,
   ) {
     return this.wiki.accessFor(q.userId, id);
   }

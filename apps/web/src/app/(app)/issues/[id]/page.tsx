@@ -33,6 +33,7 @@ import {
   CommentComposerActions,
 } from '@/components/feature/issue/comment-composer';
 import { MarkdownView } from '@/components/feature/issue/markdown-view';
+import { IssueLinks } from '@/components/feature/issue/issue-links';
 import { relTime, fmtDate } from '@/lib/format';
 import { useAuthStore } from '@/stores/auth-store';
 import { IssueDetailSkeleton } from '@/components/ui/skeleton';
@@ -227,6 +228,9 @@ export default function IssueDetailPage() {
               </div>
             </Card>
           )}
+
+          {/* sub-issues & relations */}
+          <IssueLinks issueId={id} />
 
           {/* comments */}
           <Card>

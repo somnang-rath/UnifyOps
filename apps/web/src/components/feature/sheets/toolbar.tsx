@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   AlignCenter,
   AlignLeft,
@@ -47,36 +47,37 @@ const FONT_OPTIONS = [
   { label: "Impact", value: "Impact, sans-serif" },
 ]
 
-const FILL_PALETTE = [
-  "",
-  "#ffffff",
-  "#f1f3f4",
-  "#fbe9e9",
-  "#fef7e0",
-  "#e6f4ea",
-  "#e8f0fe",
-  "#f3e8fd",
-  "#ffe0ec",
-  "#fce8b2",
-  "#b7e1cd",
-  "#a4c2f4",
-  "#d9d2e9",
-  "#f4cccc",
-  "#cccccc",
-  "#666666",
+// Full Google-Sheets-style palette: grayscale ramp, saturated base row, then
+// four tint rows and three shade rows. 10 columns wide.
+const STANDARD_PALETTE: string[][] = [
+  ["#000000", "#434343", "#666666", "#999999", "#b7b7b7", "#cccccc", "#d9d9d9", "#efefef", "#f3f3f3", "#ffffff"],
+  ["#980000", "#ff0000", "#ff9900", "#ffff00", "#00ff00", "#00ffff", "#4a86e8", "#0000ff", "#9900ff", "#ff00ff"],
+  ["#e6b8af", "#f4cccc", "#fce5cd", "#fff2cc", "#d9ead3", "#d0e0e3", "#c9daf8", "#cfe2f3", "#d9d2e9", "#ead1dc"],
+  ["#dd7e6b", "#ea9999", "#f9cb9c", "#ffe599", "#b6d7a8", "#a2c4c9", "#a4c2f4", "#9fc5e8", "#b4a7d6", "#d5a6bd"],
+  ["#cc4125", "#e06666", "#f6b26b", "#ffd966", "#93c47d", "#76a5af", "#6d9eeb", "#6fa8dc", "#8e7cc3", "#c27ba0"],
+  ["#a61c00", "#cc0000", "#e69138", "#f1c232", "#6aa84f", "#45818e", "#3c78d8", "#3d85c6", "#674ea7", "#a64d79"],
+  ["#85200c", "#990000", "#b45f06", "#bf9000", "#38761d", "#134f5c", "#1155cc", "#0b5394", "#351c75", "#741b47"],
+  ["#5b0f00", "#660000", "#783f04", "#7f6000", "#274e13", "#0c343d", "#1c4587", "#073763", "#20124d", "#4c1130"],
 ]
-const TEXT_PALETTE = [
-  "",
-  "#000000",
-  "#5f6368",
-  "#d93025",
-  "#e8710a",
-  "#188038",
-  "#1967d2",
-  "#7627bb",
-  "#c5221f",
-  "#0b8043",
-]
+
+const RECENT_COLORS_KEY = "unifyops.sheets.recentColors"
+const RECENT_LIMIT = 10
+
+function loadRecentColors(): string[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(RECENT_COLORS_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr.filter((c) => typeof c === "string") : []
+  } catch {
+    return []
+  }
+}
+
+function isHexColor(v: string): boolean {
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v.trim())
+}
 
 interface Props {
   activeStyle: CellStyle | undefined
@@ -86,6 +87,7 @@ interface Props {
   onRedo: () => void
   onToggle: (key: "b" | "i" | "u" | "s" | "wrap") => void
   onFontSize: (delta: number) => void
+  onFontSizeExact?: (px: number) => void
   onFont: (ff: string | null) => void
   onAlignH: () => void
   onAlignV: () => void
@@ -123,6 +125,7 @@ export function Toolbar({
   onRedo,
   onToggle,
   onFontSize,
+  onFontSizeExact,
   onFont,
   onAlignH,
   onAlignV,
@@ -150,6 +153,21 @@ export function Toolbar({
   const [fontOpen, setFontOpen] = useState(false)
   const [bordersOpen, setBordersOpen] = useState(false)
   const [mergeOpen, setMergeOpen] = useState(false)
+  const [recentColors, setRecentColors] = useState<string[]>(loadRecentColors)
+
+  const recordColor = (c: string | null) => {
+    if (!c) return
+    setRecentColors((prev) => {
+      const next = [c, ...prev.filter((x) => x !== c)].slice(0, RECENT_LIMIT)
+      try {
+        window.localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(next))
+      } catch {
+        /* storage best-effort */
+      }
+      return next
+    })
+  }
+
   const fontLabel =
     FONT_OPTIONS.find((f) => f.value === (activeStyle?.ff ?? ""))?.label ??
     "Custom"
@@ -157,7 +175,7 @@ export function Toolbar({
   const fs = s.fs ?? 10
 
   return (
-    <div className="relative flex items-center gap-0.5 mx-3 my-2 px-2 py-1 bg-[#edf2fa] rounded-full text-text-sub overflow-visible">
+    <div className="relative flex flex-wrap items-center gap-y-1 gap-x-0.5 mx-3 my-2 px-2 py-1 bg-[var(--sh-header-bg)] rounded-2xl text-text-sub overflow-visible">
       <TbBtn title="Menus" disabled>
         <Search className="w-[16px] h-[16px]" />
       </TbBtn>
@@ -230,28 +248,42 @@ export function Toolbar({
 
       <TbSep />
 
-      <button
-        type="button"
-        className="h-7 px-2 inline-flex items-center gap-1 text-[13px] rounded hover:bg-black/10 min-w-[110px]"
-        onClick={() => {
-          setFontOpen((v) => !v)
-          setFillOpen(false)
-          setTextOpen(false)
-        }}
-        style={{ fontFamily: activeStyle?.ff || undefined }}
-      >
-        <span className="truncate">{fontLabel}</span>
-        <ChevronDown className="w-3 h-3 ml-auto" />
-      </button>
+      <div className="relative inline-flex items-center">
+        <button
+          type="button"
+          className="h-7 px-2 inline-flex items-center gap-1 text-[13px] rounded hover:bg-black/10 min-w-[110px] max-w-[150px]"
+          onClick={() => {
+            setFontOpen((v) => !v)
+            setFillOpen(false)
+            setTextOpen(false)
+          }}
+          style={{ fontFamily: activeStyle?.ff || undefined }}
+        >
+          <span className="truncate">{fontLabel}</span>
+          <ChevronDown className="w-3 h-3 ml-auto shrink-0" />
+        </button>
+        {fontOpen && (
+          <FontPicker
+            current={activeStyle?.ff ?? ""}
+            onPick={(ff) => {
+              onFont(ff)
+              setFontOpen(false)
+            }}
+            onClose={() => setFontOpen(false)}
+          />
+        )}
+      </div>
 
       <TbSep />
 
       <TbBtn title="Decrease font size" onClick={() => onFontSize(-1)}>
         <Minus className="w-[14px] h-[14px]" />
       </TbBtn>
-      <div className="h-7 min-w-[28px] px-1 inline-flex items-center justify-center text-[12px] border border-transparent rounded">
-        {fs}
-      </div>
+      <FontSizeControl
+        fs={fs}
+        onDelta={onFontSize}
+        onExact={onFontSizeExact}
+      />
       <TbBtn title="Increase font size" onClick={() => onFontSize(1)}>
         <Plus className="w-[14px] h-[14px]" />
       </TbBtn>
@@ -274,49 +306,92 @@ export function Toolbar({
       <TbBtn title="Underline (Ctrl+U)" active={!!s.u} onClick={() => onToggle("u")}>
         <Underline className="w-[15px] h-[15px]" />
       </TbBtn>
-      <TbBtn
-        title="Text color"
-        onClick={() => {
-          setTextOpen((v) => !v)
-          setFillOpen(false)
-        }}
-      >
-        <div className="flex flex-col items-center justify-center">
-          <Type className="w-[13px] h-[13px]" />
-          <span
-            className="w-3 h-[3px] mt-px rounded-sm"
-            style={{ background: s.fg || "#d93025" }}
+      <div className="relative inline-flex items-center">
+        <TbBtn
+          title="Text color"
+          onClick={() => {
+            setTextOpen((v) => !v)
+            setFillOpen(false)
+            setBordersOpen(false)
+          }}
+        >
+          <div className="flex flex-col items-center justify-center">
+            <Type className="w-[13px] h-[13px]" />
+            <span
+              className="w-3 h-[3px] mt-px rounded-sm"
+              style={{ background: s.fg || "#d93025" }}
+            />
+          </div>
+        </TbBtn>
+        {textOpen && (
+          <ColorPalette
+            title="Text color"
+            current={s.fg ?? ""}
+            recent={recentColors}
+            onPick={(c) => {
+              recordColor(c)
+              onColor("fg", c)
+              setTextOpen(false)
+            }}
+            onClose={() => setTextOpen(false)}
           />
-        </div>
-      </TbBtn>
+        )}
+      </div>
 
       <TbSep />
 
-      <TbBtn
-        title="Fill color"
-        onClick={() => {
-          setFillOpen((v) => !v)
-          setTextOpen(false)
-        }}
-      >
-        <div className="flex flex-col items-center justify-center">
-          <PaintBucket className="w-[13px] h-[13px]" />
-          <span
-            className="w-3 h-[3px] mt-px rounded-sm"
-            style={{ background: s.bg || "#f1c232" }}
+      <div className="relative inline-flex items-center">
+        <TbBtn
+          title="Fill color"
+          onClick={() => {
+            setFillOpen((v) => !v)
+            setTextOpen(false)
+            setBordersOpen(false)
+          }}
+        >
+          <div className="flex flex-col items-center justify-center">
+            <PaintBucket className="w-[13px] h-[13px]" />
+            <span
+              className="w-3 h-[3px] mt-px rounded-sm"
+              style={{ background: s.bg || "#f1c232" }}
+            />
+          </div>
+        </TbBtn>
+        {fillOpen && (
+          <ColorPalette
+            title="Fill color"
+            current={s.bg ?? ""}
+            recent={recentColors}
+            onPick={(c) => {
+              recordColor(c)
+              onColor("bg", c)
+              setFillOpen(false)
+            }}
+            onClose={() => setFillOpen(false)}
           />
-        </div>
-      </TbBtn>
-      <TbBtn
-        title="Borders"
-        onClick={() => {
-          setBordersOpen((v) => !v)
-          setFillOpen(false)
-          setTextOpen(false)
-        }}
-      >
-        <BordersIcon />
-      </TbBtn>
+        )}
+      </div>
+      <div className="relative inline-flex items-center">
+        <TbBtn
+          title="Borders"
+          onClick={() => {
+            setBordersOpen((v) => !v)
+            setFillOpen(false)
+            setTextOpen(false)
+          }}
+        >
+          <BordersIcon />
+        </TbBtn>
+        {bordersOpen && (
+          <BordersPicker
+            onApply={(b) => {
+              onBorder(b)
+              setBordersOpen(false)
+            }}
+            onClose={() => setBordersOpen(false)}
+          />
+        )}
+      </div>
       <div className="relative inline-flex items-center">
         <TbBtn
           title={hasMerge ? "Unmerge cells" : "Merge cells"}
@@ -411,56 +486,6 @@ export function Toolbar({
       <TbBtn title="Functions" disabled>
         <Sigma className="w-[15px] h-[15px]" />
       </TbBtn>
-
-      <div className="flex-1" />
-
-      <TbBtn title="Hide the menus">
-        <ChevronDown className="w-4 h-4" />
-      </TbBtn>
-
-      {fontOpen && (
-        <FontPicker
-          current={activeStyle?.ff ?? ""}
-          onPick={(ff) => {
-            onFont(ff)
-            setFontOpen(false)
-          }}
-          onClose={() => setFontOpen(false)}
-        />
-      )}
-      {textOpen && (
-        <ColorPalette
-          title="Text color"
-          palette={TEXT_PALETTE}
-          position="left-[660px]"
-          onPick={(c) => {
-            onColor("fg", c)
-            setTextOpen(false)
-          }}
-          onClose={() => setTextOpen(false)}
-        />
-      )}
-      {fillOpen && (
-        <ColorPalette
-          title="Fill color"
-          palette={FILL_PALETTE}
-          position="left-[700px]"
-          onPick={(c) => {
-            onColor("bg", c)
-            setFillOpen(false)
-          }}
-          onClose={() => setFillOpen(false)}
-        />
-      )}
-      {bordersOpen && (
-        <BordersPicker
-          onApply={(b) => {
-            onBorder(b)
-            setBordersOpen(false)
-          }}
-          onClose={() => setBordersOpen(false)}
-        />
-      )}
     </div>
   )
 }
@@ -486,7 +511,7 @@ function TbBtn({
       onClick={onClick}
       className={cn(
         "w-7 h-7 inline-flex items-center justify-center rounded hover:bg-black/10",
-        active && "bg-[#cfe8ff] hover:bg-[#cfe8ff]",
+        active && "bg-[var(--sh-header-bg-sel)] hover:bg-[var(--sh-header-bg-sel)]",
         disabled && "opacity-60 cursor-not-allowed hover:bg-transparent",
       )}
     >
@@ -526,7 +551,7 @@ function MergeMenu({
   return (
     <>
       <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden />
-      <div className="absolute top-full mt-1 right-0 bg-white border border-border rounded-md shadow-lg py-1 z-30 min-w-[180px]">
+      <div className="absolute top-full mt-1 right-0 bg-bg-card border border-border rounded-md shadow-lg py-1 z-30 min-w-[180px]">
         {items.map((it) => (
           <button
             key={it.label}
@@ -547,6 +572,127 @@ function MergeMenu({
   )
 }
 
+/**
+ * Popover panel anchored to its (relatively-positioned) trigger wrapper.
+ * After mount it clamps itself horizontally so it never spills past the
+ * viewport edge — this is what keeps the pickers usable when the sheet is
+ * squeezed into a narrow split panel.
+ */
+function Popover({
+  onClose,
+  children,
+  className,
+  width,
+}: {
+  onClose: () => void
+  children: React.ReactNode
+  className?: string
+  width?: number
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const margin = 8
+    el.style.left = "0px"
+    el.style.right = "auto"
+    const rect = el.getBoundingClientRect()
+    if (rect.right > window.innerWidth - margin) {
+      const overflow = rect.right - (window.innerWidth - margin)
+      el.style.left = `${-overflow}px`
+    }
+    const rect2 = el.getBoundingClientRect()
+    if (rect2.left < margin) {
+      el.style.left = `${el.offsetLeft + (margin - rect2.left)}px`
+    }
+  }, [])
+
+  // Escape closes — the click-catching overlay alone would otherwise trap the
+  // user until they click away.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    document.addEventListener("keydown", onKey, true)
+    return () => document.removeEventListener("keydown", onKey, true)
+  }, [onClose])
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden />
+      <div
+        ref={ref}
+        className={cn(
+          "absolute top-full mt-2 z-30 bg-bg-card border border-border rounded-md shadow-lg",
+          className,
+        )}
+        style={width ? { width } : undefined}
+      >
+        {children}
+      </div>
+    </>
+  )
+}
+
+function FontSizeControl({
+  fs,
+  onDelta,
+  onExact,
+}: {
+  fs: number
+  onDelta: (delta: number) => void
+  onExact?: (px: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const editable = !!onExact
+  const commit = () => {
+    if (draft == null) return
+    const n = Number(draft)
+    if (Number.isFinite(n) && n > 0) onExact?.(n)
+    setDraft(null)
+  }
+  if (!editable) {
+    return (
+      <div className="h-7 min-w-[28px] px-1 inline-flex items-center justify-center text-[12px] border border-transparent rounded">
+        {fs}
+      </div>
+    )
+  }
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      title="Font size (type a value)"
+      value={draft ?? String(fs)}
+      onChange={(e) => setDraft(e.target.value.replace(/[^\d.]/g, ""))}
+      onFocus={(e) => {
+        setDraft(String(fs))
+        e.currentTarget.select()
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault()
+          commit()
+          e.currentTarget.blur()
+        } else if (e.key === "Escape") {
+          setDraft(null)
+          e.currentTarget.blur()
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault()
+          onDelta(1)
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault()
+          onDelta(-1)
+        }
+      }}
+      className="h-7 w-9 px-1 text-center text-[12px] border border-border/60 rounded bg-transparent outline-none focus:border-accent"
+    />
+  )
+}
+
 function FontPicker({
   current,
   onPick,
@@ -558,9 +704,7 @@ function FontPicker({
 }) {
   const [custom, setCustom] = useState("")
   return (
-    <>
-      <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden />
-      <div className="absolute top-full mt-2 left-[300px] bg-white border border-border rounded-md shadow-lg py-1.5 z-30 min-w-[200px]">
+    <Popover onClose={onClose} className="py-1.5 min-w-[200px]">
         {FONT_OPTIONS.map((f) => (
           <button
             key={f.value}
@@ -590,63 +734,141 @@ function FontPicker({
               }
             }}
             placeholder="e.g. Roboto, Inter"
-            className="w-full text-[12px] px-2 py-1 border border-border rounded outline-none focus:border-accent"
+            className="w-full text-[12px] px-2 py-1 border border-border rounded bg-bg-input text-text outline-none focus:border-accent"
           />
         </div>
-      </div>
-    </>
+    </Popover>
+  )
+}
+
+function Swatch({
+  color,
+  active,
+  onPick,
+}: {
+  color: string
+  active: boolean
+  onPick: (c: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(color)}
+      style={{ background: color }}
+      className={cn(
+        "w-[18px] h-[18px] rounded-sm border border-black/15 hover:scale-110 transition-transform",
+        active && "ring-2 ring-accent ring-offset-1 ring-offset-[var(--bg-card,transparent)]",
+      )}
+      title={color}
+      aria-label={color}
+    />
   )
 }
 
 function ColorPalette({
-  palette,
-  position,
+  current,
+  recent,
   onPick,
   onClose,
   title,
 }: {
-  palette: readonly string[]
-  position: string
+  current: string
+  recent: string[]
   onPick: (color: string | null) => void
   onClose: () => void
   title: string
 }) {
+  const [hex, setHex] = useState(isHexColor(current) ? current : "#000000")
+  const currentLc = current.toLowerCase()
+
   return (
-    <>
-      <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden />
-      <div
-        className={cn(
-          "absolute top-full mt-2 bg-white border border-border rounded-md shadow-lg p-3 z-30",
-          position,
-        )}
-      >
-        <div className="text-[11px] text-text-muted mb-2 select-none">
-          {title}
-        </div>
-        <div className="grid grid-cols-8 gap-1.5">
-          {palette.map((c, i) =>
-            c === "" ? (
-              <button
-                key={i}
-                onClick={() => onPick(null)}
-                className="w-5 h-5 rounded border border-border bg-white relative flex items-center justify-center"
-                title="No color"
-              >
-                <span className="block w-full h-px bg-red rotate-45" />
-              </button>
-            ) : (
-              <button
-                key={i}
-                onClick={() => onPick(c)}
-                style={{ background: c }}
-                className="w-5 h-5 rounded border border-border"
-                title={c}
-              />
-            ),
-          )}
-        </div>
+    <Popover onClose={onClose} className="p-3" width={232}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] text-text-muted select-none">{title}</span>
+        <button
+          type="button"
+          onClick={() => onPick(null)}
+          className="text-[11px] text-text-muted hover:text-text inline-flex items-center gap-1"
+          title="Reset to default"
+        >
+          <span className="w-3.5 h-3.5 rounded-sm border border-border bg-[var(--sh-cell-bg)] relative inline-flex items-center justify-center">
+            <span className="block w-full h-px bg-red rotate-45" />
+          </span>
+          None
+        </button>
       </div>
-    </>
+
+      <div className="grid grid-cols-10 gap-1">
+        {STANDARD_PALETTE.flat().map((c) => (
+          <Swatch
+            key={c}
+            color={c}
+            active={c.toLowerCase() === currentLc}
+            onPick={onPick}
+          />
+        ))}
+      </div>
+
+      {recent.length > 0 && (
+        <>
+          <div className="text-[11px] text-text-muted mt-3 mb-1.5 select-none">
+            Recent
+          </div>
+          <div className="grid grid-cols-10 gap-1">
+            {recent.map((c) => (
+              <Swatch
+                key={c}
+                color={c}
+                active={c.toLowerCase() === currentLc}
+                onPick={onPick}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="text-[11px] text-text-muted mt-3 mb-1.5 select-none">
+        Custom
+      </div>
+      <div className="flex items-center gap-1.5">
+        <label
+          className="w-7 h-7 rounded border border-border overflow-hidden shrink-0 cursor-pointer relative"
+          style={{ background: isHexColor(hex) ? hex : "#000000" }}
+          title="Pick a custom color"
+        >
+          <input
+            type="color"
+            value={isHexColor(hex) ? hex : "#000000"}
+            onChange={(e) => setHex(e.target.value)}
+            className="absolute inset-0 opacity-0 cursor-pointer"
+          />
+        </label>
+        <input
+          type="text"
+          value={hex}
+          onChange={(e) => {
+            const v = e.target.value
+            setHex(v.startsWith("#") || v === "" ? v : `#${v}`)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && isHexColor(hex)) onPick(hex)
+          }}
+          placeholder="#RRGGBB"
+          className="flex-1 min-w-0 text-[12px] px-2 py-1 border border-border rounded bg-bg-input text-text outline-none focus:border-accent font-mono"
+        />
+        <button
+          type="button"
+          disabled={!isHexColor(hex)}
+          onClick={() => onPick(hex)}
+          className={cn(
+            "text-[12px] px-2.5 py-1 rounded bg-accent text-white",
+            !isHexColor(hex) && "opacity-50 cursor-not-allowed",
+          )}
+        >
+          OK
+        </button>
+      </div>
+    </Popover>
   )
 }
 
@@ -720,9 +942,7 @@ function BordersPicker({
   ]
 
   return (
-    <>
-      <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden />
-      <div className="absolute top-full mt-2 left-[640px] z-30 bg-white border border-border rounded-md shadow-lg p-2 w-[240px]">
+    <Popover onClose={onClose} className="p-2" width={240}>
         <div className="grid grid-cols-4 gap-1 mb-2">
           {sides.map((s) => (
             <button
@@ -741,7 +961,7 @@ function BordersPicker({
             data-no-csel
             value={style}
             onChange={(e) => setStyle(e.target.value as BorderApply["style"])}
-            className="text-[12px] py-0.5 px-1 border border-border rounded bg-white"
+            className="text-[12px] py-0.5 px-1 border border-border rounded bg-bg-input"
           >
             <option value="thin">Thin</option>
             <option value="medium">Medium</option>
@@ -766,9 +986,29 @@ function BordersPicker({
               aria-label={c}
             />
           ))}
+          <label
+            className={cn(
+              "w-4 h-4 rounded-full border relative cursor-pointer overflow-hidden",
+              BORDER_COLORS.includes(color)
+                ? "border-border"
+                : "border-text ring-2 ring-offset-1 ring-accent",
+            )}
+            title="Custom border color"
+            style={{
+              background: BORDER_COLORS.includes(color)
+                ? "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)"
+                : color,
+            }}
+          >
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+            />
+          </label>
         </div>
-      </div>
-    </>
+    </Popover>
   )
 }
 

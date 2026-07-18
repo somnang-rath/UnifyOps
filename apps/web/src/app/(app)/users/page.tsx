@@ -16,6 +16,7 @@ import {
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
+import { Input, InputWithIcon } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import {
@@ -51,9 +52,6 @@ function Field({
     </label>
   );
 }
-
-const inputCls =
-  'w-full px-3 py-2 text-[13px] bg-bg-input border-[1.5px] border-border rounded-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_rgba(99,102,241,.12)] transition-[border-color,box-shadow] duration-[var(--dur)]';
 
 /* ── InviteModal ─────────────────────────────────────────── */
 
@@ -127,8 +125,7 @@ function InviteModal({
     >
       <form onSubmit={submit} className="flex flex-col gap-3.5">
         <Field label="Full name">
-          <input
-            className={inputCls}
+          <Input
             placeholder="Jane Smith"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -137,9 +134,8 @@ function InviteModal({
         </Field>
 
         <Field label="Email">
-          <input
+          <Input
             type="email"
-            className={inputCls}
             placeholder="jane@company.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -147,17 +143,7 @@ function InviteModal({
         </Field>
 
         <Field label="Role">
-          <select
-            className={inputCls}
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            {roleOptions.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
+          <Select value={role} onValueChange={setRole} options={roleOptions} />
         </Field>
 
         <p className="text-[12px] text-text-muted leading-[1.6] -mt-1">
@@ -269,8 +255,7 @@ function EditUserModal({
     >
       <form onSubmit={submit} className="flex flex-col gap-3.5">
         <Field label="Full name">
-          <input
-            className={inputCls}
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoFocus
@@ -278,8 +263,8 @@ function EditUserModal({
         </Field>
 
         <Field label="Email">
-          <input
-            className={cn(inputCls, 'opacity-60 cursor-not-allowed')}
+          <Input
+            className="opacity-60 cursor-not-allowed"
             value={user?.email ?? ''}
             readOnly
             tabIndex={-1}
@@ -290,17 +275,7 @@ function EditUserModal({
         </Field>
 
         <Field label="Role">
-          <select
-            className={inputCls}
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            {roleOptions.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
+          <Select value={role} onValueChange={setRole} options={roleOptions} />
         </Field>
       </form>
     </Modal>
@@ -478,20 +453,18 @@ function RolesModal({
         className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end"
       >
         <Field label="Key">
-          <input
+          <Input
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="designer"
             pattern="[a-z][a-z0-9_-]*"
-            className={inputCls}
           />
         </Field>
         <Field label="Display name">
-          <input
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Designer"
-            className={inputCls}
           />
         </Field>
         <Button type="submit" variant="primary" disabled={create.isPending}>
@@ -696,15 +669,14 @@ export default function UsersPage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* Search */}
-          <div className="flex items-center gap-2 min-w-[240px] px-3 bg-bg-card border-[1.5px] border-border rounded-sm focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(99,102,241,.12)] transition-[border-color,box-shadow] duration-[var(--dur)]">
-            <Search className="w-3.5 h-3.5 text-text-muted" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search people…"
-              className="flex-1 border-0 bg-transparent py-2 text-[13px] outline-none placeholder:text-text-muted"
-            />
-          </div>
+          <InputWithIcon
+            icon={<Search />}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search people…"
+            aria-label="Search people"
+            className="w-[240px]"
+          />
 
           <Button
             variant="outline"

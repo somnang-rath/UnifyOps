@@ -108,9 +108,20 @@ export class WorkspacesController {
     return this.workspaces.create(user.id, dto);
   }
 
+  /**
+   * Resolve a workspace by slug (ADR 0006). Declared before ':id' so the literal
+   * /slug segment is not captured as an id. Owner-or-member only; 404 otherwise.
+   * The slug is validated inside the service — ZodValidationPipe is body-only by
+   * design, so binding it to a @Param would silently not validate.
+   */
+  @Get('slug/:slug')
+  bySlug(@CurrentUser() user: { id: string }, @Param('slug') slug: string) {
+    return this.workspaces.bySlugForUser(user.id, slug);
+  }
+
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.workspaces.byId(id);
+  byId(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.workspaces.byIdForUser(user.id, id);
   }
 
   @Patch(':id')

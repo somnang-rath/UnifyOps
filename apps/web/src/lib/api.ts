@@ -1,7 +1,14 @@
 import axios, { AxiosError } from 'axios';
-import { createApiClient } from '@prism/services';
+import { createApiClient, readCsrfToken } from '@prism/services';
 import { useAuthStore } from '@/stores/auth-store';
 import { toast } from '@/stores/toast-store';
+
+/**
+ * This app's token audience. The API refuses `web` tokens on instance
+ * endpoints, so a stolen web session can never reach God Mode.
+ * docs/plan/01-security-model.md §2.
+ */
+export const AUDIENCE = 'web' as const;
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -17,10 +24,14 @@ let refreshing: Promise<string | null> | null = null;
 
 async function doRefresh(): Promise<string | null> {
   try {
+    const csrf = readCsrfToken();
     const { data } = await axios.post<{ accessToken: string; user: any }>(
       `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
-      {},
-      { withCredentials: true },
+      { audience: AUDIENCE },
+      {
+        withCredentials: true,
+        headers: csrf ? { 'X-CSRF-Token': csrf } : undefined,
+      },
     );
     useAuthStore.getState().setAuth(data.accessToken, data.user);
     return data.accessToken;

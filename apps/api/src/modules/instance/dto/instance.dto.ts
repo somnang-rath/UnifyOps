@@ -26,6 +26,29 @@ export const PUBLIC_CONFIG_KEYS = [
   'ASSISTANT_ENABLED',
 ] as const;
 
+/**
+ * Config keys whose value is a secret: never returned to any client, only ever
+ * reported as set/unset.
+ *
+ * Secrecy is a property of the *key*, decided here on the server. It used to be
+ * taken from the request body, which meant a client could write an API key with
+ * `isEncrypted: false` and then read it straight back out of GET /instance/config.
+ * docs/plan/01-security-model.md §1 S10.
+ */
+export const SECRET_CONFIG_KEYS = [
+  'SMTP_PASSWORD',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'GOOGLE_CLIENT_SECRET',
+  'GITHUB_CLIENT_SECRET',
+  'GITLAB_CLIENT_SECRET',
+  'UNSPLASH_ACCESS_KEY',
+] as const;
+
+export const isSecretConfigKey = (key: string): boolean =>
+  (SECRET_CONFIG_KEYS as readonly string[]).includes(key) ||
+  /(_SECRET|_API_KEY|_PASSWORD|_TOKEN)$/.test(key);
+
 export const UpdateInstanceSchema = z.object({
   instanceName: z.string().min(1).max(120).trim().optional(),
 });
@@ -35,7 +58,8 @@ export const ConfigEntrySchema = z.object({
   key: z.string().min(1).max(120).trim(),
   value: z.string().max(5000).nullable(),
   category: z.enum(CONFIG_CATEGORIES).default('general'),
-  isEncrypted: z.boolean().default(false),
+  // `isEncrypted` is intentionally absent: the server decides secrecy from the
+  // key via isSecretConfigKey(). See SECRET_CONFIG_KEYS above.
 });
 export type ConfigEntryDto = z.infer<typeof ConfigEntrySchema>;
 

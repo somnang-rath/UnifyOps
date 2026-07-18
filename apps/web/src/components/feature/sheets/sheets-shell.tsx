@@ -923,6 +923,14 @@ export function SheetsShell({ workbookId, onBack }: Props) {
     [activeStyle, applyStyle],
   );
 
+  const setFontSizeExact = useCallback(
+    (px: number) => {
+      const next = Math.max(6, Math.min(400, Math.round(px)));
+      applyStyle({ fs: next });
+    },
+    [applyStyle],
+  );
+
   const cycleAlignH = useCallback(() => {
     const seq: Array<'left' | 'center' | 'right'> = [
       'left',
@@ -2561,55 +2569,55 @@ export function SheetsShell({ workbookId, onBack }: Props) {
 
   if (isLoading || !wb || !activeSheet) {
     return (
-      <div className="-mx-6 -my-5 h-[calc(100vh-60px)] flex flex-col bg-white overflow-hidden">
+      <div className="-mx-6 -my-5 h-[calc(100vh-60px)] flex flex-col bg-bg-card overflow-hidden">
         {/* Title bar skeleton */}
-        <div className="flex items-center gap-2 px-3 pt-2 pb-1 border-b border-[#e0e0e0]">
-          {onBack && <div className="w-9 h-9 rounded bg-[#f1f3f4]" />}
-          <div className="w-9 h-9 rounded bg-[#f1f3f4]" />
+        <div className="flex items-center gap-2 px-3 pt-2 pb-1 border-b border-border">
+          {onBack && <div className="w-9 h-9 rounded bg-bg-hover" />}
+          <div className="w-9 h-9 rounded bg-bg-hover" />
           <div className="flex flex-col gap-1 flex-1">
-            <div className="h-5 w-48 rounded bg-[#e8eaed] animate-pulse" />
+            <div className="h-5 w-48 rounded bg-bg-hover animate-pulse" />
             <div className="flex gap-3 mt-0.5">
               {['File','Edit','View','Insert','Format','Data'].map((l) => (
-                <div key={l} className="h-3.5 w-8 rounded bg-[#f1f3f4] animate-pulse" />
+                <div key={l} className="h-3.5 w-8 rounded bg-bg-hover animate-pulse" />
               ))}
             </div>
           </div>
-          <div className="h-9 w-20 rounded-full bg-[#c2e7ff] animate-pulse" />
+          <div className="h-9 w-20 rounded-full bg-[var(--sh-header-bg-sel-strong)] animate-pulse" />
         </div>
         {/* Toolbar skeleton */}
-        <div className="flex items-center gap-1 px-2 h-10 border-b border-[#e0e0e0]">
+        <div className="flex items-center gap-1 px-2 h-10 border-b border-border">
           {Array.from({ length: 16 }).map((_, i) => (
-            <div key={i} className="w-7 h-7 rounded bg-[#f1f3f4] animate-pulse" />
+            <div key={i} className="w-7 h-7 rounded bg-bg-hover animate-pulse" />
           ))}
         </div>
         {/* Formula bar skeleton */}
-        <div className="flex items-center gap-2 px-2 h-9 border-b border-[#e0e0e0]">
-          <div className="w-16 h-6 rounded border border-[#e0e0e0] bg-[#f8f9fa] animate-pulse" />
-          <div className="w-px h-5 bg-[#e0e0e0]" />
-          <div className="flex-1 h-6 rounded bg-[#f8f9fa] animate-pulse" />
+        <div className="flex items-center gap-2 px-2 h-9 border-b border-border">
+          <div className="w-16 h-6 rounded border border-border bg-[var(--sh-header-bg)] animate-pulse" />
+          <div className="w-px h-5 bg-border" />
+          <div className="flex-1 h-6 rounded bg-[var(--sh-header-bg)] animate-pulse" />
         </div>
         {/* Grid skeleton */}
         <div className="flex-1 overflow-hidden">
           {/* Column header row */}
-          <div className="flex border-b border-[#e0e0e0] bg-[#f8f9fa]">
-            <div className="w-10 h-6 border-r border-[#e0e0e0] flex-shrink-0" />
+          <div className="flex border-b border-border bg-[var(--sh-header-bg)]">
+            <div className="w-10 h-6 border-r border-border flex-shrink-0" />
             {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="w-24 h-6 border-r border-[#e0e0e0] flex items-center justify-center">
-                <div className="w-4 h-3 rounded bg-[#e8eaed] animate-pulse" />
+              <div key={i} className="w-24 h-6 border-r border-border flex items-center justify-center">
+                <div className="w-4 h-3 rounded bg-bg-hover animate-pulse" />
               </div>
             ))}
           </div>
           {/* Data rows */}
           {Array.from({ length: 18 }).map((_, row) => (
-            <div key={row} className="flex border-b border-[#e0e0e0]">
-              <div className="w-10 h-[25px] border-r border-[#e0e0e0] flex-shrink-0 bg-[#f8f9fa] flex items-center justify-center">
-                <div className="w-5 h-3 rounded bg-[#e8eaed] animate-pulse" />
+            <div key={row} className="flex border-b border-border">
+              <div className="w-10 h-[25px] border-r border-border flex-shrink-0 bg-[var(--sh-header-bg)] flex items-center justify-center">
+                <div className="w-5 h-3 rounded bg-bg-hover animate-pulse" />
               </div>
               {Array.from({ length: 10 }).map((_, col) => (
-                <div key={col} className="w-24 h-[25px] border-r border-[#e0e0e0] px-2 flex items-center">
+                <div key={col} className="w-24 h-[25px] border-r border-border px-2 flex items-center">
                   {(row + col) % 5 === 0 && (
                     <div
-                      className="h-3 rounded bg-[#f1f3f4] animate-pulse"
+                      className="h-3 rounded bg-bg-hover animate-pulse"
                       style={{ width: `${40 + ((row * 7 + col * 13) % 50)}px` }}
                     />
                   )}
@@ -2619,9 +2627,9 @@ export function SheetsShell({ workbookId, onBack }: Props) {
           ))}
         </div>
         {/* Sheet tabs skeleton */}
-        <div className="flex items-center gap-1 px-2 h-8 border-t border-[#d0d7de] bg-[#f8f9fa]">
-          <div className="w-7 h-6 rounded bg-[#e8eaed] animate-pulse" />
-          <div className="w-20 h-6 rounded bg-[#e8eaed] animate-pulse" />
+        <div className="flex items-center gap-1 px-2 h-8 border-t border-border bg-[var(--sh-header-bg)]">
+          <div className="w-7 h-6 rounded bg-bg-hover animate-pulse" />
+          <div className="w-20 h-6 rounded bg-bg-hover animate-pulse" />
         </div>
       </div>
     );
@@ -3200,7 +3208,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
   return (
     <div
       data-sh-print
-      className="-mx-6 -my-5 flex flex-col h-[calc(100vh-60px)] bg-white text-text"
+      className="-mx-6 -my-5 flex flex-col h-[calc(100vh-60px)] bg-bg-card text-text"
     >
       <div data-sh-no-print>
       <TitleBar
@@ -3221,6 +3229,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         onRedo={redo}
         onToggle={toggleStyle}
         onFontSize={bumpFontSize}
+        onFontSizeExact={setFontSizeExact}
         onFont={setFont}
         onAlignH={cycleAlignH}
         onAlignV={cycleAlignV}
@@ -3459,7 +3468,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         onMove={moveChart}
       />
       </div>
-      <div data-sh-no-print className="flex items-stretch border-t border-[#e1e3e6] bg-[#f8f9fa] select-none" style={{ minHeight: 28 }}>
+      <div data-sh-no-print className="flex items-stretch border-t border-border bg-[var(--sh-header-bg)] select-none" style={{ minHeight: 28 }}>
         {/* Sheet tabs on the left */}
         <div className="flex-1 overflow-hidden">
           <SheetTabs
@@ -3477,10 +3486,10 @@ export function SheetsShell({ workbookId, onBack }: Props) {
         </div>
         {/* Status bar stats on the right */}
         {statusStats && (
-          <div className="flex items-center gap-1 px-3 text-[11px] text-[#5f6368] shrink-0 border-l border-[#e1e3e6]">
+          <div className="flex items-center gap-1 px-3 text-[11px] text-[var(--sh-header-text)] shrink-0 border-l border-border">
             {statusStats.count > 0 && (
               <button
-                className="px-2 py-0.5 rounded hover:bg-[#e8f0fe] hover:text-[#1a73e8] transition-colors"
+                className="px-2 py-0.5 rounded hover:bg-[var(--sh-header-bg-sel)] hover:text-[var(--sh-accent-text)] transition-colors"
                 title="Copy count"
                 onClick={() => navigator.clipboard?.writeText(String(statusStats.count))}
               >
@@ -3490,28 +3499,28 @@ export function SheetsShell({ workbookId, onBack }: Props) {
             {statusStats.numCount >= 2 && statusStats.sum !== null && (
               <>
                 <button
-                  className="px-2 py-0.5 rounded hover:bg-[#e8f0fe] hover:text-[#1a73e8] transition-colors"
+                  className="px-2 py-0.5 rounded hover:bg-[var(--sh-header-bg-sel)] hover:text-[var(--sh-accent-text)] transition-colors"
                   title="Copy sum"
                   onClick={() => navigator.clipboard?.writeText(String(statusStats.sum))}
                 >
                   Sum: <span className="font-medium">{formatStat(statusStats.sum!)}</span>
                 </button>
                 <button
-                  className="px-2 py-0.5 rounded hover:bg-[#e8f0fe] hover:text-[#1a73e8] transition-colors"
+                  className="px-2 py-0.5 rounded hover:bg-[var(--sh-header-bg-sel)] hover:text-[var(--sh-accent-text)] transition-colors"
                   title="Copy average"
                   onClick={() => navigator.clipboard?.writeText(String(statusStats.avg))}
                 >
                   Avg: <span className="font-medium">{formatStat(statusStats.avg!)}</span>
                 </button>
                 <button
-                  className="px-2 py-0.5 rounded hover:bg-[#e8f0fe] hover:text-[#1a73e8] transition-colors"
+                  className="px-2 py-0.5 rounded hover:bg-[var(--sh-header-bg-sel)] hover:text-[var(--sh-accent-text)] transition-colors"
                   title="Copy min"
                   onClick={() => navigator.clipboard?.writeText(String(statusStats.min))}
                 >
                   Min: <span className="font-medium">{formatStat(statusStats.min!)}</span>
                 </button>
                 <button
-                  className="px-2 py-0.5 rounded hover:bg-[#e8f0fe] hover:text-[#1a73e8] transition-colors"
+                  className="px-2 py-0.5 rounded hover:bg-[var(--sh-header-bg-sel)] hover:text-[var(--sh-accent-text)] transition-colors"
                   title="Copy max"
                   onClick={() => navigator.clipboard?.writeText(String(statusStats.max))}
                 >
@@ -3702,7 +3711,7 @@ export function SheetsShell({ workbookId, onBack }: Props) {
 
       {symbolsOpen && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40" onClick={() => setSymbolsOpen(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-[560px] max-h-[520px] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-bg-card rounded-lg shadow-xl w-[560px] max-h-[520px] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-3 border-b border-border">
               <h2 className="text-[15px] font-semibold text-text">Operators &amp; Symbols Reference</h2>
               <button onClick={() => setSymbolsOpen(false)} className="text-text-muted hover:text-text text-lg leading-none">✕</button>

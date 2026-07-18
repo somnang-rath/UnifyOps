@@ -1,3 +1,6 @@
+/* Shared design tokens — same palette, type scale, and focus ring as web/admin. */
+@import '@prism/ui/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

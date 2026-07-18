@@ -282,7 +282,7 @@ export function PrintPreviewModal({
               Save settings
             </Button>
           )}
-          <Button variant="grad" onClick={doPrint}>
+          <Button variant="primary" onClick={doPrint}>
             <Printer className="w-4 h-4 mr-1.5" />
             Print
           </Button>

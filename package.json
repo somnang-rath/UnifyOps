@@ -11,7 +11,8 @@
     "dev:live": "pnpm --filter live dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "seed": "pnpm --filter api seed"
+    "seed": "pnpm --filter api seed",
+    "test:security": "pnpm --filter api test:security"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"

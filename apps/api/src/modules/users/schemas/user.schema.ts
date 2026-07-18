@@ -57,7 +57,9 @@ export class User {
   @Prop({ enum: ['dark', 'light'], default: 'dark' })
   theme: 'dark' | 'light';
 
-  @Prop({ enum: ['comfy', 'compact'], default: 'comfy' })
+  // Compact is the product default (docs/plan/02-design-system.md §2.4).
+  // Existing rows keep whatever the user already chose.
+  @Prop({ enum: ['comfy', 'compact'], default: 'compact' })
   density: 'comfy' | 'compact';
 
   @Prop({ type: Object, default: {} })

@@ -77,7 +77,7 @@ export function DataValidationPanel({
   };
 
   return (
-    <div className="fixed top-0 right-0 bottom-0 z-40 w-[340px] bg-white border-l border-border shadow-xl flex flex-col text-[13px]">
+    <div className="fixed top-0 right-0 bottom-0 z-40 w-[340px] bg-bg-card border-l border-border shadow-xl flex flex-col text-[13px]">
       <div className="flex items-center justify-between px-3 h-11 border-b border-border">
         <div className="font-medium">Data validation</div>
         <button
@@ -187,7 +187,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                   max: undefined,
                 })
               }
-              className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white"
+              className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input"
             >
               {TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -211,7 +211,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                 }
                 placeholder="One per line"
                 rows={4}
-                className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent font-mono"
+                className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent font-mono"
               />
             </Field>
           )}
@@ -225,7 +225,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                   onChange={(e) =>
                     onChange({ op: e.target.value, min: undefined, max: undefined })
                   }
-                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white"
+                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input"
                 >
                   {NUMBER_OPS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -243,7 +243,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                       min: e.target.value === '' ? undefined : Number(e.target.value),
                     })
                   }
-                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent"
+                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent"
                 />
               </Field>
               {rule.op === 'between' && (
@@ -256,7 +256,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                         max: e.target.value === '' ? undefined : Number(e.target.value),
                       })
                     }
-                    className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent"
+                    className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent"
                   />
                 </Field>
               )}
@@ -270,7 +270,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                   data-no-csel
                   value={rule.op ?? 'contains'}
                   onChange={(e) => onChange({ op: e.target.value })}
-                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white"
+                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input"
                 >
                   {TEXT_OPS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -284,7 +284,7 @@ function RuleRow({ rule, isEditing, onSelect, onChange, onRemove }: RuleRowProps
                   type="text"
                   value={rule.values?.[0] ?? ''}
                   onChange={(e) => onChange({ values: [e.target.value] })}
-                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent"
+                  className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent"
                 />
               </Field>
             </>
@@ -367,7 +367,7 @@ function RangeInput({
           (e.target as HTMLInputElement).blur();
         }
       }}
-      className="w-full text-[12px] py-1 px-2 border border-border rounded bg-white outline-none focus:border-accent font-mono"
+      className="w-full text-[12px] py-1 px-2 border border-border rounded bg-bg-input outline-none focus:border-accent font-mono"
     />
   );
 }

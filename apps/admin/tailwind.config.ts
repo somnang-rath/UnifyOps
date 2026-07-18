@@ -1,10 +1,20 @@
 import type { Config } from 'tailwindcss';
+import preset from '@prism/ui/tailwind-preset';
 
+/**
+ * God Mode shares the product's theme (docs/plan/02-design-system.md): the same
+ * 13px type scale, 30px controls, radii, and motion as web and space.
+ *
+ * The `canvas`/`surface`/`fg`/`line`/`brand` names below are admin's original
+ * vocabulary, kept so its existing markup keeps compiling. globals.css now
+ * aliases them onto the shared tokens, so both names paint the same colours —
+ * new admin code should use the shared names (bg-card, text, border, accent).
+ */
 const config: Config = {
-  darkMode: ['class', '[data-theme="dark"]'],
+  presets: [preset],
   content: [
     './src/**/*.{ts,tsx}',
-    // Include shared UI package so its Tailwind classes are generated.
+    // Include the shared UI package so its Tailwind classes are generated.
     '../../packages/ui/src/**/*.{ts,tsx}',
   ],
   theme: {

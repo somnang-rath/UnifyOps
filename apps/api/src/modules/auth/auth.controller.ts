@@ -1,44 +1,57 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
+  Param,
   Post,
   Req,
   Res,
+  UseGuards,
   UsePipes,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
-import { AuthService } from './auth.service';
+import { AuthService, SessionMeta } from './auth.service';
 import {
   AcceptInviteDto,
   AcceptInviteSchema,
   LoginDto,
   LoginSchema,
+  RefreshDto,
+  RefreshSchema,
   RegisterDto,
   RegisterSchema,
+  StepUpDto,
+  StepUpSchema,
 } from './dto/auth.dto';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CsrfGuard } from '../../common/guards/csrf.guard';
+import {
+  clearCsrfCookie,
+  clearRefreshCookie,
+  readRefreshCookie,
+  setCsrfCookie,
+  setRefreshCookie,
+} from '../../common/auth/cookies';
+import {
+  AUD_ADMIN,
+  AUD_WEB,
+  type RestAudience,
+} from '../../common/auth/audience';
+import { Audit } from '../audit/audit.decorator';
+import type { AuthedUser } from './strategies/jwt.strategy';
 
-const REFRESH_COOKIE = 'unifyops_rt';
-
-// Scope the refresh cookie to a parent domain (e.g. `.example.com`) so web,
-// admin, and space on sibling subdomains share one session. Unset on localhost.
-const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
-
-function setRefreshCookie(res: Response, token: string) {
-  res.cookie(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/api/v1/auth',
-    domain: COOKIE_DOMAIN,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+function meta(req: Request): SessionMeta {
+  return {
+    ip: req.ip ?? null,
+    userAgent: req.headers['user-agent']?.slice(0, 300) ?? null,
+  };
 }
 
 @Controller('auth')
@@ -53,6 +66,7 @@ export class AuthController {
   @UsePipes(new ZodValidationPipe(RegisterSchema))
   async register(
     @Body() dto: RegisterDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     if (!this.cfg.get<boolean>('ALLOW_PUBLIC_REGISTER')) {
@@ -60,9 +74,13 @@ export class AuthController {
         'Registration is by invitation only. Ask a workspace admin to invite you.',
       );
     }
-    const { accessToken, refreshToken, user } = await this.auth.register(dto);
-    setRefreshCookie(res, refreshToken);
-    return { accessToken, user };
+    const { accessToken, refreshToken, user } = await this.auth.register(
+      dto,
+      meta(req),
+    );
+    setRefreshCookie(res, refreshToken, AUD_WEB);
+    const csrfToken = setCsrfCookie(res);
+    return { accessToken, csrfToken, user };
   }
 
   @Public()
@@ -71,52 +89,123 @@ export class AuthController {
   @UsePipes(new ZodValidationPipe(AcceptInviteSchema))
   async acceptInvite(
     @Body() dto: AcceptInviteDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessToken, refreshToken, user } = await this.auth.acceptInvite(dto);
-    setRefreshCookie(res, refreshToken);
-    return { accessToken, user };
+    const { accessToken, refreshToken, user } = await this.auth.acceptInvite(
+      dto,
+      meta(req),
+    );
+    setRefreshCookie(res, refreshToken, AUD_WEB);
+    const csrfToken = setCsrfCookie(res);
+    return { accessToken, csrfToken, user };
   }
 
+  /**
+   * Password login is the brute-force surface: 5 attempts per minute per IP.
+   *
+   * The key must name a throttler declared in ThrottlerModule.forRoot — ours are
+   * `short` and `medium`. An unknown name (like the conventional `default`) is
+   * silently ignored, leaving the route on the global 300/min limit.
+   */
   @Public()
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   @HttpCode(200)
   @Post('login')
   @UsePipes(new ZodValidationPipe(LoginSchema))
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessToken, refreshToken, user } = await this.auth.login(dto);
-    setRefreshCookie(res, refreshToken);
-    return { accessToken, user };
+    const audience: RestAudience = dto.audience;
+    const { accessToken, refreshToken, user } = await this.auth.login(
+      dto,
+      audience,
+      meta(req),
+    );
+    setRefreshCookie(res, refreshToken, audience);
+    const csrfToken = setCsrfCookie(res);
+    return { accessToken, csrfToken, user };
   }
 
   @Public()
+  @Throttle({ short: { limit: 30, ttl: 60_000 } })
+  @UseGuards(CsrfGuard)
   @HttpCode(200)
   @Post('refresh')
+  @UsePipes(new ZodValidationPipe(RefreshSchema))
   async refresh(
+    @Body() dto: RefreshDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const raw = req.cookies?.[REFRESH_COOKIE];
-    const { accessToken, refreshToken, user } = await this.auth.refresh(raw);
-    setRefreshCookie(res, refreshToken);
-    return { accessToken, user };
+    const audience: RestAudience = dto.audience;
+    const raw = readRefreshCookie(req, audience);
+    const { accessToken, refreshToken, user } = await this.auth.refresh(
+      raw,
+      meta(req),
+    );
+    setRefreshCookie(res, refreshToken, audience);
+    const csrfToken = setCsrfCookie(res);
+    return { accessToken, csrfToken, user };
   }
 
+  /** Confirm the password again to unlock instance mutations for 15 minutes. */
+  @Audit('auth.step-up')
+  @HttpCode(200)
+  @Post('step-up')
+  @UsePipes(new ZodValidationPipe(StepUpSchema))
+  async stepUp(@Body() dto: StepUpDto, @CurrentUser() user: AuthedUser) {
+    return this.auth.stepUp(user.id, dto.password, user.aud);
+  }
+
+  @Public()
+  @UseGuards(CsrfGuard)
   @HttpCode(204)
   @Post('logout')
+  @UsePipes(new ZodValidationPipe(RefreshSchema))
   async logout(
+    @Body() dto: RefreshDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    await this.auth.logout(req.cookies?.[REFRESH_COOKIE]);
-    // Must mirror the set attributes (path + domain) or the browser keeps it.
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth', domain: COOKIE_DOMAIN });
+    const audience: RestAudience = dto.audience;
+    await this.auth.logout(readRefreshCookie(req, audience));
+    clearRefreshCookie(res, audience);
+    clearCsrfCookie(res);
+  }
+
+  @Audit('auth.logout-all')
+  @HttpCode(204)
+  @Post('logout-all')
+  async logoutAll(
+    @CurrentUser() user: AuthedUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.logoutAll(user.id);
+    clearRefreshCookie(res, AUD_WEB);
+    clearRefreshCookie(res, AUD_ADMIN);
+    clearCsrfCookie(res);
+  }
+
+  @Get('sessions')
+  sessions(@CurrentUser() user: AuthedUser, @Req() req: Request) {
+    return this.auth.listSessions(user.id, readRefreshCookie(req, user.aud));
+  }
+
+  @Audit('auth.session.revoke')
+  @HttpCode(204)
+  @Delete('sessions/:familyId')
+  revokeSession(
+    @CurrentUser() user: AuthedUser,
+    @Param('familyId') familyId: string,
+  ) {
+    return this.auth.revokeSession(user.id, familyId);
   }
 
   @Get('me')
-  me(@CurrentUser() user: { id: string; email: string; role: string }) {
+  me(@CurrentUser() user: AuthedUser) {
     return user;
   }
 }

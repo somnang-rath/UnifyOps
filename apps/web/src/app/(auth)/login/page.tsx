@@ -73,7 +73,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        <Button type="submit" variant="grad" size="lg" full>
+        <Button type="submit" variant="primary" size="lg" full>
           Sign in to UnifyOps
         </Button>
 

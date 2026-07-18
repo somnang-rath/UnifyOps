@@ -26,6 +26,8 @@ import {
   ShieldCheck,
 } from "lucide-react"
 import { UnifyOpsLogo } from "@/components/icons/logo"
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher"
+import { useWorkspaceHref } from "@/hooks/use-workspaces"
 import { useAuthStore } from "@/stores/auth-store"
 import { useUIStore } from "@/stores/ui-store"
 import { useAssistantStore } from "@/stores/assistant-store"
@@ -48,6 +50,13 @@ interface NavItem {
   superAdminOnly?: boolean
   assistantOnly?: boolean
   badge?: BadgeKey
+  /**
+   * Lives under /[workspaceSlug] (ADR 0006). Only `projects` is genuinely
+   * workspace-scoped — Board/Calendar/Tasks/Approvals are per-USER views
+   * (KanbanService keys the board by userId; issues/MRs list by userId), so
+   * nesting them under a workspace would imply scoping the data doesn't have.
+   */
+  workspaceScoped?: boolean
 }
 
 const NAV: { section: string; items: NavItem[] }[] = [
@@ -56,7 +65,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { href: "/home", label: "Home", Icon: Home },
       { href: "/my-work", label: "My Work", Icon: CheckSquare, badge: "mywork" },
-      { href: "/projects", label: "Projects", Icon: Grid3x3 },
+      { href: "/projects", label: "Projects", Icon: Grid3x3, workspaceScoped: true },
     ],
   },
   {
@@ -94,6 +103,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const ws = useWorkspaceHref()
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const hidden = useUIStore((s) => s.sidebarHidden)
   const toggle = useUIStore((s) => s.toggleSidebar)
@@ -146,6 +156,8 @@ export function Sidebar() {
           <PanelLeft className={cn(collapsed ? "w-4 h-4" : "w-3.5 h-3.5")} />
         </button>
       </div>
+
+      <WorkspaceSwitcher collapsed={collapsed} />
 
       <button
         type="button"
@@ -204,13 +216,20 @@ export function Sidebar() {
                 </span>
               )}
               {visible.map((item) => {
+                // Workspace-scoped items render as /[slug]/… , and must stay
+                // active on both that and the legacy flat path (which redirects).
+                const href = item.workspaceScoped ? ws(item.href) : item.href
                 const active =
-                  pathname === item.href || pathname.startsWith(item.href + "/")
+                  pathname === href ||
+                  pathname.startsWith(href + "/") ||
+                  (item.workspaceScoped &&
+                    (pathname === item.href ||
+                      pathname.startsWith(item.href + "/")))
                 const count = item.badge ? (badges?.[item.badge] ?? 0) : 0
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={href}
                     className={cn(
                       "group relative flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-[13px] font-medium text-text-sub",
                       "transition-all duration-[var(--dur)] ease-[cubic-bezier(.4,0,.2,1)] hover:bg-bg-hover hover:text-text",

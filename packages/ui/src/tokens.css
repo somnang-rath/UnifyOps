@@ -1,0 +1,189 @@
+/**
+ * Design tokens shared by web, admin, and space (docs/plan/02-design-system.md).
+ *
+ * Only values that must change at runtime live here — theme (light/dark),
+ * accent, and density. Everything static is in tailwind-preset.ts.
+ *
+ * Import once, before the app's own CSS:
+ *     @import '@prism/ui/tokens.css';
+ */
+
+:root {
+  /* ── Accent (overridable per user via [data-accent]) ────────────── */
+  --a: #6366f1;
+  --a-50: #eef2ff;
+  --a-100: #e0e7ff;
+  --a-200: #c7d2fe;
+  --a-400: #818cf8;
+  --a-500: #6366f1;
+  --a-600: #4f46e5;
+  --a-700: #4338ca;
+
+  --grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+  --grad-soft: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.15),
+    rgba(139, 92, 246, 0.15),
+    rgba(236, 72, 153, 0.15)
+  );
+
+  /* ── Surfaces + text (light) ─────────────────────────────────────
+     @prism/ui components are written against these names. Any app that
+     imports this file gets working primitives; an app that invents its own
+     palette names (as admin did) must alias them onto these. */
+  --bg: #f7f7fb;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: #f0f0f5;
+  --bg-subtle: #fafafd;
+  --bg-code: #f8f8fc;
+  --text: #0a0a1a;
+  --text-sub: #4b4b66;
+  --text-muted: #8b8ba8;
+  --border: #e4e4ee;
+  --border-strong: #d4d4e0;
+
+  --shadow-xs: 0 1px 2px rgba(15, 15, 30, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 15, 30, 0.06), 0 1px 2px rgba(15, 15, 30, 0.04);
+  --shadow: 0 4px 12px rgba(15, 15, 30, 0.08), 0 1px 3px rgba(15, 15, 30, 0.04);
+  --shadow-lg: 0 12px 32px rgba(15, 15, 30, 0.1), 0 4px 8px rgba(15, 15, 30, 0.04);
+  --shadow-xl: 0 24px 56px rgba(15, 15, 30, 0.16);
+  --shadow-a: 0 8px 24px rgba(99, 102, 241, 0.28);
+
+  /* ── Control sizing (compact by default) ──────────────────────────
+     Was: md 34px / lg 40px. A row of these is what the product *is*, so
+     four pixels per control is four pixels times everything on screen. */
+  --ctl-xs: 22px;
+  --ctl-sm: 26px;
+  --ctl-md: 30px;
+  --ctl-lg: 36px;
+
+  /* Table/list row + shell */
+  --row-h: 32px;
+  --topbar-h: 40px;
+  --sidebar-w: 220px;
+  --sidebar-collapsed-w: 48px;
+  --peek-w: 480px;
+
+  /* Motion. Overridden to 0 under prefers-reduced-motion below. */
+  --dur: 120ms;
+  --dur-overlay: 160ms;
+
+  /* Semantic colours */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+
+  /* Work-item states (Plane's vocabulary) */
+  --state-backlog: #8b8ba8;
+  --state-unstarted: #6b7280;
+  --state-started: #f59e0b;
+  --state-completed: #10b981;
+  --state-cancelled: #ef4444;
+}
+
+/**
+ * Comfortable density: same design, more air. Opt-in per user; the app writes
+ * data-density on <html>.
+ *
+ * `comfy` is the value apps/web has always written — it is persisted in
+ * localStorage and in the users collection (`density` enum), so this selector
+ * matches it rather than renaming a value that already exists in the database.
+ */
+:root[data-density='comfortable'],
+:root[data-density='comfy'] {
+  --ctl-xs: 24px;
+  --ctl-sm: 30px;
+  --ctl-md: 34px;
+  --ctl-lg: 40px;
+  --row-h: 38px;
+  --topbar-h: 48px;
+}
+
+/* ── Dark theme ──────────────────────────────────────────────────── */
+:root[data-theme='dark'],
+.dark {
+  --bg: #0a0a14;
+  --bg-card: #12121e;
+  --bg-input: #1a1a2e;
+  --bg-hover: #1c1c30;
+  --bg-subtle: #0f0f1a;
+  --bg-code: #0a0a14;
+  --text: #f0f0f5;
+  --text-sub: #b4b4c8;
+  --text-muted: #6b6b85;
+  --border: #22223a;
+  --border-strong: #2d2d4a;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.6);
+
+  /**
+   * The accent tints must flip with the theme, not just the surfaces.
+   *
+   * --a-50/--a-100 are near-white in light mode, so a selected row or an accent
+   * badge rendered them as a white block on a dark page — unreadable. Deriving
+   * them from --a and the current surface keeps "a faint wash of the accent"
+   * true in both themes, and keeps working for every [data-accent] choice
+   * because it reads whatever --a currently is.
+   */
+  --a-50: color-mix(in srgb, var(--a) 16%, var(--bg-card));
+  --a-100: color-mix(in srgb, var(--a) 26%, var(--bg-card));
+  --a-200: color-mix(in srgb, var(--a) 38%, var(--bg-card));
+  /* Text sitting on those tints: light, not the light-mode dark ink. */
+  --a-700: color-mix(in srgb, var(--a) 45%, #ffffff);
+
+  /* State colours need a little more lift against a dark surface. */
+  --state-backlog: #9d9dba;
+  --state-unstarted: #7d8798;
+}
+
+/* ── Accent themes ───────────────────────────────────────────────── */
+[data-accent='violet']  { --a: #8b5cf6; --a-50: #f5f3ff; --a-100: #ede9fe; --a-600: #7c3aed; --a-700: #6d28d9; }
+[data-accent='pink']    { --a: #ec4899; --a-50: #fdf2f8; --a-100: #fce7f3; --a-600: #db2777; --a-700: #be185d; }
+[data-accent='rose']    { --a: #f43f5e; --a-50: #fff1f2; --a-100: #ffe4e6; --a-600: #e11d48; --a-700: #be123c; }
+[data-accent='amber']   { --a: #f59e0b; --a-50: #fffbeb; --a-100: #fef3c7; --a-600: #d97706; --a-700: #b45309; }
+[data-accent='emerald'] { --a: #10b981; --a-50: #ecfdf5; --a-100: #d1fae5; --a-600: #059669; --a-700: #047857; }
+[data-accent='cyan']    { --a: #06b6d4; --a-50: #ecfeff; --a-100: #cffafe; --a-600: #0891b2; --a-700: #0e7490; }
+[data-accent='blue']    { --a: #3b82f6; --a-50: #eff6ff; --a-100: #dbeafe; --a-600: #2563eb; --a-700: #1d4ed8; }
+
+/**
+ * Motion is decoration; content is not. Honour the OS setting rather than
+ * making people watch animations they asked not to see.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur: 0ms;
+    --dur-overlay: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/**
+ * One focus treatment for the whole product. :focus-visible (not :focus) so a
+ * mouse click does not leave a ring behind, while keyboard users always see
+ * exactly where they are.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--a, #6366f1);
+  outline-offset: 1px;
+  border-radius: inherit;
+}
+
+/* Numbers in tables/metrics must line up column-wise. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}

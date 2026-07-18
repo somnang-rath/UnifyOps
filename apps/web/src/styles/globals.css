@@ -1,3 +1,7 @@
+/* Shared design tokens — control sizing, density, motion, focus ring.
+   Must come before Tailwind's layers so app rules can still override. */
+@import '@prism/ui/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -32,13 +36,14 @@
   --pink: #ec4899;
   --rose: #f43f5e;
 
-  /* Radii + easing tokens (mirrors demo style.css) */
-  --r-xs: 4px;
-  --r-sm: 6px;
-  --r: 10px;
-  --r-lg: 14px;
-  --r-xl: 20px;
-  --r-2xl: 28px;
+  /* Radii + easing tokens. Tightened to match @prism/ui/tailwind-preset —
+     these raw vars and the Tailwind rounded-* scale must not disagree. */
+  --r-xs: 3px;
+  --r-sm: 4px;
+  --r: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+  --r-2xl: 16px;
   --r-full: 9999px;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -72,7 +77,22 @@
   --shadow-xl: 0 24px 56px rgba(15, 15, 30, 0.16);
   --shadow-a: 0 8px 24px rgba(99, 102, 241, 0.28);
 
-  --dur: 200ms;
+  /* Sheets / spreadsheet grid surfaces (light) */
+  --sh-canvas: #ffffff;
+  --sh-cell-bg: #ffffff;
+  --sh-text: #0a0a1a;
+  --sh-header-bg: #f8f9fa;
+  --sh-header-bg-hover: #e8f0fe;
+  --sh-header-bg-sel: #e8f0fe;
+  --sh-header-bg-sel-strong: #c8d8fb;
+  --sh-header-text: #5f6368;
+  --sh-header-border: #c0c0c0;
+  --sh-gridline: #e1e3e6;
+  --sh-accent: #1a73e8;
+  --sh-accent-text: #1a73e8;
+
+  /* Motion lives in @prism/ui/tokens.css (--dur: 120ms). Redefining it here
+     would silently win over the shared token — don't. */
 }
 
 [data-theme='dark'] {
@@ -98,6 +118,20 @@
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.6);
+
+  /* Sheets / spreadsheet grid surfaces (dark) */
+  --sh-canvas: #0f0f1a;
+  --sh-cell-bg: #12121e;
+  --sh-text: #e6e6f0;
+  --sh-header-bg: #1a1a2e;
+  --sh-header-bg-hover: #232344;
+  --sh-header-bg-sel: #23314f;
+  --sh-header-bg-sel-strong: #2c3f66;
+  --sh-header-text: #9a9ab5;
+  --sh-header-border: #2d2d4a;
+  --sh-gridline: #26263f;
+  --sh-accent: #5b9bff;
+  --sh-accent-text: #85b3ff;
 }
 
 [data-accent='violet']  { --a: #8b5cf6; --a-50: #f5f3ff; --a-100: #ede9fe; --a-600: #7c3aed; --a-700: #6d28d9; }
@@ -1157,10 +1191,10 @@
 /* === Sheets: copy marquee (marching ants) === */
 .sh-marquee {
   background-image:
-    linear-gradient(90deg, #1a73e8 50%, transparent 50%),
-    linear-gradient(90deg, #1a73e8 50%, transparent 50%),
-    linear-gradient(0deg, #1a73e8 50%, transparent 50%),
-    linear-gradient(0deg, #1a73e8 50%, transparent 50%);
+    linear-gradient(90deg, var(--sh-accent) 50%, transparent 50%),
+    linear-gradient(90deg, var(--sh-accent) 50%, transparent 50%),
+    linear-gradient(0deg, var(--sh-accent) 50%, transparent 50%),
+    linear-gradient(0deg, var(--sh-accent) 50%, transparent 50%);
   background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
   background-size: 8px 1.5px, 8px 1.5px, 1.5px 8px, 1.5px 8px;
   background-position: 0 0, 0 100%, 0 0, 100% 0;
@@ -1271,4 +1305,34 @@
     border: 1px solid #888;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Callout / admonition boxes — emitted by remark-callouts from
+ * `> [!NOTE|TIP|IMPORTANT|WARNING|CAUTION] …` blockquotes.
+ * ------------------------------------------------------------------ */
+.md-callout {
+  --cl: var(--a);
+  border: 1px solid color-mix(in srgb, var(--cl) 32%, var(--border));
+  border-left: 3px solid var(--cl);
+  border-radius: var(--r-sm, 6px);
+  background: color-mix(in srgb, var(--cl) 6%, transparent);
+  padding: 10px 14px;
+  margin: 12px 0;
+}
+.md-callout > *:first-child { margin-top: 0; }
+.md-callout > *:last-child { margin-bottom: 0; }
+.md-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--cl);
+  margin: 0 0 4px;
+}
+.md-callout-note { --cl: var(--a); }
+.md-callout-tip { --cl: var(--green); }
+.md-callout-important { --cl: var(--a-600, var(--a)); }
+.md-callout-warning { --cl: var(--amber); }
+.md-callout-caution { --cl: var(--red); }
 

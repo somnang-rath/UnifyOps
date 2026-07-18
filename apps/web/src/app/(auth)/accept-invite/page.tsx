@@ -125,7 +125,7 @@ function AcceptInviteForm() {
           </div>
         )}
 
-        <Button type="submit" variant="grad" size="lg" full>
+        <Button type="submit" variant="primary" size="lg" full>
           Activate my account
         </Button>
       </form>

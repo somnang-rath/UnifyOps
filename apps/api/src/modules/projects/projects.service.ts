@@ -13,7 +13,13 @@ import {
 import { ProjectAccessService } from './access/project-access.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Issue, IssueDocument } from '../issues/schemas/issue.schema';
-import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import {
+  CreateProjectDto,
+  DuplicateListDto,
+  UpdateBoardDto,
+  UpdateOverviewDto,
+  UpdateProjectDto,
+} from './dto/project.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AutomationsService } from '../automations/automations.service';
 
@@ -65,10 +71,7 @@ export class ProjectsService {
     // Scope `internal`/`public` visibility to workspaces the user belongs to,
     // so the instance behaves as isolated tenants rather than one shared pool.
     // Owned / member projects stay visible regardless of workspace.
-    const myWorkspaces = await this.workspaceModel
-      .find({ $or: [{ ownerId: me }, { members: me }] }, { _id: 1 })
-      .lean();
-    const workspaceIds = myWorkspaces.map((w) => w._id);
+    const workspaceIds = await this.access.myWorkspaceIds(userId);
     const projects = await this.projectModel
       .find({
         $or: [
@@ -80,8 +83,33 @@ export class ProjectsService {
           },
         ],
       })
+      .select('-overview')
       .sort({ updatedAt: -1 })
       .lean();
+    return this.withIssueCounts(projects);
+  }
+
+  /**
+   * Strict workspace isolation (ADR 0006): a project is listed if and only if its
+   * `workspaceId` matches — including ones the caller owns but that live in
+   * another workspace. Deliberately NOT {@link listForUser}'s rule, whose owner/
+   * member branches are workspace-independent by design (ADR 0003). Used by the
+   * workspace-scoped project list so the view means exactly what it says.
+   */
+  async listInWorkspace(userId: string, workspaceId: string) {
+    await this.access.assertWorkspaceMember(userId, workspaceId);
+    const projects = await this.projectModel
+      .find({ workspaceId: new Types.ObjectId(workspaceId) })
+      .select('-overview')
+      .sort({ updatedAt: -1 })
+      .lean();
+    return this.withIssueCounts(projects);
+  }
+
+  /** Attach issueCount/doneCount to a project list in one aggregate. */
+  private async withIssueCounts<T extends { _id: Types.ObjectId }>(
+    projects: T[],
+  ) {
     if (!projects.length) return projects;
 
     const counts = await this.issueModel.aggregate<{
@@ -136,6 +164,10 @@ export class ProjectsService {
   async create(userId: string, dto: CreateProjectDto) {
     const owner = new Types.ObjectId(userId);
     const members = await this.resolveMembers(dto.memberEmails, owner);
+    // Can't create into a workspace you don't belong to (ADR 0006).
+    if (dto.workspaceId) {
+      await this.access.assertWorkspaceMember(userId, dto.workspaceId);
+    }
     const project = await this.projectModel.create({
       name: dto.name,
       desc: dto.desc,
@@ -143,6 +175,9 @@ export class ProjectsService {
       color: dto.color,
       namespace: slug(dto.name),
       ownerId: owner,
+      workspaceId: dto.workspaceId
+        ? new Types.ObjectId(dto.workspaceId)
+        : null,
       members,
     });
     const newMemberIds = members
@@ -196,6 +231,115 @@ export class ProjectsService {
     }
 
     return saved;
+  }
+
+  /**
+   * Replace the project Overview blocks. Unlike {@link update} (owner-only), the
+   * Overview is collaborative: any project member may edit it. `assertProjectWritable`
+   * throws 404 (unreadable/missing) or 403 (readable but not a member).
+   */
+  async updateOverview(userId: string, id: string, dto: UpdateOverviewDto) {
+    await this.access.assertProjectWritable(userId, id);
+    const project = await this.projectModel.findById(id);
+    if (!project) throw new NotFoundException();
+    project.overview = dto.overview as typeof project.overview;
+    const saved = await project.save();
+    return saved.toObject();
+  }
+
+  /**
+   * Replace the project's Kanban board columns. Collaborative like the Overview:
+   * any project member may edit. Handles add / rename / recolor / WIP-limit /
+   * collapse / reorder — everything that only touches list metadata.
+   */
+  async updateBoard(userId: string, id: string, dto: UpdateBoardDto) {
+    await this.access.assertProjectWritable(userId, id);
+    const project = await this.projectModel.findById(id);
+    if (!project) throw new NotFoundException();
+    project.boardLists = dto.boardLists as typeof project.boardLists;
+    const saved = await project.save();
+    return saved.toObject();
+  }
+
+  /** Delete every card (issue) in one board list, leaving the list itself. */
+  async clearList(userId: string, id: string, listId: string) {
+    await this.access.assertProjectWritable(userId, id);
+    await this.issueModel.deleteMany({
+      projectId: new Types.ObjectId(id),
+      status: listId,
+    });
+    const project = await this.projectModel.findById(id).lean();
+    if (!project) throw new NotFoundException();
+    return project;
+  }
+
+  /** Remove a board list and delete all of its cards. */
+  async deleteList(userId: string, id: string, listId: string) {
+    await this.access.assertProjectWritable(userId, id);
+    const project = await this.projectModel.findById(id);
+    if (!project) throw new NotFoundException();
+    project.boardLists = project.boardLists.filter(
+      (l) => l.id !== listId,
+    ) as typeof project.boardLists;
+    const [saved] = await Promise.all([
+      project.save(),
+      this.issueModel.deleteMany({
+        projectId: new Types.ObjectId(id),
+        status: listId,
+      }),
+    ]);
+    return saved.toObject();
+  }
+
+  /**
+   * Clone a board list — its metadata (new id + given name) plus every card in
+   * it — inserting the copy immediately after the source list.
+   */
+  async duplicateList(
+    userId: string,
+    id: string,
+    listId: string,
+    dto: DuplicateListDto,
+  ) {
+    await this.access.assertProjectWritable(userId, id);
+    const project = await this.projectModel.findById(id);
+    if (!project) throw new NotFoundException();
+    const idx = project.boardLists.findIndex((l) => l.id === listId);
+    if (idx === -1) throw new NotFoundException();
+
+    const source = project.boardLists[idx];
+    const newId = new Types.ObjectId().toString();
+    const copy = {
+      id: newId,
+      name: dto.name,
+      color: source.color,
+      wipLimit: source.wipLimit,
+      collapsed: false,
+    };
+    project.boardLists.splice(idx + 1, 0, copy as (typeof project.boardLists)[0]);
+
+    const cards = await this.issueModel
+      .find({ projectId: new Types.ObjectId(id), status: listId })
+      .lean();
+    if (cards.length) {
+      await this.issueModel.insertMany(
+        cards.map((c) => ({
+          projectId: c.projectId,
+          title: c.title,
+          desc: c.desc,
+          type: c.type,
+          status: newId,
+          priority: c.priority,
+          assigneeId: c.assigneeId,
+          authorId: new Types.ObjectId(userId),
+          dueDate: c.dueDate,
+          labels: c.labels,
+          todos: c.todos,
+        })),
+      );
+    }
+    const saved = await project.save();
+    return saved.toObject();
   }
 
   async remove(userId: string, id: string) {

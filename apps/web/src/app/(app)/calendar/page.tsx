@@ -250,7 +250,7 @@ export default function CalendarPage() {
             Today
           </Button>
           <Button
-            variant="grad"
+            variant="primary"
             size="sm"
             onClick={() => setCreatingDate(tIso)}
           >

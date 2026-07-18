@@ -16,11 +16,15 @@ import {
   Search,
   Trash2,
 } from "lucide-react"
+import { RichTextEditor, type UploadedAttachment } from "@prism/editor"
 import { Button } from "@/components/ui/button"
 import { Confirm } from "@/components/ui/confirm"
+import { InputWithIcon } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { SkeletonText } from "@/components/ui/skeleton"
 import { MarkdownView } from "@/components/feature/issue/markdown-view"
+import { SyntaxHelpButton } from "./_components/syntax-help"
+import { api } from "@/lib/api"
 import { useDebounce } from "@/hooks/use-debounce"
 import { useProjects } from "@/hooks/use-projects"
 import { useWikiList, useWikiMutations, useWikiPage } from "@/hooks/use-wiki"
@@ -39,7 +43,10 @@ const emptyDraft = (): Draft => ({ active: false, title: "", content: "" })
 // Public Space origin — used to build the shareable link (ADR 0002 §6).
 const SPACE_URL = process.env.NEXT_PUBLIC_SPACE_URL ?? ""
 
-const PLACEHOLDER = "Start writing… Markdown is supported (headings, tables, code, links)."
+const PLACEHOLDER = "Start writing… use the toolbar for headings, tables, code, callout boxes…"
+
+// Matches the API's MAX_UPLOAD (files.controller).
+const ATTACH_MAX_BYTES = 25 * 1024 * 1024
 
 export default function WikiPageRoute() {
   const me = useAuthStore((s) => s.user)
@@ -202,6 +209,39 @@ export default function WikiPageRoute() {
     })
   }
 
+  // Upload a dropped/attached file and hand the editor its public URL. Reuses the
+  // generic files endpoint (also used by the comment composer).
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
+  const handleUpload = async (
+    file: File,
+  ): Promise<UploadedAttachment | null> => {
+    if (file.size > ATTACH_MAX_BYTES) {
+      toast(
+        `"${file.name}" is too large (max ${ATTACH_MAX_BYTES / 1024 / 1024}MB)`,
+        "error",
+      )
+      return null
+    }
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const { data } = await api.post<{
+        _id: string
+        name: string
+        mimeType: string
+      }>("/files/comment-upload", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return {
+        url: `${apiBase}/files/public/${data._id}`,
+        name: data.name,
+        isImage: (data.mimeType ?? file.type).startsWith("image/"),
+      }
+    } catch {
+      return null // api.ts toasts on 4xx/5xx
+    }
+  }
+
   const dirty =
     !!activePage &&
     (draft.title.trim() !== activePage.title ||
@@ -292,11 +332,12 @@ export default function WikiPageRoute() {
               right={
                 draft.active ? (
                   <>
+                    <SyntaxHelpButton />
                     {modeTabs}
                     {!activeId ? (
                       <Button
                         size="sm"
-                        variant="grad"
+                        variant="primary"
                         onClick={createPage}
                         disabled={saving}
                       >
@@ -310,7 +351,7 @@ export default function WikiPageRoute() {
                     ) : (
                       <Button
                         size="sm"
-                        variant="grad"
+                        variant="primary"
                         onClick={savePage}
                         disabled={saving || !dirty}
                       >
@@ -354,15 +395,21 @@ export default function WikiPageRoute() {
                     : "Select a project to begin."}
                 </div>
               ) : mode === "edit" ? (
-                <textarea
-                  value={draft.content}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, content: e.target.value }))
-                  }
-                  spellCheck={false}
-                  placeholder={PLACEHOLDER}
-                  className="flex-1 border-0 outline-none resize-none bg-bg-card font-mono text-[13px] leading-[1.7] px-7 py-6 placeholder:text-text-muted/60"
-                />
+                <div className="flex-1 overflow-y-auto px-5 py-5">
+                  <RichTextEditor
+                    key={activeId ?? "new"}
+                    value={draft.content}
+                    onChange={(md) =>
+                      setDraft((d) => ({ ...d, content: md }))
+                    }
+                    onUpload={handleUpload}
+                    placeholder={PLACEHOLDER}
+                    toolbar="full"
+                    minHeight={440}
+                    autofocus
+                    className="max-w-[860px] mx-auto"
+                  />
+                </div>
               ) : (
                 <div className="flex-1 overflow-y-auto px-7 py-6">
                   {draft.content.trim() ? (
@@ -519,7 +566,7 @@ const PageBrowser = ({
           </span>
           <Button
             size="sm"
-            variant="grad"
+            variant="primary"
             onClick={() => {
               onNew()
               setOpen(false)
@@ -530,17 +577,15 @@ const PageBrowser = ({
           </Button>
         </div>
         <div className="px-3 py-2 border-b border-border">
-          <label className="flex items-center gap-2 px-3 bg-bg-card border-[1.5px] border-border rounded-sm transition-colors duration-[var(--dur)] focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(99,102,241,.12)]">
-            <Search className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search pages…"
-              disabled={!projectId}
-              className="flex-1 min-w-0 bg-transparent border-0 outline-none py-2 text-[12.5px] placeholder:text-text-muted disabled:cursor-not-allowed"
-            />
-          </label>
+          <InputWithIcon
+            icon={<Search />}
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search pages…"
+            aria-label="Search pages"
+            disabled={!projectId}
+          />
         </div>
         <div className="flex-1 overflow-y-auto py-1.5">
           {!projectId ? (

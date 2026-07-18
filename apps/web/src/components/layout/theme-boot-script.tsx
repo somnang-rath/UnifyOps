@@ -6,7 +6,7 @@ export function ThemeBootScript() {
   const code = `(function(){try{
     var t=localStorage.getItem('pr_theme')||'dark';
     var a=localStorage.getItem('pr_accent')||'indigo';
-    var d=localStorage.getItem('pr_density')||'comfy';
+    var d=localStorage.getItem('pr_density')||'compact';
     var h=document.documentElement;
     h.setAttribute('data-theme',t);
     h.setAttribute('data-accent',a);

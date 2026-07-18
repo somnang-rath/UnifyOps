@@ -35,7 +35,30 @@ export interface ApiClientOptions {
   shouldRefresh?: (error: AxiosError) => boolean;
   /** Send cookies (refresh token) with requests. Default true. */
   withCredentials?: boolean;
+  /**
+   * Echo the double-submit CSRF cookie as a header on state-changing requests.
+   * Default true. Harmless when the API does not demand it.
+   */
+  csrf?: boolean;
 }
+
+export const CSRF_COOKIE = 'prism_csrf';
+export const CSRF_HEADER = 'X-CSRF-Token';
+
+/**
+ * Read the CSRF cookie the API set at login/refresh. It is deliberately not
+ * httpOnly: only same-origin script can read it, which is what makes echoing
+ * it back proof the request did not come from a cross-site page.
+ */
+export function readCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(
+    new RegExp(`(?:^|;\\s*)${CSRF_COOKIE}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+const SAFE_METHODS = new Set(['get', 'head', 'options']);
 
 /** Opt-out flag: skip the global error handler for a single request. */
 export interface RequestMeta {
@@ -48,9 +71,16 @@ export function createApiClient(opts: ApiClientOptions): AxiosInstance {
     withCredentials: opts.withCredentials ?? true,
   });
 
+  const csrfEnabled = opts.csrf ?? true;
+
   client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     const token = opts.getToken?.();
     if (token) config.headers.Authorization = `Bearer ${token}`;
+
+    if (csrfEnabled && !SAFE_METHODS.has((config.method ?? 'get').toLowerCase())) {
+      const csrf = readCsrfToken();
+      if (csrf) config.headers[CSRF_HEADER] = csrf;
+    }
     return config;
   });
 
@@ -90,3 +120,12 @@ export function createApiClient(opts: ApiClientOptions): AxiosInstance {
 }
 
 export type { AxiosInstance, AxiosError } from 'axios';
+
+export {
+  createSession,
+  type Session,
+  type SessionAudience,
+  type SessionOptions,
+  type SessionUser,
+  type AuthResponse,
+} from './session';

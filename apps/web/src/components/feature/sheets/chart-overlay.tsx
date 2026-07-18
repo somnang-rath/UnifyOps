@@ -110,7 +110,7 @@ export function ChartOverlay({
         return (
           <div
             key={chart.id}
-            className="absolute z-20 bg-white border border-[#dadce0] rounded-lg shadow-lg flex flex-col group/chart"
+            className="absolute z-20 bg-bg-card border border-border rounded-lg shadow-lg flex flex-col group/chart"
             style={{
               left: rect.x,
               top: rect.y,
@@ -123,7 +123,7 @@ export function ChartOverlay({
           >
             {/* Header / drag handle */}
             <div
-              className="flex items-center gap-2 px-2.5 h-8 border-b border-[#eee] cursor-move select-none shrink-0"
+              className="flex items-center gap-2 px-2.5 h-8 border-b border-border cursor-move select-none shrink-0"
               onPointerDown={(e) => startDrag(e, chart, 'move')}
             >
               <span className="flex-1 truncate text-[12px] font-medium text-text">

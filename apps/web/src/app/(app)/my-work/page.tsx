@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronDown, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { useAuthStore } from '@/stores/auth-store';
 import { useIssues, useIssueMutations } from '@/hooks/use-issues';
@@ -147,12 +148,11 @@ export default function MyWorkPage() {
               { value: 'all', label: 'All tasks' },
             ]}
           />
-          <Link
-            href="/issues?new=1"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-white rounded-sm bg-grad shadow-a transition-all duration-[var(--dur)] hover:-translate-y-px"
-          >
-            <Plus className="w-3.5 h-3.5" /> New task
-          </Link>
+          <Button asChild variant="primary">
+            <Link href="/issues?new=1">
+              <Plus /> New task
+            </Link>
+          </Button>
         </div>
       </div>
 

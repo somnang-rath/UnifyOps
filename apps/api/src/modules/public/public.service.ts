@@ -5,6 +5,7 @@ import {
   WikiPage,
   WikiPageDocument,
 } from '../wiki/schemas/wiki-page.schema';
+import { sanitizePublicHtml } from './sanitize';
 
 /**
  * Anonymous read path for the public Space (ADR 0002 §4).
@@ -35,7 +36,10 @@ export class PublicService {
       type: 'wiki' as const,
       anchor,
       title: page.title,
-      contentHTML: page.content,
+      // Sanitized here as well as in apps/space: the API must never serve
+      // script-bearing HTML to any consumer, and space must not have to trust
+      // its upstream (docs/plan/01 §3.4).
+      contentHTML: sanitizePublicHtml(page.content),
       updatedAt: page.updatedAt,
     };
   }

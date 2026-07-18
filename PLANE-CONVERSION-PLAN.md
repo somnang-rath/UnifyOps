@@ -258,6 +258,58 @@ MONGODB_URI=mongodb://localhost:27017/prism
 - [x] Docker: បន្ថែម admin, space, live services — all 7 services build + boot; publish→space verified E2E through compose (2026-07-10). Fixed 2 blocking gaps: api service was missing `LIVE_INTERNAL_TOKEN` (required by env schema → api couldn't boot); web Dockerfile predated `packages/` (missing `@prism/*` manifests+source → build failed)
 - [ ] E2E test គ្រប់ apps
 
+> **v2 (Phase 5–8)** — ផែនការលម្អិត៖ `docs/plan/` (01 security · 02 design system ·
+> 03 feature parity · 04 structure)។ **DRAFT — រង់ចាំការយល់ព្រម។**
+
+### Phase 5 — Security core ✅ (`docs/plan/01-security-model.md`)
+- [x] JWT `aud` claim + verify per app (`web` / `admin` / `collab`) — `RequireAudience` + global `AudienceGuard`; JwtStrategy `audience: [web, admin]` បដិសេធ collab token លើ REST ទាំងស្រុង
+- [x] Collab token: `POST /wiki/:id/collab-token` (5 នាទី, scoped 1 doc via `doc` claim) + live verify `aud`+`doc` + re-auth sweeper រៀងរាល់ 5 នាទី (`apps/live/src/reauth.ts`) + `useCollabToken` ក្នុង `@prism/editor`
+- [x] Access token → in-memory តែប៉ុណ្ណោះ — admin លុប localStorage (web ជា Zustand in-memory រួចហើយ); cookie ដាច់តាម audience (`prism_rt_web` / `prism_rt_admin`)
+- [x] Refresh rotation + reuse detection (family + 60s grace សម្រាប់ multi-tab) + `GET/DELETE /auth/sessions` + `/auth/logout-all`
+- [x] CSRF double-submit (`CsrfGuard` + `prism_csrf`) លើ `/auth/refresh` និង `/auth/logout` + SameSite=Lax + path `/api/v1/auth`
+- [x] Throttle login 5/នាទី/IP — **រកឃើញ bug:** `@Throttle({default:…})` យោងឈ្មោះមិនមាន → ត្រូវបានមិនអើពើស្ងាត់ៗ; កែទៅ `short`
+- [x] Step-up re-auth (`POST /auth/step-up`, `@RequireStepUp()`, 15 នាទី) លើ instance mutations
+- [x] `AuditLog` schema + `AuditInterceptor` + `@Audit()` + `GET /audit` (admin-only, read-only)
+- [x] Instance secrets — **រកឃើញ bug:** `isEncrypted` មកពី client (អាចសរសេរ API key ជា non-secret រួចអានវិញ); ឥឡូវ server សម្រេចតាម `isSecretConfigKey()`
+- [x] Space: sanitize ២ ជាន់ (API `sanitizePublicHtml` + space) + CSP តឹង (`script-src 'self'`, `frame-ancestors 'none'`) + `robots.ts` (`SPACE_INDEXING=off`)
+- [x] **E2E security suite — 18/18 pass** ប្រឆាំង mongo + api:4000 (2026-07-17): `pnpm test:security`
+  - រកឃើញបន្ថែម: `ZodValidationPipe` រំលង non-body args → `@Query(new ZodValidationPipe(…))` ទាំង ៩ កន្លែង **មិន validate អ្វីសោះ** (គ្មាន default/limit) → បន្ថែម `ZodQueryPipe` + migrate
+  - រកឃើញបន្ថែម: nullable `@Prop` (`string | null`) ធ្វើឲ្យ Mongoose បោះ `CannotDetermineTypeError` ពេល boot ទោះ build ជាប់
+
+### Phase 6 — Design system 🟡 (`docs/plan/02-design-system.md`)
+- [x] `packages/ui`: `tokens.css` + `tailwind-preset.ts` — **វាស់ពិតក្នុង browser:** button md **30px** (ពី 34), sm 26, lg 36, xs 22 · radius **6px** (ពី 10) · border **1px** (ពី 1.5) · font 13px · transition **120ms** (ពី 200) · row **32px**
+- [x] Tier 1 primitives → `packages/ui` (Button, IconButton, Input, Textarea, Field, InputWithIcon, SearchInput, Badge, StateBadge, Avatar, AvatarGroup, Checkbox, Radio, Switch, Label, Kbd, Separator, Spinner, Tooltip) + web re-export shim → **call sites 0 ផ្លាស់ប្តូរ**
+- [x] Tier 2 composites (Modal ជាមួយ focus trap/Escape/body lock · Tabs ARIA + arrow keys · Table 32px row sticky header)
+- [ ] Tier 3 product (CommandPalette ⌘K · IssuePeek · FilterBar · SidebarNav) — ទុកឲ្យ Phase 7 ដែលប្រើវាពិត
+- [ ] `AppShell` រួម (sidebar 220/48px · topbar 40px) — web + admin
+- [x] admin + space adopt preset ដដែល — admin vocabulary (`--canvas`/`--surface`/`--fg`) ឥឡូវជា alias នៃ shared tokens; ទាំង 3 apps build ✅
+- [x] Density `compact | comfy` — compact ជា default ថ្មី (web boot script, theme store, user schema)។ **រក្សា `comfy`** ជាឈ្មោះព្រោះវាមានក្នុង DB (users.density enum) រួចហើយ។ វាស់បាន: compact 30/32px · comfy 34/38px
+- [x] A11y: focus-visible ring តែមួយ · `prefers-reduced-motion` · Field wire `aria-invalid`/`aria-describedby` (error មិនធ្លាប់ត្រូវបានប្រកាស) · StateBadge មាន shape+text មិនត្រឹមពណ៌ · Modal/Tabs ARIA ពេញ
+- [x] `/debug/ui` gallery — គ្រប់ component គ្រប់ state, បើកបានក្នុង web
+- [x] **Verified in a real browser** (2026-07-17): login → `/debug/ui` → វាស់ computed styles + screenshot light/dark/compact/comfy។ រកឃើញ ២ bug ដែល typecheck មិនឃើញ:
+  - accent ramp (`--a-50`/`--a-700`) មិន flip តាម dark theme → selected row និង accent badge ជាផ្ទាំង**ស**លើផ្ទៃខ្មៅ។ ឥឡូវ derive ដោយ `color-mix` ពី `--a` + surface
+  - `states.tsx` នៅប្រើ raw `bg-gray-200`/`text-blue-600` (Phase 0 stub) → មិនគោរព theme; ឥឡូវលើ tokens ហើយ Skeleton ទ្រទ្រង់ API ទាំងពីរ (`rows` របស់ admin និង `className` របស់ web)
+
+### Phase 7 — Feature parity A 🟡 (`docs/plan/03-feature-parity.md`)
+- [x] `views` module ពេញលេញ (schema + Zod dto + service + controller + module + register) — saved view: layout/filters/groupBy/sortBy/displayProperties, project-scoped ឬ workspace-scoped, owner + isShared visibility, reorder។ Filter keys ដែលមិនស្គាល់ត្រូវ **strip** (forward-compat)
+- [x] Sub-issues — `parentId` (មានលើ schema រួច) wire ចូល create/update + self-parent guard + `GET /issues/:id/children` ជាមួយ done/total rollup
+- [x] Issue relations — `IssueRelation` schema (blocks/relates_to/duplicate, unique index) + `GET/POST /issues/:id/relations` + `DELETE /issues/relations/:id`។ រក្សា `blocks` ទិសតែមួយ បង្ហាញ `blocked_by` ដល់ target (inverse)។ self/duplicate guard
+- [x] Frontend: `use-issue-links` + `use-views` hooks + `IssueLinks` component (sub-issues rollup + relations grouped by kind + add/remove) ដាក់លើ issue detail page។ web build ✅
+- [x] **E2E 13/13 pass** ប្រឆាំង mongo + api:4000 (2026-07-17): `pnpm --filter api test:phase7` — view CRUD + filter strip + workspace scope · sub-issue rollup · self-parent 400 · relation inverse · duplicate/self 400 · remove clears both ends
+- [ ] Saved-views UI bar (project) + filter/group/sort — hooks រួច, UI bar ទុកសម្រាប់ Phase 7b
+- [ ] Issue peek side-panel (`?peek=<id>`) — sub-issues/relations ឥឡូវនៅលើ detail page ពេញ; peek panel ជា follow-up
+- [ ] Bulk operations · route consolidation (`[workspaceSlug]`) · layout ជា search param — ទុកសម្រាប់ Phase 7b (route migration មិនគួរបំបែក app ដែលដំណើរការ mid-stream)
+
+### Phase 8 — Feature parity B 🟡
+- [x] Intake / triage module — `IntakeForm` + `IntakeSubmission` schemas, member CRUD, **public anonymous submit** (throttled 5/min/IP, no internal ids leaked), triage accept→creates real work item / decline, double-triage guard
+- [x] API tokens (PAT) — **រកឃើញ implementation ស្រាប់ក្នុង users module** (`prs_` token, CRUD នៅ `/users/me/api-tokens`) ដែល**គ្មាន verify/guard** ដូច្នេះ token មិនអាចប្រើ authenticate បាន។ លុប duplicate module របស់ខ្ញុំ, បំពេញ `verifyApiToken()` + JwtAuthGuard `prs_` bearer path (aud=web, 401 on bad token, lastUsedAt touch)
+- [x] Webhooks — `Webhook` + `WebhookDelivery` schemas, workspace-scoped CRUD, HMAC-SHA256 signature (`X-Prism-Signature`), delivery log (TTL 30d), auto-disable after 15 straight failures, SSRF guard (http/https only), `issue.created` + `intake.received` dispatch
+- [x] **E2E 16/16 pass** (`pnpm --filter api test:phase8`, 2026-07-17): PAT create/list/auth/revoke + aud=web gate · webhook secret-once + no-leak + SSRF reject · **full intake→submission→signed webhook (HMAC verified)→triage→issue** end-to-end · regression Phase 5 (18) + Phase 7 (13) green = **47 checks total**
+- [ ] Publish project / view ទៅ space (anchor ពង្រីក) — ត្រូវការ views publish flow (follow-up)
+- [ ] Notes collab (`blocks[]` → doc model) + presence + version history — large, deferred
+- [ ] OAuth Google/GitHub តាម instance config — **ត្រូវការ OAuth app credentials ខាងក្រៅ (client id/secret)**; instance config toggles + guard scaffolding រួច (Phase 5 `aud` + instance secret masking), តែ callback flow ត្រូវការ real provider setup
+- [ ] Workspace analytics + templates + CSV import — follow-up
+
 ---
 
 ## 9. Docker (គោលដៅ)

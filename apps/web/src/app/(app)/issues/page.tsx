@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Plus, Search } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { InputWithIcon } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Tabs } from '@/components/ui/tabs';
 import { useIssues } from '@/hooks/use-issues';
@@ -89,7 +90,7 @@ export default function IssuesPage() {
             Track bugs, tasks, and features
           </p>
         </div>
-        <Button variant="grad" onClick={() => setCreating(true)}>
+        <Button variant="primary" onClick={() => setCreating(true)}>
           <Plus className="w-3.5 h-3.5" /> New task
         </Button>
       </div>
@@ -106,15 +107,14 @@ export default function IssuesPage() {
         />
         <div className="flex-1" />
 
-        <div className="flex items-center gap-2 min-w-[220px] px-3 bg-bg-card border-[1.5px] border-border rounded-sm transition-[border-color,box-shadow] duration-[var(--dur)] focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(99,102,241,.12)]">
-          <Search className="w-3.5 h-3.5 text-text-muted" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search…"
-            className="flex-1 border-0 bg-transparent py-2 text-[13px] outline-none placeholder:text-text-muted"
-          />
-        </div>
+        <InputWithIcon
+          icon={<Search />}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search…"
+          aria-label="Search tasks"
+          className="w-[220px]"
+        />
 
         <Select
           inline
@@ -227,7 +227,7 @@ function Empty({ onCreate }: { onCreate: () => void }) {
       <p className="text-[13px] text-text-muted max-w-[340px]">
         Try adjusting your filters or create a new one.
       </p>
-      <Button variant="grad" onClick={onCreate}>
+      <Button variant="primary" onClick={onCreate}>
         <Plus className="w-3.5 h-3.5" /> New task
       </Button>
     </div>

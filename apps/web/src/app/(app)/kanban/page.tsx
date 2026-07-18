@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Confirm } from '@/components/ui/confirm';
 import {
@@ -643,13 +644,14 @@ export default function KanbanPage() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          <input
+          <Input
             ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search… (press /)"
-            className="rounded-sm border-[1.5px] border-border bg-bg-input text-text text-[13px] px-3 py-[7px] min-w-[160px] focus:outline-none focus:border-accent"
+            aria-label="Search tasks"
+            className="w-[180px]"
           />
           <Select
             inline
@@ -683,41 +685,33 @@ export default function KanbanPage() {
           />
           <Button
             variant="outline"
-            size="sm"
-            className="py-2"
             title={density === 'comfy' ? 'Switch to compact cards' : 'Switch to comfortable cards'}
             onClick={() =>
               setDensity((d) => (d === 'comfy' ? 'compact' : 'comfy'))
             }
           >
-            {density === 'comfy' ? (
-              <Rows3 className="w-3.5 h-3.5" />
-            ) : (
-              <LayoutGrid className="w-3.5 h-3.5" />
-            )}
+            {density === 'comfy' ? <Rows3 /> : <LayoutGrid />}
             {density === 'comfy' ? 'Compact' : 'Comfortable'}
           </Button>
           {!readonly && (
             <Button
               variant="outline"
-              size="sm"
               data-kb-pop-anchor
               onClick={(e) => {
                 setAddListName('');
                 setAddListAnchor(anchorFromButton(e));
               }}
-              className='py-2'
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus />
               Add list
             </Button>
           )}
           {!readonly && (
             <Button
-              variant="grad"
+              variant="primary"
               onClick={() => setCreating(fallbackId ?? 'todo')}
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus />
               New task
             </Button>
           )}
@@ -1016,7 +1010,7 @@ export default function KanbanPage() {
                       />
                       <div className="kb-inline-actions">
                         <Button
-                          variant="grad"
+                          variant="primary"
                           size="sm"
                           onClick={() => submitInlineAdd(col.id)}
                         >
@@ -1078,7 +1072,7 @@ export default function KanbanPage() {
           </div>
           <div className="kb-inline-actions" style={{ padding: '4px 2px 2px' }}>
             <Button
-              variant="grad"
+              variant="primary"
               size="sm"
               onClick={() => {
                 addList(addListName);

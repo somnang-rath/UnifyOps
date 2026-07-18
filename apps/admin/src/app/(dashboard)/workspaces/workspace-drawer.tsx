@@ -13,6 +13,9 @@ import {
 } from '@/hooks/useInstance';
 import { inputCls } from '@/components/ui';
 
+/** Mirrors the API's SLUG regex in apps/api workspaces/dto/workspace.dto.ts. */
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 export function WorkspaceDrawer({
   workspaceId,
   onClose,
@@ -113,8 +116,17 @@ function EditSection({
   const dirty =
     form.name !== name || form.slug !== slug || form.color !== color;
 
+  // Mirrors the API's SLUG regex (workspaces/dto/workspace.dto.ts) so a bad slug
+  // is caught here instead of coming back as a server 400.
+  const slugErr = !form.slug.trim()
+    ? 'Slug is required'
+    : !SLUG_RE.test(form.slug)
+      ? 'Lowercase letters, numbers and single hyphens only'
+      : null;
+
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
+    if (slugErr) return;
     setErr(null);
     setSaved(false);
     try {
@@ -144,7 +156,19 @@ function EditSection({
               setForm((f) => ({ ...f, slug: e.target.value.toLowerCase() }))
             }
             className={`${inputCls} font-mono`}
+            aria-invalid={!!slugErr}
+            aria-describedby="slug-help"
           />
+          <span id="slug-help" className="block text-[11px]">
+            {slugErr ? (
+              <span className="text-red-600 dark:text-red-400">{slugErr}</span>
+            ) : (
+              <span className="text-fg-muted">
+                Identifies the workspace in URLs — renaming it breaks existing
+                links.
+              </span>
+            )}
+          </span>
         </label>
         <label className="flex items-center gap-3">
           <input
@@ -160,7 +184,7 @@ function EditSection({
           <Button
             type="submit"
             size="sm"
-            disabled={!dirty || update.isPending}
+            disabled={!dirty || !!slugErr || update.isPending}
           >
             {update.isPending ? 'Saving…' : 'Save'}
           </Button>
