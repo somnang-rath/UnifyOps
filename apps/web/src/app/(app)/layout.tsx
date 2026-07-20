@@ -32,8 +32,20 @@ export default function AppLayout({
   const toggleSidebarVisibility = useUIStore((s) => s.toggleSidebarVisibility);
   const isSplit = useLayoutStore((s) => s.root.type === 'split');
   // Panes render sibling routes in an <iframe> with `?chrome=0`, which loads
-  // this same layout without the sidebar/topbar/pane shell.
-  const bare = searchParams.get('chrome') === '0';
+  // this same layout without the sidebar/topbar/pane shell. The query is the
+  // explicit signal, but it can be dropped by an in-app redirect (project index
+  // → /overview, workspace-mismatch, legacy deep links). Being framed at all is
+  // an unambiguous, redirect-proof signal that we're a pane, so fall back to it.
+  const [inIframe, setInIframe] = useState(false);
+  useEffect(() => {
+    try {
+      setInIframe(window.self !== window.top);
+    } catch {
+      // Cross-origin access throws — that only happens when we *are* embedded.
+      setInIframe(true);
+    }
+  }, []);
+  const bare = searchParams.get('chrome') === '0' || inIframe;
   const [booted, setBooted] = useState(
     () => !!(useAuthStore.getState().user && useAuthStore.getState().accessToken),
   );
