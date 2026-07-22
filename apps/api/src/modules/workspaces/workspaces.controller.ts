@@ -6,12 +6,17 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { WorkspacesService } from './workspaces.service';
+import { WorkspaceAnalyticsService } from './workspace-analytics.service';
 import { InstanceAdminGuard } from '../instance/instance-admin.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  ZodQueryPipe,
+  ZodValidationPipe,
+} from '../../common/pipes/zod-validation.pipe';
 import {
   AddMemberDto,
   AddMemberSchema,
@@ -20,10 +25,17 @@ import {
   UpdateWorkspaceDto,
   UpdateWorkspaceSchema,
 } from './dto/workspace.dto';
+import {
+  AnalyticsQuery,
+  AnalyticsQuerySchema,
+} from './dto/workspace-analytics.dto';
 
 @Controller('workspaces')
 export class WorkspacesController {
-  constructor(private workspaces: WorkspacesService) {}
+  constructor(
+    private workspaces: WorkspacesService,
+    private analytics: WorkspaceAnalyticsService,
+  ) {}
 
   // ── Instance-admin (God Mode) ─────────────────────────────────────
   // Declared before ':id' so the literal /admin and /all segments are not
@@ -122,6 +134,19 @@ export class WorkspacesController {
   @Get(':id')
   byId(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.workspaces.byIdForUser(user.id, id);
+  }
+
+  /**
+   * Workspace-scoped issue analytics. Member-gated (404 for non-members, like
+   * every other workspace read); `projectId` must belong to the workspace.
+   */
+  @Get(':id/analytics')
+  workspaceAnalytics(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Query(new ZodQueryPipe(AnalyticsQuerySchema)) q: AnalyticsQuery,
+  ) {
+    return this.analytics.forWorkspace(user.id, id, q);
   }
 
   @Patch(':id')

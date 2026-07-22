@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import type { Issue } from '@/schemas/issue';
 
-const STATUS: Record<string, { cls: string; label: string }> = {
+export const STATUS: Record<string, { cls: string; label: string }> = {
   // Standard statuses
   todo:       { cls: 'bg-bg-hover text-text-sub',              label: 'To do'      },
   inprogress: { cls: 'bg-[rgba(245,158,11,.12)] text-amber',   label: 'In progress'},
@@ -11,6 +11,29 @@ const STATUS: Record<string, { cls: string; label: string }> = {
   design:     { cls: 'bg-[rgba(168,85,247,.12)] text-violet',  label: 'In Design'       },
   ready:      { cls: 'bg-[rgba(236,72,153,.12)] text-pink',    label: 'Ready to Publish' },
   discovery:  { cls: 'bg-[rgba(99,102,241,.12)] text-accent',  label: 'Discovery'       },
+};
+
+/**
+ * Raw color values for charts (CSS vars where a token exists, hex where it
+ * doesn't). Pills carry Tailwind classes; charts need raw `fill`/`background`
+ * values — both live here so chart hues and pill hues never drift apart.
+ * Unknown status keys fall back to `var(--a)` (same rule as StatusPill).
+ */
+export const STATUS_COLOR: Record<string, string> = {
+  todo:       'var(--text-muted)',   // matches the neutral pill
+  inprogress: 'var(--warning)',      // amber
+  review:     'var(--info)',         // blue
+  done:       'var(--success)',      // green
+  design:     '#a855f7',             // violet — role-board columns, same as pill tints
+  ready:      '#ec4899',
+  discovery:  'var(--a)',
+};
+
+export const PRIORITY_COLOR: Record<string, string> = {
+  critical: 'var(--danger)',
+  high:     '#f97316',               // orange — matches PRIO_DOT
+  medium:   'var(--warning)',
+  low:      '#94a3b8',               // slate — matches PRIO_DOT
 };
 
 export function StatusPill({ status }: { status: string }) {

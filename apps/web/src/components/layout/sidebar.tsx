@@ -24,6 +24,7 @@ import {
   Users,
   Zap,
   Activity,
+  BarChart3,
   ShieldCheck,
 } from "lucide-react"
 import { UnifyOpsLogo } from "@/components/icons/logo"
@@ -77,6 +78,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/kanban", label: "Board", Icon: Trello },
       { href: "/calendar", label: "Calendar", Icon: Calendar },
       { href: "/approvals", label: "Approvals", Icon: GitMerge, badge: "approvals" },
+      { href: "/analytics", label: "Analytics", Icon: BarChart3 },
     ],
   },
   {

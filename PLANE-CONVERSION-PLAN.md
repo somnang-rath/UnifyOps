@@ -308,7 +308,8 @@ MONGODB_URI=mongodb://localhost:27017/prism
 - [ ] Publish project / view ទៅ space (anchor ពង្រីក) — ត្រូវការ views publish flow (follow-up)
 - [ ] Notes collab (`blocks[]` → doc model) + presence + version history — large, deferred
 - [ ] OAuth Google/GitHub តាម instance config — **code-complete (2026-07-22, ADR 0008), រង់ចាំតែ credentials ពិតសម្រាប់ full-flow E2E**; disabled-state E2E 15/15 pass; callback URLs: `http://localhost:4000/api/v1/auth/oauth/{google,github}/callback`
-- [ ] Workspace analytics + templates + CSV import — follow-up
+- [x] Workspace analytics (2026-07-22) — `GET /workspaces/:id/analytics?projectId=&range=` ($facet aggregation, tenant-scoped, completed=`status==='done'`, trend buckets ISO Monday `$dateTrunc`) + ទំព័រ `(app)/analytics` (KPI cards, recharts trend, CSS distribution bars, URL-first filters `?project=&range=`)។ **API E2E 11/11** (`pnpm --filter api test:analytics`, isolation alice↔dave ✅) + **browser E2E 13/13**។ Spec: `docs/plan/specs/workspace-analytics.md`
+- [ ] Templates + CSV import — follow-up
 
 ### Phase 9 — Team chat + Telegram bridge ✅ (`docs/adr/0007-chat-and-telegram-bridge.md`, `docs/telegram-bridge-setup.md`)
 - [x] **Chat module** — channels + DMs (one collection, `kind` discriminator; DMs keyed by race-safe `dmKey`), workspace-scoped via `ChatAccessService`, cursor-paginated messages (`_id` cursor), edit/delete (soft) / reactions / read-state / unread badge
