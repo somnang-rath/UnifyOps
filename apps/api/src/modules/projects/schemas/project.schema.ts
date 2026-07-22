@@ -112,6 +112,11 @@ export class Project {
   @Prop({ default: '#6366f1' })
   color: string;
 
+  // Cover image, hotlinked https URL (ADR 0010 §3). Never downloaded or
+  // re-hosted; null = no cover (back-compat default, no migration needed).
+  @Prop({ type: String, default: null })
+  coverImage: string | null;
+
   // Block-based Overview document (Plane-style project home). Excluded from the
   // project list payload; loaded only on the project detail / overview page.
   @Prop({ type: [OverviewBlockSchema], default: [] })

@@ -15,6 +15,8 @@ interface SaveBody {
   visibility: 'private' | 'internal' | 'public';
   color: string;
   memberEmails: string[];
+  /** Hotlinked cover URL (ADR 0010); null clears it. */
+  coverImage?: string | null;
 }
 
 /**

@@ -41,6 +41,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { PublicModule } from './modules/public/public.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
+import { UnsplashModule } from './modules/unsplash/unsplash.module';
 
 // Register BullMQ globally only when REDIS_URL is configured.
 // Individual modules (ReportsModule) conditionally register their queues
@@ -110,6 +111,9 @@ const bullRootImport = process.env.REDIS_URL
 
     // Public Space (anonymous read-only published content)
     PublicModule,
+
+    // Unsplash cover-image proxy (ADR 0010)
+    UnsplashModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

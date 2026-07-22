@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getPublicPage, sanitizeContent } from '@/lib/public-api';
+import { SpaceCover } from '@/components/space-cover';
 
 // Always render fresh — published content can change (Phase 2 snapshot-back).
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,7 @@ export default async function PublicPage({ params }: Params) {
   return (
     <main className="min-h-screen">
       <article className="mx-auto max-w-[720px] px-6 py-14">
+        {page.coverImage && <SpaceCover src={page.coverImage} />}
         <header className="mb-8 border-b border-gray-100 dark:border-gray-800 pb-6">
           <h1 className="text-3xl font-bold tracking-tight">{page.title}</h1>
           <p className="mt-2 text-[13px] text-gray-500">

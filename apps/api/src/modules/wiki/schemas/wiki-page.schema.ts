@@ -18,6 +18,11 @@ export class WikiPage {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   authorId: Types.ObjectId;
 
+  // Cover image, hotlinked https URL (ADR 0010 §3). Never downloaded or
+  // re-hosted; null = no cover (back-compat default, no migration needed).
+  @Prop({ type: String, default: null })
+  coverImage: string | null;
+
   // ── Phase 3: public Space publishing (ADR 0002 §1) ──
   // Whether this page is currently published to the public Space.
   @Prop({ default: false, index: true })

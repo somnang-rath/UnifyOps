@@ -25,9 +25,14 @@ export class PublicService {
     const page = await this.wiki
       .findOne(
         { anchor, isPublic: true },
-        { title: 1, content: 1, updatedAt: 1, _id: 0 },
+        { title: 1, content: 1, coverImage: 1, updatedAt: 1, _id: 0 },
       )
-      .lean<{ title: string; content: string; updatedAt: Date }>();
+      .lean<{
+        title: string;
+        content: string;
+        coverImage: string | null;
+        updatedAt: Date;
+      }>();
     // Unpublished and non-existent anchors are indistinguishable (both 404):
     // no existence leak.
     if (!page) throw new NotFoundException();
@@ -40,6 +45,9 @@ export class PublicService {
       // script-bearing HTML to any consumer, and space must not have to trust
       // its upstream (docs/plan/01 §3.4).
       contentHTML: sanitizePublicHtml(page.content),
+      // The only non-content public field added by ADR 0010: a write-validated
+      // https URL rendered as an <img src>, never HTML — no sanitization needed.
+      coverImage: page.coverImage ?? null,
       updatedAt: page.updatedAt,
     };
   }

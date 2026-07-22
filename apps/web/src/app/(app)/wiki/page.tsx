@@ -23,10 +23,16 @@ import { InputWithIcon } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { SkeletonText } from "@/components/ui/skeleton"
 import { MarkdownView } from "@/components/feature/issue/markdown-view"
+import {
+  AddCoverButton,
+  CoverBanner,
+} from "@/components/feature/cover/cover-banner"
+import { CoverImagePicker } from "@/components/feature/cover/cover-image-picker"
 import { SyntaxHelpButton } from "./_components/syntax-help"
 import { uploadEditorFile } from "@/lib/editor-upload"
 import { useDebounce } from "@/hooks/use-debounce"
 import { useProjects } from "@/hooks/use-projects"
+import { usePublicInstance } from "@/hooks/use-public-instance"
 import { useWikiList, useWikiMutations, useWikiPage } from "@/hooks/use-wiki"
 import { useWikiPublish } from "@/hooks/use-wiki-publish"
 import { useAssistantContext } from "@/hooks/use-assistant-context"
@@ -54,6 +60,7 @@ export default function WikiPageRoute() {
   const [draft, setDraft] = useState<Draft>(emptyDraft())
   const [mode, setMode] = useState<Mode>("preview")
   const [deleting, setDeleting] = useState(false)
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false)
   const [q, setQ] = useState("")
   const debouncedQ = useDebounce(q, 220)
   const [treeOpen, setTreeOpen] = useState(false)
@@ -231,6 +238,15 @@ export default function WikiPageRoute() {
       activeProject.members.includes(me.id))
   )
 
+  // Cover (ADR 0010): PATCHes immediately, outside the draft/dirty cycle —
+  // title/content are the only draft-managed fields. Write gate mirrors
+  // publish (wiki.service canWrite = project owner/member).
+  const { data: instance } = usePublicInstance()
+  const unsplashEnabled = instance?.config.UNSPLASH_ENABLED === true
+  const setCover = (coverImage: string | null) => {
+    if (activeId) m.update.mutate({ id: activeId, body: { coverImage } })
+  }
+
   const browser = (
     <PageBrowser
       ref={treeBtnRef}
@@ -273,6 +289,18 @@ export default function WikiPageRoute() {
       </div>
 
       <div className="bg-bg-card border border-border rounded-lg overflow-hidden min-h-[600px] flex flex-col">
+        {/* Cover banner — edge-to-edge in the card, before the header (§6).
+            Preview and edit mode both see it. */}
+        {activeId && activePage && activePage.coverImage && (
+          <CoverBanner
+            src={activePage.coverImage}
+            canEdit={canPublish}
+            unsplashEnabled={unsplashEnabled}
+            onChange={() => setCoverPickerOpen(true)}
+            onRemove={() => setCover(null)}
+            className="rounded-none border-0 border-b border-border"
+          />
+        )}
         {activeId && !activePage ? (
           // Saved page selected but content still loading.
           <main className="flex-1 flex flex-col overflow-hidden">
@@ -296,6 +324,17 @@ export default function WikiPageRoute() {
               right={
                 draft.active ? (
                   <>
+                    {/* Always-visible trigger in the action cluster (§6);
+                        with a cover set, Change/Remove live on the banner. */}
+                    {unsplashEnabled &&
+                      activeId &&
+                      activePage &&
+                      !activePage.coverImage &&
+                      canPublish && (
+                        <AddCoverButton
+                          onClick={() => setCoverPickerOpen(true)}
+                        />
+                      )}
                     <SyntaxHelpButton />
                     {modeTabs}
                     {!activeId ? (
@@ -405,6 +444,13 @@ export default function WikiPageRoute() {
         danger
         onConfirm={remove}
         onClose={() => setDeleting(false)}
+      />
+
+      <CoverImagePicker
+        open={coverPickerOpen}
+        onClose={() => setCoverPickerOpen(false)}
+        value={activePage?.coverImage ?? null}
+        onSelect={(url) => setCover(url)}
       />
     </>
   )

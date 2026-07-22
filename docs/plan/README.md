@@ -13,6 +13,7 @@ UI/UX ថ្មី (តូច ជាប់ ស្អាត professional), និ
 | 02 | [Design system](02-design-system.md) | Density tokens, component inventory, app shell, a11y |
 | 03 | [Feature parity](03-feature-parity.md) | គម្លាតធៀបនឹង plane.so + អ្វីត្រូវសង់ |
 | 04 | [Structure](04-structure.md) | រចនាសម្ព័ន្ធ repo គោលដៅ + packages split |
+| 05 | [Cover image picker](05-cover-image-picker.md) | UX spec សម្រាប់ ADR 0010 — Unsplash picker + cover render (web/space) |
 
 Roadmap (Phase 5–8) នៅក្នុង `PLANE-CONVERSION-PLAN.md` §8 — **ជា source of truth តែមួយ**
 សម្រាប់ progress (SessionStart hook អាន checkbox ពីទីនោះ)។

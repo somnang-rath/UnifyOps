@@ -8,6 +8,9 @@ export const CreateProjectSchema = z.object({
   desc: z.string().max(500).default(''),
   visibility: z.enum(['private', 'internal', 'public']).default('private'),
   color: z.string().regex(HEX).default('#6366f1'),
+  // Cover image URL (ADR 0010 §3). Any https URL, not just Unsplash — it is
+  // rendered as an <img src>, never HTML. null clears the cover.
+  coverImage: z.string().url().startsWith('https://').max(2000).nullable().optional(),
   memberEmails: z.array(z.string().email()).default([]),
   // The workspace to create into (ADR 0006). Optional for backward compatibility:
   // omitting it keeps the legacy `workspaceId: null` behavior, where the project

@@ -173,6 +173,7 @@ export class ProjectsService {
       desc: dto.desc,
       visibility: dto.visibility,
       color: dto.color,
+      coverImage: dto.coverImage ?? null,
       namespace: slug(dto.name),
       ownerId: owner,
       workspaceId: dto.workspaceId
@@ -208,6 +209,8 @@ export class ProjectsService {
     if (dto.desc !== undefined) project.desc = dto.desc;
     if (dto.visibility) project.visibility = dto.visibility;
     if (dto.color) project.color = dto.color;
+    // `!== undefined`, not truthy: null is a meaningful value (clears the cover).
+    if (dto.coverImage !== undefined) project.coverImage = dto.coverImage;
     if (dto.memberEmails)
       project.members = await this.resolveMembers(
         dto.memberEmails,

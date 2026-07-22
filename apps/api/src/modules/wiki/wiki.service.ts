@@ -127,6 +127,7 @@ export class WikiService {
       content: dto.content,
       parentId: oid(dto.parentId),
       authorId: new Types.ObjectId(authorId),
+      coverImage: dto.coverImage ?? null,
     });
     await this.pushWikiMentions(
       extractMentionTokens(page.content),
@@ -150,6 +151,8 @@ export class WikiService {
     if (dto.title !== undefined) page.title = dto.title;
     if (dto.content !== undefined) page.content = dto.content;
     if ('parentId' in dto) page.parentId = oid(dto.parentId);
+    // `!== undefined`, not truthy: null is a meaningful value (clears the cover).
+    if (dto.coverImage !== undefined) page.coverImage = dto.coverImage;
     const saved = await page.save();
     if (dto.content !== undefined && dto.content !== prevContent) {
       await this.pushWikiMentions(

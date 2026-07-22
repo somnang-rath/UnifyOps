@@ -33,6 +33,9 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
+  // Unsplash cover-image search (ADR 0010). Optional: instance config takes
+  // precedence (config-over-env, same as OAuth); absent = effectively disabled.
+  UNSPLASH_ACCESS_KEY: z.string().optional(),
   // Redis — optional. When set, report dispatch uses BullMQ (persistent, retryable).
   // When absent, dispatch falls back to in-process setImmediate (no retry on crash).
   REDIS_URL: z.string().url().optional(),

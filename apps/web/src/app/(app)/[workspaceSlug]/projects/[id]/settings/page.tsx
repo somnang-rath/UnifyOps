@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Search, Trash2, UserPlus, X } from 'lucide-react';
 import { useProject, useProjectMutations } from '@/hooks/use-projects';
+import { usePublicInstance } from '@/hooks/use-public-instance';
 import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { useUsers } from '@/hooks/use-users';
 import { useAuthStore } from '@/stores/auth-store';
+import { CoverImagePicker } from '@/components/feature/cover/cover-image-picker';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
@@ -21,15 +23,25 @@ export default function ProjectSettingsPage() {
   const { data: users = [] } = useUsers();
   const { update, remove } = useProjectMutations();
 
+  const { data: instance } = usePublicInstance();
+
   const [addOpen, setAddOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
 
   if (!project) return null;
 
   const userMap = new Map(users.map((u) => [u._id, u]));
   const isOwner = !!me && (me.id === project.ownerId || me.role === 'admin');
+  // Cover controls mirror the actual PATCH /projects/:id guard — owner-only
+  // (no member or role-admin bypass in projects.service.update), stricter
+  // than `isOwner` above so we never offer an action that would 403.
+  const canEditCover = !!me && me.id === project.ownerId;
+  const unsplashEnabled = instance?.config.UNSPLASH_ENABLED === true;
+  const setCover = (coverImage: string | null) =>
+    update.mutate({ id: project._id, body: { coverImage } });
 
   const toEmails = (ids: string[]) =>
     ids.map((mid) => userMap.get(mid)?.email).filter(Boolean) as string[];
@@ -81,6 +93,58 @@ export default function ProjectSettingsPage() {
 
   return (
     <div className="max-w-[720px] flex flex-col gap-6">
+      {/* Cover image (ADR 0010) — always-visible path to the picker (§5.3).
+          Unsplash off + no cover ⇒ whole section hidden; Unsplash off + cover
+          ⇒ Remove only (removal never gates on Unsplash). */}
+      {canEditCover && (unsplashEnabled || project.coverImage) && (
+        <section>
+          <h2 className="text-[15px] font-semibold mb-3">Cover image</h2>
+          <div className="flex items-center gap-4 bg-bg-card border border-border rounded-lg px-4 py-3.5">
+            {project.coverImage ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element -- hotlinked cover URL (ADR 0010 §3) */}
+                <img
+                  src={project.coverImage}
+                  alt=""
+                  draggable={false}
+                  className="h-16 aspect-[4/1] rounded-md object-cover border border-border"
+                />
+                <div className="flex items-center gap-2 ml-auto">
+                  {unsplashEnabled && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCoverPickerOpen(true)}
+                    >
+                      Change
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCover(null)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-text-muted">No cover image.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto"
+                  onClick={() => setCoverPickerOpen(true)}
+                >
+                  Add cover
+                </Button>
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Members */}
       <section>
         <h2 className="text-[15px] font-semibold mb-3">Members</h2>
@@ -243,6 +307,13 @@ export default function ProjectSettingsPage() {
           })
         }
         onClose={() => setDeleting(false)}
+      />
+
+      <CoverImagePicker
+        open={coverPickerOpen}
+        onClose={() => setCoverPickerOpen(false)}
+        value={project.coverImage ?? null}
+        onSelect={(url) => setCover(url)}
       />
     </div>
   );

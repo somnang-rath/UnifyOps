@@ -58,6 +58,8 @@ export interface Project {
   overview?: NoteBlock[];
   /** Custom board columns. Empty/absent → client falls back to the default lists. */
   boardLists?: BoardList[];
+  /** Hotlinked cover URL (ADR 0010). Absent on pre-ADR documents. */
+  coverImage?: string | null;
   issueCount?: number;
   doneCount?: number;
   createdAt: string;

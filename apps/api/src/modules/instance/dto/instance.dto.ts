@@ -32,6 +32,10 @@ export const PUBLIC_CONFIG_KEYS = [
   // Whether the Telegram bridge is available (drives the per-channel connect UI).
   // Non-secret: the bot token stays server-side, only this toggle is exposed.
   'TELEGRAM_ENABLED',
+  // Whether Unsplash cover-image search is available (ADR 0010). Reported as the
+  // EFFECTIVE value by getPublicInstance (toggle AND access key present); the
+  // access key itself is in SECRET_CONFIG_KEYS and never leaves the server.
+  'UNSPLASH_ENABLED',
 ] as const;
 
 /**

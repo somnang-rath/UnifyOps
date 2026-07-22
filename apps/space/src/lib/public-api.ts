@@ -7,6 +7,8 @@ export interface PublicWikiPage {
   anchor: string;
   title: string;
   contentHTML: string;
+  /** Hotlinked cover URL — the only non-content public field (ADR 0010 §3). */
+  coverImage: string | null;
   updatedAt: string;
 }
 

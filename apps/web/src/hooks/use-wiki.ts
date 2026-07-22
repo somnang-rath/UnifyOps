@@ -23,7 +23,13 @@ const wikiService = {
   }) => api.post<WikiPage>('/wiki', b).then((r) => r.data),
   update: (
     id: string,
-    b: { title?: string; content?: string; parentId?: string | null },
+    b: {
+      title?: string;
+      content?: string;
+      parentId?: string | null;
+      /** ADR 0010 — null clears the cover. */
+      coverImage?: string | null;
+    },
   ) => api.patch<WikiPage>(`/wiki/${id}`, b).then((r) => r.data),
   remove: (id: string) =>
     api.delete(`/wiki/${id}`).then((r) => r.data),

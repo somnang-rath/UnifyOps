@@ -61,6 +61,16 @@ export interface OAuthConfig {
   clientSecret: string;
 }
 
+/**
+ * Resolved Unsplash proxy configuration (ADR 0010 §1). `accessKey` is a
+ * secret — this object must stay server-side and must never be returned
+ * from a controller (same rule as `getAiConfig` / `getOAuthConfig`).
+ */
+export interface UnsplashConfig {
+  enabled: boolean;
+  accessKey: string;
+}
+
 export interface TelegramConfig {
   enabled: boolean;
   botToken: string;
@@ -123,12 +133,16 @@ export class InstanceService {
     // OAuth toggles report the EFFECTIVE value (toggle AND credentials present,
     // ADR 0008 §1): clients never learn *why* a provider is off, just the
     // boolean — and the frontends render the login buttons from this alone.
-    const [google, github] = await Promise.all([
+    const [google, github, unsplash] = await Promise.all([
       this.getOAuthConfig('google'),
       this.getOAuthConfig('github'),
+      this.getUnsplashConfig(),
     ]);
     config.GOOGLE_OAUTH_ENABLED = google.enabled;
     config.GITHUB_OAUTH_ENABLED = github.enabled;
+    // Same effective-boolean rule for Unsplash (ADR 0010 §1): toggle AND access
+    // key present. Clients see only the boolean, never the key.
+    config.UNSPLASH_ENABLED = unsplash.enabled;
     return {
       instanceId: inst.instanceId,
       instanceName: inst.instanceName,
@@ -303,6 +317,29 @@ export class InstanceService {
       clientSecret !== '';
 
     return { enabled, clientId, clientSecret };
+  }
+
+  /**
+   * Resolve the Unsplash proxy configuration (ADR 0010 §1), config-over-env:
+   *
+   *   accessKey = instanceConfig[UNSPLASH_ACCESS_KEY] || env.UNSPLASH_ACCESS_KEY || ''
+   *   enabled   = instanceConfig[UNSPLASH_ENABLED] === 'true' && accessKey !== ''
+   *
+   * Resolved at request time, never cached at boot — an admin toggling it off
+   * takes effect immediately. Server-side only: the access key must never
+   * reach a controller response.
+   */
+  async getUnsplashConfig(): Promise<UnsplashConfig> {
+    const keys = ['UNSPLASH_ENABLED', 'UNSPLASH_ACCESS_KEY'];
+    const rows = await this.configModel.find({ key: { $in: keys } }).lean();
+    const map = new Map(rows.map((r) => [r.key, (r.value ?? '').trim()]));
+
+    const accessKey =
+      map.get('UNSPLASH_ACCESS_KEY') ||
+      (this.cfg.get<string>('UNSPLASH_ACCESS_KEY') ?? '').trim();
+    const enabled = map.get('UNSPLASH_ENABLED') === 'true' && accessKey !== '';
+
+    return { enabled, accessKey };
   }
 
   /**

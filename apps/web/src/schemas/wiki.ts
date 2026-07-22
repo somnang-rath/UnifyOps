@@ -10,6 +10,8 @@ export interface WikiPageMeta {
 
 export interface WikiPage extends WikiPageMeta {
   content: string;
+  /** Hotlinked cover URL (ADR 0010). Absent on pre-ADR documents. */
+  coverImage?: string | null;
   // Phase 3 — public Space publishing (ADR 0002)
   isPublic?: boolean;
   anchor?: string | null;
