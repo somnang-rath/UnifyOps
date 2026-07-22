@@ -27,6 +27,12 @@ export const envSchema = z.object({
   SMTP_FROM: z.string().optional(),
   ALLOW_PUBLIC_REGISTER: z.coerce.boolean().default(false),
   API_URL: z.string().url().optional(),
+  // OAuth login (ADR 0008). All optional: instance config takes precedence and
+  // with neither set the provider is simply "effectively disabled". Missing = fine.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
   // Redis — optional. When set, report dispatch uses BullMQ (persistent, retryable).
   // When absent, dispatch falls back to in-process setImmediate (no retry on crash).
   REDIS_URL: z.string().url().optional(),

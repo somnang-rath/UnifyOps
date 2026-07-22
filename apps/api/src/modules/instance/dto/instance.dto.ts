@@ -20,6 +20,10 @@ export const PUBLIC_CONFIG_KEYS = [
   'ENABLE_SIGNUP',
   'ENABLE_EMAIL_PASSWORD_LOGIN',
   'ENABLE_MAGIC_LINK_LOGIN',
+  // Reported as EFFECTIVE values by getPublicInstance (toggle AND credentials
+  // present — ADR 0008 §1). The client ids (GOOGLE_CLIENT_ID / GITHUB_CLIENT_ID)
+  // are non-secret config rows (category `auth`) but are not public keys; the
+  // secrets are in SECRET_CONFIG_KEYS below.
   'GOOGLE_OAUTH_ENABLED',
   'GITHUB_OAUTH_ENABLED',
   // Whether the in-app AI Assistant is turned on (drives the web assistant UI).

@@ -14,6 +14,7 @@
     "test:security": "node test/security.e2e.mjs",
     "test:phase7": "node test/views-relations.e2e.mjs",
     "test:phase8": "node test/integrations.e2e.mjs",
+    "test:oauth": "node test/oauth-disabled.e2e.mjs",
     "test:e2e:all": "node test/security.e2e.mjs && node test/views-relations.e2e.mjs && node test/integrations.e2e.mjs"
   },
   "dependencies": {

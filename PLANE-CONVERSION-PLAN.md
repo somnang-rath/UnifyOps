@@ -254,7 +254,7 @@ MONGODB_URI=mongodb://localhost:27017/prism
   - Note: projects/roadmaps publishing is deferred (fast-follow — no `views` module yet). Docker `space` service deferred to Phase 4 (which already covers Docker).
 
 ### Phase 4 — Auth Providers + Polish
-- [ ] OAuth Google/GitHub (បើក/បិទតាម instance config)
+- [ ] OAuth Google/GitHub (បើក/បិទតាម instance config) — **code-complete, រង់ចាំ credentials ពិត** (2026-07-22): ADR 0008 · hand-rolled `OAuthService` (គ្មាន dependency ថ្មី) · `GET /auth/oauth/:provider` + callback (404 ពេលមិន effectively enabled) · effective booleans ក្នុង `GET /instance` · login buttons gated · admin hint "credentials missing"។ **Disabled-state E2E 15/15 pass** (`pnpm --filter api test:oauth`)។ នៅសល់តែ: ចុះឈ្មោះ OAuth apps + full-flow E2E ជាមួយ credentials ពិត
 - [x] Docker: បន្ថែម admin, space, live services — all 7 services build + boot; publish→space verified E2E through compose (2026-07-10). Fixed 2 blocking gaps: api service was missing `LIVE_INTERNAL_TOKEN` (required by env schema → api couldn't boot); web Dockerfile predated `packages/` (missing `@prism/*` manifests+source → build failed)
 - [ ] E2E test គ្រប់ apps
 
@@ -307,7 +307,7 @@ MONGODB_URI=mongodb://localhost:27017/prism
 - [x] **E2E 16/16 pass** (`pnpm --filter api test:phase8`, 2026-07-17): PAT create/list/auth/revoke + aud=web gate · webhook secret-once + no-leak + SSRF reject · **full intake→submission→signed webhook (HMAC verified)→triage→issue** end-to-end · regression Phase 5 (18) + Phase 7 (13) green = **47 checks total**
 - [ ] Publish project / view ទៅ space (anchor ពង្រីក) — ត្រូវការ views publish flow (follow-up)
 - [ ] Notes collab (`blocks[]` → doc model) + presence + version history — large, deferred
-- [ ] OAuth Google/GitHub តាម instance config — **ត្រូវការ OAuth app credentials ខាងក្រៅ (client id/secret)**; instance config toggles + guard scaffolding រួច (Phase 5 `aud` + instance secret masking), តែ callback flow ត្រូវការ real provider setup
+- [ ] OAuth Google/GitHub តាម instance config — **code-complete (2026-07-22, ADR 0008), រង់ចាំតែ credentials ពិតសម្រាប់ full-flow E2E**; disabled-state E2E 15/15 pass; callback URLs: `http://localhost:4000/api/v1/auth/oauth/{google,github}/callback`
 - [ ] Workspace analytics + templates + CSV import — follow-up
 
 ### Phase 9 — Team chat + Telegram bridge ✅ (`docs/adr/0007-chat-and-telegram-bridge.md`, `docs/telegram-bridge-setup.md`)

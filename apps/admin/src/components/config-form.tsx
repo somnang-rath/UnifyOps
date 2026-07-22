@@ -29,8 +29,18 @@ export interface ConfigField {
  * Renders a form for a set of instance-config keys, loads current values,
  * and saves changed entries. Secret (password) fields are write-only:
  * blank means "keep existing", so we never round-trip a masked value.
+ *
+ * `warnings` maps a field key to a caution note rendered under that field
+ * (e.g. "toggle is on but credentials are missing"). Computed by the page
+ * from *saved* state, not local edits.
  */
-export function ConfigForm({ fields }: { fields: ConfigField[] }) {
+export function ConfigForm({
+  fields,
+  warnings,
+}: {
+  fields: ConfigField[];
+  warnings?: Record<string, string | undefined>;
+}) {
   const { data: rows, isLoading, isError, refetch } = useConfig();
   const update = useUpdateConfig();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -145,6 +155,11 @@ export function ConfigForm({ fields }: { fields: ConfigField[] }) {
               </label>
             )}
             {f.help && <p className="mt-1 text-xs text-fg-subtle">{f.help}</p>}
+            {warnings?.[f.key] && (
+              <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                {warnings[f.key]}
+              </p>
+            )}
           </div>
         ))}
         <div className="flex items-center gap-3">

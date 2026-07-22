@@ -104,6 +104,15 @@ export class AuthService {
     return this.issueTokens(user, audience, meta, { stepUp: true });
   }
 
+  /**
+   * Session for a user the OAuth callback just authenticated (ADR 0008 §4).
+   * Web audience only, and never a step-up: only a password proves possession,
+   * so an OAuth login can never unlock instance mutations.
+   */
+  async issueOAuthSession(user: UserDocument, meta: SessionMeta = {}) {
+    return this.issueTokens(user, AUD_WEB, meta, { stepUp: false });
+  }
+
   /** Re-prove the password without starting a new session (instance mutations). */
   async stepUp(userId: string, password: string, audience: RestAudience) {
     const user = await this.userModel.findById(userId).select('+passwordHash');

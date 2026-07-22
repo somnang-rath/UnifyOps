@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
@@ -47,6 +48,19 @@ export interface AiConfig {
   openai: { apiKey: string; model: string };
 }
 
+export type OAuthProvider = 'google' | 'github';
+
+/**
+ * Resolved OAuth credentials for one provider (ADR 0008 §1). `clientSecret`
+ * is a secret — this object must stay server-side and must never be returned
+ * from a controller (same rule as `getAiConfig`).
+ */
+export interface OAuthConfig {
+  enabled: boolean;
+  clientId: string;
+  clientSecret: string;
+}
+
 export interface TelegramConfig {
   enabled: boolean;
   botToken: string;
@@ -66,6 +80,7 @@ export class InstanceService {
     @InjectModel(InstanceAdmin.name)
     private adminModel: Model<InstanceAdminDocument>,
     private users: UsersService,
+    private cfg: ConfigService,
   ) {}
 
   // ── Instance singleton ────────────────────────────────────────────
@@ -105,6 +120,15 @@ export class InstanceService {
       const row = publicCfg.find((c) => c.key === key);
       config[key] = row?.value === 'true';
     }
+    // OAuth toggles report the EFFECTIVE value (toggle AND credentials present,
+    // ADR 0008 §1): clients never learn *why* a provider is off, just the
+    // boolean — and the frontends render the login buttons from this alone.
+    const [google, github] = await Promise.all([
+      this.getOAuthConfig('google'),
+      this.getOAuthConfig('github'),
+    ]);
+    config.GOOGLE_OAUTH_ENABLED = google.enabled;
+    config.GITHUB_OAUTH_ENABLED = github.enabled;
     return {
       instanceId: inst.instanceId,
       instanceName: inst.instanceName,
@@ -248,6 +272,48 @@ export class InstanceService {
       webhookUrl: map.get('TELEGRAM_WEBHOOK_URL') ?? '',
       webhookSecret: map.get('TELEGRAM_WEBHOOK_SECRET') ?? '',
     };
+  }
+
+  /**
+   * Resolve one OAuth provider's credentials (ADR 0008 §1), config-over-env:
+   *
+   *   clientId     = instanceConfig[<P>_CLIENT_ID]     || env.<P>_CLIENT_ID     || ''
+   *   clientSecret = instanceConfig[<P>_CLIENT_SECRET] || env.<P>_CLIENT_SECRET || ''
+   *   enabled      = instanceConfig[<P>_OAUTH_ENABLED] === 'true' && both non-empty
+   *
+   * Resolved at request time, never cached at boot — an admin toggling a
+   * provider off kills new logins immediately. Server-side only: the secret
+   * must never reach a controller response.
+   */
+  async getOAuthConfig(provider: OAuthProvider): Promise<OAuthConfig> {
+    const P = provider.toUpperCase();
+    const keys = [`${P}_OAUTH_ENABLED`, `${P}_CLIENT_ID`, `${P}_CLIENT_SECRET`];
+    const rows = await this.configModel.find({ key: { $in: keys } }).lean();
+    const map = new Map(rows.map((r) => [r.key, (r.value ?? '').trim()]));
+
+    const clientId =
+      map.get(`${P}_CLIENT_ID`) ||
+      (this.cfg.get<string>(`${P}_CLIENT_ID`) ?? '').trim();
+    const clientSecret =
+      map.get(`${P}_CLIENT_SECRET`) ||
+      (this.cfg.get<string>(`${P}_CLIENT_SECRET`) ?? '').trim();
+    const enabled =
+      map.get(`${P}_OAUTH_ENABLED`) === 'true' &&
+      clientId !== '' &&
+      clientSecret !== '';
+
+    return { enabled, clientId, clientSecret };
+  }
+
+  /**
+   * Effective signup switch (ADR 0008 §5): the instance config row wins when
+   * set, else the env `ALLOW_PUBLIC_REGISTER` — config-over-env, consistent
+   * with getOAuthConfig.
+   */
+  async isSignupEnabled(): Promise<boolean> {
+    const row = await this.getConfigValue('ENABLE_SIGNUP');
+    if (row != null && row !== '') return row === 'true';
+    return Boolean(this.cfg.get<boolean>('ALLOW_PUBLIC_REGISTER'));
   }
 
   /**

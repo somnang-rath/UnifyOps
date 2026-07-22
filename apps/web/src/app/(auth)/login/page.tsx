@@ -9,10 +9,22 @@ import { LoadingScreen } from "@/components/ui/loading-screen";
 import { LoginSchema, type LoginInput } from "@/schemas/auth";
 import { useLogin } from "@/hooks/use-auth";
 import { AuthHead, FieldIcon } from "../_components/auth-tabs";
+import { OAuthButtons } from "../_components/oauth-buttons";
+
+/** Frozen failure codes the OAuth callback redirects with (ADR 0008 §4). */
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_failed:
+    "Sign-in with the provider failed. Please try again or use your password.",
+  signup_disabled:
+    "No account matches that profile, and sign-ups are disabled on this instance.",
+  account_disabled: "This account has been disabled. Contact an administrator.",
+};
 
 export default function LoginPage() {
   const router = useRouter();
-  const next = useSearchParams().get("next") ?? "/home";
+  const params = useSearchParams();
+  const next = params.get("next") ?? "/home";
+  const oauthError = OAUTH_ERROR_MESSAGES[params.get("error") ?? ""];
   const login = useLogin();
   const [serverError, setServerError] = useState("");
 
@@ -67,15 +79,17 @@ export default function LoginPage() {
           />
         </FieldIcon>
 
-        {serverError && (
+        {(serverError || oauthError) && (
           <div className="px-2.5 py-1.5 rounded-sm text-[12px] text-red bg-[rgba(239,68,68,.08)]">
-            {serverError}
+            {serverError || oauthError}
           </div>
         )}
 
         <Button type="submit" variant="primary" size="lg" full>
           Sign in to UnifyOps
         </Button>
+
+        <OAuthButtons />
 
         <div className="text-center text-[12px] text-text-muted p-2.5 rounded-sm bg-bg-subtle border border-dashed border-border leading-[1.7]">
           <strong className="block mb-1">New here?</strong>

@@ -71,3 +71,38 @@ export function setCsrfCookie(res: Response): string {
 export function clearCsrfCookie(res: Response) {
   res.clearCookie(CSRF_COOKIE, { path: '/', domain: COOKIE_DOMAIN });
 }
+
+/**
+ * OAuth state cookie (ADR 0008 §3). The start route stores a nonce here and
+ * sends the same value as the provider `state` param; the callback requires
+ * cookie == query param. `sameSite=lax` is safe because the provider redirect
+ * is a top-level GET navigation — this cookie *is* the CSRF defense for the
+ * OAuth flow (CsrfGuard's header echo cannot apply to a redirect).
+ */
+export const OAUTH_STATE_COOKIE = 'prism_oauth_state';
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const OAUTH_STATE_PATH = '/api/v1/auth/oauth';
+
+export function setOAuthStateCookie(res: Response): string {
+  const state = crypto.randomBytes(24).toString('hex');
+  res.cookie(OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: SECURE,
+    sameSite: 'lax',
+    path: OAUTH_STATE_PATH,
+    domain: COOKIE_DOMAIN,
+    maxAge: OAUTH_STATE_TTL_MS,
+  });
+  return state;
+}
+
+export function readOAuthStateCookie(req: Request): string | undefined {
+  return req.cookies?.[OAUTH_STATE_COOKIE];
+}
+
+export function clearOAuthStateCookie(res: Response) {
+  res.clearCookie(OAUTH_STATE_COOKIE, {
+    path: OAUTH_STATE_PATH,
+    domain: COOKIE_DOMAIN,
+  });
+}
