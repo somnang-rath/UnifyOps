@@ -352,7 +352,7 @@ MONGODB_URI=mongodb://localhost:27017/prism
 - [x] Publish view → បើកបានពី space ដោយគ្មាន login, private data មិនលេច — verified E2E 2026-07-10 (wiki pages; leak check passed)
 - [ ] CORS + JWT auth ត្រឹមត្រូវគ្រប់ apps
 - [x] Docker stack ឡើងបានពេញ (mongo, redis, api, web, admin, space, live) — verified 2026-07-10, all 7 up, endpoints 200
-- [ ] README update ជាមួយ apps ថ្មី + ports + env
+- [x] README update ជាមួយ apps ថ្មី + ports + env — rewritten 2026-07-22 (5 apps + packages/ structure, per-app ports/basePaths, first-run God Mode setup, env table incl. `LIVE_INTERNAL_TOKEN`/`COOKIE_DOMAIN`, docs links)
 
 ---
 
