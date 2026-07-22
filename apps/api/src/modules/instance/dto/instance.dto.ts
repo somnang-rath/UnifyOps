@@ -7,6 +7,7 @@ export const CONFIG_CATEGORIES = [
   'smtp',
   'ai',
   'images',
+  'integrations',
   'general',
 ] as const;
 export type ConfigCategory = (typeof CONFIG_CATEGORIES)[number];
@@ -24,6 +25,9 @@ export const PUBLIC_CONFIG_KEYS = [
   // Whether the in-app AI Assistant is turned on (drives the web assistant UI).
   // Non-secret: the provider keys stay server-side, only this toggle is exposed.
   'ASSISTANT_ENABLED',
+  // Whether the Telegram bridge is available (drives the per-channel connect UI).
+  // Non-secret: the bot token stays server-side, only this toggle is exposed.
+  'TELEGRAM_ENABLED',
 ] as const;
 
 /**

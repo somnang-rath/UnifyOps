@@ -9,6 +9,7 @@ import {
   Sparkles,
   Image as ImageIcon,
   Building2,
+  Send,
   LogOut,
   ArrowLeft,
 } from 'lucide-react';
@@ -38,6 +39,7 @@ const NAV: {
       { href: '/authentication', label: 'Authentication', icon: ShieldCheck },
       { href: '/email', label: 'Email', icon: Mail },
       { href: '/ai', label: 'AI', icon: Sparkles },
+      { href: '/telegram', label: 'Telegram', icon: Send },
       { href: '/images', label: 'Images', icon: ImageIcon },
     ],
   },

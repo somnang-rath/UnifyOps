@@ -310,6 +310,14 @@ MONGODB_URI=mongodb://localhost:27017/prism
 - [ ] OAuth Google/GitHub តាម instance config — **ត្រូវការ OAuth app credentials ខាងក្រៅ (client id/secret)**; instance config toggles + guard scaffolding រួច (Phase 5 `aud` + instance secret masking), តែ callback flow ត្រូវការ real provider setup
 - [ ] Workspace analytics + templates + CSV import — follow-up
 
+### Phase 9 — Team chat + Telegram bridge ✅ (`docs/adr/0007-chat-and-telegram-bridge.md`, `docs/telegram-bridge-setup.md`)
+- [x] **Chat module** — channels + DMs (one collection, `kind` discriminator; DMs keyed by race-safe `dmKey`), workspace-scoped via `ChatAccessService`, cursor-paginated messages (`_id` cursor), edit/delete (soft) / reactions / read-state / unread badge
+- [x] **`/ws/chat` gateway** — second Socket.io namespace (rooms `user:<id>` + `channel:<id>`, join re-authorized server-side, server-throttled typing). ⚠️ single-replica only (no Redis adapter)
+- [x] **Web UI** — `(app)/[workspaceSlug]/chat`, channel list + message list (reverse-infinite) + composer + reactions + typing, `use-chat` / `use-chat-socket` hooks, `chat` sidebar badge
+- [x] **Telegram two-way bridge** — per-channel link (owner-only, `/link <code>` + group-admin proof), instance-level bot token, inbound webhook **or** long-polling (no tunnel in dev), structural echo prevention (`source:'prism'` relay filter), index-enforced dedupe, outbound queue (Redis/in-process) with rate-limit + `retry_after` + 403-terminal, Prism-markdown→Telegram-HTML, edit/delete relay
+- [x] **Verified**: 41 API/WS + 8 browser (Phase A) · 13 mock-relay + 8 HTTP + 13 formatter (Phase B). Caught & fixed a real `{channelId,clientId}` sparse-index collision (→ partial index + self-healing migration)
+- [ ] Deferred (v1 out of scope): threads · search · presence · multi-replica · media upload to Telegram · per-workspace bot · real bot E2E (needs external token — see setup doc)
+
 ---
 
 ## 9. Docker (គោលដៅ)

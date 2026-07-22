@@ -32,7 +32,7 @@ export interface AdminRow {
 export interface ConfigEntry {
   key: string;
   value: string | null;
-  category: 'auth' | 'smtp' | 'ai' | 'images' | 'general';
+  category: 'auth' | 'smtp' | 'ai' | 'images' | 'integrations' | 'general';
   isEncrypted: boolean;
 }
 

@@ -19,6 +19,7 @@ export const useBadges = () => {
               mywork: 0,
               approvals: 0,
               notifications: 0,
+              chat: 0,
             }) as Badges,
         ),
     enabled: !!user,
@@ -28,6 +29,7 @@ export const useBadges = () => {
       mywork: 0,
       approvals: 0,
       notifications: 0,
+      chat: 0,
     },
   });
 };

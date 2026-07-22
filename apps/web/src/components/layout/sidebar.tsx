@@ -20,6 +20,7 @@ import {
   StickyNote,
   Trello,
   GitMerge,
+  MessageSquare,
   Users,
   Zap,
   Activity,
@@ -40,7 +41,7 @@ const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3001"
 
 const SUPER_ADMIN_EMAILS = new Set(['somnang.rath12@gmail.com', 'admin@demo.com'])
 
-type BadgeKey = 'issues' | 'mywork' | 'approvals' | 'notifications'
+type BadgeKey = 'issues' | 'mywork' | 'approvals' | 'notifications' | 'chat'
 
 interface NavItem {
   href: string
@@ -66,6 +67,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/home", label: "Home", Icon: Home },
       { href: "/my-work", label: "My Work", Icon: CheckSquare, badge: "mywork" },
       { href: "/projects", label: "Projects", Icon: Grid3x3, workspaceScoped: true },
+      { href: "/chat", label: "Chat", Icon: MessageSquare, badge: "chat", workspaceScoped: true },
     ],
   },
   {

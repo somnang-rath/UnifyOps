@@ -47,6 +47,15 @@ export interface AiConfig {
   openai: { apiKey: string; model: string };
 }
 
+export interface TelegramConfig {
+  enabled: boolean;
+  botToken: string;
+  /** Set → webhook mode; empty → long polling. */
+  webhookUrl: string;
+  /** Verifies inbound webhook requests via X-Telegram-Bot-Api-Secret-Token. */
+  webhookSecret: string;
+}
+
 @Injectable()
 export class InstanceService {
   constructor(
@@ -155,6 +164,15 @@ export class InstanceService {
   }
 
   /**
+   * Read a single non-secret config value. For server-side consumers (e.g. the
+   * Telegram transport's poll offset). Do not use for secret keys — callers that
+   * need a token use the purpose-built resolvers above.
+   */
+  async readConfigValue(key: string): Promise<string | null> {
+    return this.getConfigValue(key);
+  }
+
+  /**
    * Resolve the full AI configuration (including secret provider keys) for the
    * assistant. Server-side only — never expose the return value to clients.
    */
@@ -209,6 +227,44 @@ export class InstanceService {
         model: str('OPENAI_MODEL') || 'gpt-4o-mini',
       },
     };
+  }
+
+  /**
+   * Resolve the Telegram bridge configuration (including the secret bot token) for
+   * the chat module. Server-side only — never expose the token to any client.
+   */
+  async getTelegramConfig(): Promise<TelegramConfig> {
+    const keys = [
+      'TELEGRAM_ENABLED',
+      'TELEGRAM_BOT_TOKEN',
+      'TELEGRAM_WEBHOOK_URL',
+      'TELEGRAM_WEBHOOK_SECRET',
+    ];
+    const rows = await this.configModel.find({ key: { $in: keys } }).lean();
+    const map = new Map(rows.map((r) => [r.key, (r.value ?? '').trim()]));
+    return {
+      enabled: map.get('TELEGRAM_ENABLED') === 'true',
+      botToken: map.get('TELEGRAM_BOT_TOKEN') ?? '',
+      webhookUrl: map.get('TELEGRAM_WEBHOOK_URL') ?? '',
+      webhookSecret: map.get('TELEGRAM_WEBHOOK_SECRET') ?? '',
+    };
+  }
+
+  /**
+   * Persist a single config value. Used by the chat module for runtime state that
+   * must survive a restart — e.g. the long-poll `getUpdates` offset and a
+   * generated webhook secret. Respects key-based secrecy like updateConfig.
+   */
+  async setConfigValue(
+    key: string,
+    value: string,
+    category = 'integrations',
+  ): Promise<void> {
+    await this.configModel.updateOne(
+      { key },
+      { $set: { value, category, isEncrypted: isSecretConfigKey(key) } },
+      { upsert: true },
+    );
   }
 
   // ── Instance admins ───────────────────────────────────────────────

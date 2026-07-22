@@ -38,6 +38,7 @@ import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { IntakeModule } from './modules/intake/intake.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { PublicModule } from './modules/public/public.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
 
@@ -100,6 +101,9 @@ const bullRootImport = process.env.REDIS_URL
     // Integrations (personal access tokens live in UsersModule)
     WebhooksModule,
     IntakeModule,
+
+    // Team chat (channels + DMs, optional per-channel Telegram bridge — ADR 0007)
+    ChatModule,
 
     // AI Assistant (in-app chat; configured from God Mode → AI)
     AssistantModule,

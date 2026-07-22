@@ -57,6 +57,7 @@ import { BackupExportCard }   from '@/components/feature/backup/backup-export-ca
 import { BackupScheduleCard } from '@/components/feature/backup/backup-schedule-card';
 import { BackupImportCard }   from '@/components/feature/backup/backup-import-card';
 import { BackupHistoryCard }  from '@/components/feature/backup/backup-history-card';
+import { TelegramIdentityCard } from '@/components/feature/chat/telegram-identity-card';
 import { useLogout } from '@/lib/auth';
 import {
   isSoundEnabled,
@@ -263,6 +264,7 @@ export default function SettingsPage() {
 
         <main className="flex flex-col gap-4">
           {pane === 'profile' && (
+            <>
             <Card
               title="Profile"
               sub="Your personal information and contact details"
@@ -481,6 +483,8 @@ export default function SettingsPage() {
                 </form>
               )}
             </Card>
+              <TelegramIdentityCard />
+            </>
           )}
 
           {pane === 'appearance' && (

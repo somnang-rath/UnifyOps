@@ -16,6 +16,7 @@ import {
   Notification,
   NotificationDocument,
 } from '../notifications/schemas/notification.schema';
+import { ChatMessagesService } from '../chat/chat-messages.service';
 
 // `@Schema({ timestamps: true })` adds createdAt/updatedAt at runtime but
 // Mongoose's inferred lean type doesn't surface them. Attach them here so
@@ -67,6 +68,7 @@ export class DashboardService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Notification.name)
     private notifModel: Model<NotificationDocument>,
+    private chatMessages: ChatMessagesService,
   ) {}
 
   async badges(userId: string) {
@@ -74,7 +76,7 @@ export class DashboardService {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [myOpenIssues, overdueIssues, openMrs, unreadNotifs] =
+    const [myOpenIssues, overdueIssues, openMrs, unreadNotifs, unreadChat] =
       await Promise.all([
         this.issueModel.countDocuments({
           assigneeId: meOid,
@@ -87,6 +89,7 @@ export class DashboardService {
         }),
         this.mrModel.countDocuments({ status: 'open' }),
         this.notifModel.countDocuments({ userId: meOid, read: false }),
+        this.chatMessages.unreadTotal(userId),
       ]);
 
     return {
@@ -94,6 +97,7 @@ export class DashboardService {
       mywork: overdueIssues,
       approvals: openMrs,
       notifications: unreadNotifs,
+      chat: unreadChat,
     };
   }
 
