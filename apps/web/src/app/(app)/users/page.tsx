@@ -599,22 +599,6 @@ export default function UsersPage() {
     block: boolean;
   } | null>(null);
 
-  if (me?.role !== 'admin') {
-    return (
-      <div className="max-w-md mx-auto mt-24 text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-bg-subtle border border-border mb-4">
-          <Lock className="w-5 h-5 text-text-muted" />
-        </div>
-        <h1 className="text-[20px] font-bold tracking-[-.02em] mb-1.5">
-          Not authorized
-        </h1>
-        <p className="text-[13px] text-text-muted leading-[1.6]">
-          The People directory is only available to workspace admins.
-        </p>
-      </div>
-    );
-  }
-
   const list = useMemo(() => {
     const needle = debouncedQ.toLowerCase();
     if (!needle) return users;
@@ -634,6 +618,23 @@ export default function UsersPage() {
     () => roles.map((r) => ({ value: r.key, label: r.name })),
     [roles],
   );
+
+  // NOTE: this guard must stay below every hook call (rules-of-hooks).
+  if (me?.role !== 'admin') {
+    return (
+      <div className="max-w-md mx-auto mt-24 text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-bg-subtle border border-border mb-4">
+          <Lock className="w-5 h-5 text-text-muted" />
+        </div>
+        <h1 className="text-[20px] font-bold tracking-[-.02em] mb-1.5">
+          Not authorized
+        </h1>
+        <p className="text-[13px] text-text-muted leading-[1.6]">
+          The People directory is only available to workspace admins.
+        </p>
+      </div>
+    );
+  }
 
   function rolePill(roleKey: string) {
     const role = roleByKey.get(roleKey);

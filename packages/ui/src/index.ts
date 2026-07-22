@@ -45,6 +45,9 @@ export type {
 // Tier 2 — composites
 export { Modal } from './Modal';
 export type { ModalProps } from './Modal';
+export { Drawer } from './Drawer';
+export type { DrawerProps } from './Drawer';
+export { useFocusTrap } from './useFocusTrap';
 export { Tabs } from './Tabs';
 export type { TabsProps, TabItem } from './Tabs';
 export { Table, THead, TBody, TRow } from './Table';

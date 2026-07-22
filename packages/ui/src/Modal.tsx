@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from './cn';
+import { useFocusTrap } from './useFocusTrap';
 
 export interface ModalProps {
   open: boolean;
@@ -39,49 +40,22 @@ export function Modal({
   className,
 }: ModalProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
-  const restoreRef = React.useRef<HTMLElement | null>(null);
   const titleId = React.useId();
   const descId = React.useId();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);
 
+  // Move focus into the dialog, trap Tab, restore on close — shared with Drawer.
+  useFocusTrap(panelRef, { active: open && mounted, trap: true });
+
   React.useEffect(() => {
     if (!open) return;
-
-    restoreRef.current = document.activeElement as HTMLElement | null;
-
-    // Move focus into the dialog; without this, keyboard focus stays on the page
-    // behind and Tab walks a UI the user cannot see.
-    const focusables = () =>
-      Array.from(
-        panelRef.current?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null);
-
-    const first = focusables()[0] ?? panelRef.current;
-    first?.focus();
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-
-      const items = focusables();
-      if (!items.length) return;
-      const firstEl = items[0];
-      const lastEl = items[items.length - 1];
-
-      if (e.shiftKey && document.activeElement === firstEl) {
-        e.preventDefault();
-        lastEl.focus();
-      } else if (!e.shiftKey && document.activeElement === lastEl) {
-        e.preventDefault();
-        firstEl.focus();
       }
     };
 
@@ -92,7 +66,6 @@ export function Modal({
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
-      restoreRef.current?.focus?.();
     };
   }, [open, onClose]);
 

@@ -13,6 +13,7 @@ import { useProjects } from '@/hooks/use-projects';
 import { useUsers } from '@/hooks/use-users';
 import { useDebounce } from '@/hooks/use-debounce';
 import { IssueModal } from '@/components/feature/issue/issue-modal';
+import { IssuePeek } from '@/components/feature/issue/issue-peek';
 import { IssueTypeIcon } from '@/components/feature/issue/icons';
 import {
   Label,
@@ -156,6 +157,26 @@ export default function IssuesPage() {
     return items;
   }, [data?.items, sortBy]);
 
+  // ── Issue Peek (?peek=<id>) — the list page owns the URL and the ordering;
+  // IssuePeek owns rendering and mutations (docs/plan/specs/issue-peek.md §3).
+  const peekId = params.get('peek');
+
+  const closePeek = () => {
+    // replace, not push — closing must not create a history entry, and it must
+    // work identically for a pasted deep link (never router.back()).
+    const next = new URLSearchParams(params);
+    next.delete('peek');
+    const qs = next.toString();
+    router.replace(qs ? `/issues?${qs}` : '/issues', { scroll: false });
+  };
+
+  const navigatePeek = (id: string) => {
+    // replace — stepping through ten issues must not require ten Backs.
+    const next = new URLSearchParams(params);
+    next.set('peek', id);
+    router.replace(`/issues?${next.toString()}`, { scroll: false });
+  };
+
   const grouped = useMemo(() => {
     if (!groupBy) return null;
     const label = (i: Issue): string => {
@@ -190,6 +211,17 @@ export default function IssuesPage() {
       );
     return entries;
   }, [groupBy, sortedItems, projectMap, userMap]);
+
+  // Peek prev/next follow whatever sort/group the user currently sees.
+  const { peekPrevId, peekNextId } = useMemo(() => {
+    if (!peekId) return { peekPrevId: null, peekNextId: null };
+    const flat = grouped ? grouped.flatMap(([, items]) => items) : sortedItems;
+    const idx = flat.findIndex((i) => i._id === peekId);
+    return {
+      peekPrevId: idx > 0 ? flat[idx - 1]._id : null,
+      peekNextId: idx >= 0 && idx < flat.length - 1 ? flat[idx + 1]._id : null,
+    };
+  }, [peekId, grouped, sortedItems]);
 
   return (
     <>
@@ -307,6 +339,16 @@ export default function IssuesPage() {
           if (params.get('new') === '1') router.replace('/issues');
         }}
       />
+
+      {peekId && (
+        <IssuePeek
+          issueId={peekId}
+          onClose={closePeek}
+          onNavigate={navigatePeek}
+          prevId={peekPrevId}
+          nextId={peekNextId}
+        />
+      )}
     </>
   );
 
@@ -319,6 +361,17 @@ export default function IssuesPage() {
               <Link
                 key={i._id}
                 href={`/issues/${i._id}`}
+                // Plain left click opens the peek; modified clicks and
+                // middle-click keep the real link behavior (spec §3.1).
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
+                    return;
+                  e.preventDefault();
+                  const next = new URLSearchParams(params);
+                  next.set('peek', i._id);
+                  // push → browser Back closes the peek
+                  router.push(`/issues?${next.toString()}`, { scroll: false });
+                }}
                 className="flex items-center gap-3.5 px-[18px] py-3.5 border-b border-border last:border-b-0 cursor-pointer transition-colors duration-[var(--dur)] hover:bg-bg-hover"
               >
                 <IssueTypeIcon type={i.type} />

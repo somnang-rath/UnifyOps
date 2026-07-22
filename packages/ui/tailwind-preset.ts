@@ -182,6 +182,10 @@ const preset = {
           from: { opacity: '0', transform: 'scale(.98) translateY(-3px)' },
           to: { opacity: '1', transform: 'scale(1) translateY(0)' },
         },
+        sheetIn: {
+          from: { opacity: '0', transform: 'translateX(12px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
         toastIn: {
           from: { opacity: '0', transform: 'translateX(16px)' },
           to: { opacity: '1', transform: 'translateX(0)' },
@@ -195,6 +199,7 @@ const preset = {
         'fade-in': 'fadeIn 120ms cubic-bezier(0.4,0,0.2,1)',
         'slide-up': 'slideUp 120ms cubic-bezier(0.4,0,0.2,1)',
         'modal-in': 'modalIn 160ms cubic-bezier(0.16,1,0.3,1)',
+        'sheet-in': 'sheetIn 160ms cubic-bezier(0.16,1,0.3,1)',
         'popover-in': 'popoverIn 120ms cubic-bezier(0.16,1,0.3,1)',
         'toast-in': 'toastIn 160ms cubic-bezier(0.16,1,0.3,1)',
         shimmer: 'shimmer 1.4s infinite',
