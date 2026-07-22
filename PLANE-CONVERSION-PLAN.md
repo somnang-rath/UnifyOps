@@ -296,7 +296,7 @@ MONGODB_URI=mongodb://localhost:27017/prism
 - [x] Issue relations — `IssueRelation` schema (blocks/relates_to/duplicate, unique index) + `GET/POST /issues/:id/relations` + `DELETE /issues/relations/:id`។ រក្សា `blocks` ទិសតែមួយ បង្ហាញ `blocked_by` ដល់ target (inverse)។ self/duplicate guard
 - [x] Frontend: `use-issue-links` + `use-views` hooks + `IssueLinks` component (sub-issues rollup + relations grouped by kind + add/remove) ដាក់លើ issue detail page។ web build ✅
 - [x] **E2E 13/13 pass** ប្រឆាំង mongo + api:4000 (2026-07-17): `pnpm --filter api test:phase7` — view CRUD + filter strip + workspace scope · sub-issue rollup · self-parent 400 · relation inverse · duplicate/self 400 · remove clears both ends
-- [ ] Saved-views UI bar (project) + filter/group/sort — hooks រួច, UI bar ទុកសម្រាប់ Phase 7b
+- [x] Saved-views UI bar + filter/group/sort — `ViewsBar` លើ /issues (chips workspace + project views, save modal ជាមួយ isShared, delete លើ views ផ្ទាល់ខ្លួន, active-chip drift detection) + Sort (Newest/Oldest/Priority/Due) + Group (status/priority/project/assignee) client-side។ **E2E 12/12 pass ក្នុង browser ពិត** (2026-07-22): save→chip active→drift→re-apply→reload persist→delete
 - [ ] Issue peek side-panel (`?peek=<id>`) — sub-issues/relations ឥឡូវនៅលើ detail page ពេញ; peek panel ជា follow-up
 - [ ] Bulk operations · route consolidation (`[workspaceSlug]`) · layout ជា search param — ទុកសម្រាប់ Phase 7b (route migration មិនគួរបំបែក app ដែលដំណើរការ mid-stream)
 

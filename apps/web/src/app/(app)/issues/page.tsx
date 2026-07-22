@@ -25,6 +25,8 @@ import {
   type Issue,
 } from '@/schemas/issue';
 import { fmtDateShort, relTime } from '@/lib/format';
+import { ViewsBar } from './_components/views-bar';
+import type { SavedView } from '@/hooks/use-views';
 
 type Tab = 'open' | 'closed' | 'all';
 const TYPE_OPTS = [
@@ -41,6 +43,25 @@ const PRIO_OPTS = [
     label: p[0].toUpperCase() + p.slice(1),
   })),
 ];
+const SORT_OPTS = [
+  { value: 'created:desc', label: 'Newest' },
+  { value: 'created:asc', label: 'Oldest' },
+  { value: 'priority:desc', label: 'Priority' },
+  { value: 'dueDate:asc', label: 'Due date' },
+];
+const GROUP_OPTS = [
+  { value: '', label: 'No grouping' },
+  { value: 'status', label: 'Group: status' },
+  { value: 'priority', label: 'Group: priority' },
+  { value: 'project', label: 'Group: project' },
+  { value: 'assignee', label: 'Group: assignee' },
+];
+const PRIORITY_ORDER: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
 
 export default function IssuesPage() {
   const router = useRouter();
@@ -52,8 +73,37 @@ export default function IssuesPage() {
   const [projectId, setProjectId] = useState(params.get('project') ?? '');
   const [type, setType] = useState('');
   const [priority, setPriority] = useState('');
+  const [sortBy, setSortBy] = useState('created:desc');
+  const [groupBy, setGroupBy] = useState('');
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [creating, setCreating] = useState(params.get('new') === '1');
   const [editing, setEditing] = useState<Issue | null>(null);
+
+  // Any manual filter change means we've drifted from the applied saved view.
+  const touched =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      setActiveViewId(null);
+      set(v);
+    };
+
+  const applyView = (v: SavedView) => {
+    const f = v.filters as {
+      status?: string;
+      type?: string;
+      priority?: string;
+      q?: string;
+    };
+    const t = f.status;
+    setTab(t === 'open' || t === 'closed' || t === 'all' ? t : 'open');
+    setType(f.type ?? '');
+    setPriority(f.priority ?? '');
+    setQ(f.q ?? '');
+    setProjectId(v.projectId ?? '');
+    setSortBy(v.sortBy || 'created:desc');
+    setGroupBy(v.groupBy ?? '');
+    setActiveViewId(v._id);
+  };
 
   useEffect(() => {
     if (params.get('new') === '1') setCreating(true);
@@ -79,6 +129,68 @@ export default function IssuesPage() {
     [users],
   );
 
+  // Sort client-side — the list endpoint returns newest-first; the other
+  // orders are presentation concerns layered on top.
+  const sortedItems = useMemo(() => {
+    const items = [...(data?.items ?? [])];
+    switch (sortBy) {
+      case 'created:asc':
+        items.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        break;
+      case 'priority:desc':
+        items.sort(
+          (a, b) =>
+            (PRIORITY_ORDER[a.priority] ?? 9) -
+            (PRIORITY_ORDER[b.priority] ?? 9),
+        );
+        break;
+      case 'dueDate:asc':
+        // Undated issues sink to the bottom.
+        items.sort((a, b) =>
+          (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'),
+        );
+        break;
+      default:
+        items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+    return items;
+  }, [data?.items, sortBy]);
+
+  const grouped = useMemo(() => {
+    if (!groupBy) return null;
+    const label = (i: Issue): string => {
+      switch (groupBy) {
+        case 'status':
+          return i.status;
+        case 'priority':
+          return i.priority;
+        case 'project':
+          return i.projectId
+            ? (projectMap.get(i.projectId)?.name ?? 'Unknown project')
+            : 'No project';
+        case 'assignee':
+          return i.assigneeId
+            ? (userMap.get(i.assigneeId)?.name ?? 'Unknown')
+            : 'Unassigned';
+        default:
+          return 'All';
+      }
+    };
+    const m = new Map<string, Issue[]>();
+    for (const i of sortedItems) {
+      const k = label(i);
+      const arr = m.get(k);
+      if (arr) arr.push(i);
+      else m.set(k, [i]);
+    }
+    const entries = [...m.entries()];
+    if (groupBy === 'priority')
+      entries.sort(
+        ([a], [b]) => (PRIORITY_ORDER[a] ?? 9) - (PRIORITY_ORDER[b] ?? 9),
+      );
+    return entries;
+  }, [groupBy, sortedItems, projectMap, userMap]);
+
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-5">
@@ -95,10 +207,16 @@ export default function IssuesPage() {
         </Button>
       </div>
 
+      <ViewsBar
+        snapshot={{ tab, projectId, type, priority, q, sortBy, groupBy }}
+        activeViewId={activeViewId}
+        onApply={applyView}
+      />
+
       <div className="flex items-center gap-2.5 mb-5 flex-wrap">
         <Tabs<Tab>
           value={tab}
-          onChange={setTab}
+          onChange={touched(setTab)}
           items={[
             { value: 'open', label: 'Open', count: data?.totals.open },
             { value: 'closed', label: 'Closed', count: data?.totals.closed },
@@ -110,7 +228,7 @@ export default function IssuesPage() {
         <InputWithIcon
           icon={<Search />}
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => touched(setQ)(e.target.value)}
           placeholder="Search…"
           aria-label="Search tasks"
           className="w-[220px]"
@@ -119,18 +237,37 @@ export default function IssuesPage() {
         <Select
           inline
           value={projectId}
-          onValueChange={setProjectId}
+          onValueChange={touched(setProjectId)}
           options={[
             { value: '', label: 'All projects' },
             ...projects.map((p) => ({ value: p._id, label: p.name })),
           ]}
         />
-        <Select inline value={type} onValueChange={setType} options={TYPE_OPTS} />
+        <Select
+          inline
+          value={type}
+          onValueChange={touched(setType)}
+          options={TYPE_OPTS}
+        />
         <Select
           inline
           value={priority}
-          onValueChange={setPriority}
+          onValueChange={touched(setPriority)}
           options={PRIO_OPTS}
+        />
+        <Select
+          inline
+          value={sortBy}
+          onValueChange={touched(setSortBy)}
+          options={SORT_OPTS}
+          aria-label="Sort"
+        />
+        <Select
+          inline
+          value={groupBy}
+          onValueChange={touched(setGroupBy)}
+          options={GROUP_OPTS}
+          aria-label="Group"
         />
       </div>
 
@@ -138,20 +275,47 @@ export default function IssuesPage() {
         <div className="text-text-muted text-[13px]">Loading…</div>
       ) : !data || data.items.length === 0 ? (
         <Empty onCreate={() => setCreating(true)} />
+      ) : grouped ? (
+        <div className="flex flex-col gap-4">
+          {grouped.map(([label, items]) => (
+            <section key={label}>
+              <h2 className="flex items-baseline gap-2 mb-1.5 px-0.5 text-[12px] font-semibold uppercase tracking-wide text-text-muted">
+                {label}
+                <span className="font-normal normal-case tracking-normal opacity-70">
+                  {items.length}
+                </span>
+              </h2>
+              <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
+                {items.map((i) => renderRow(i))}
+              </div>
+            </section>
+          ))}
+        </div>
       ) : (
         <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
-          {data.items.map((i) => {
-            const project = i.projectId
-              ? projectMap.get(i.projectId)
-              : undefined;
-            const author = i.authorId
-              ? userMap.get(i.authorId)
-              : undefined;
-            const assignee = i.assigneeId
-              ? userMap.get(i.assigneeId)
-              : undefined;
-            const labels = (i.labels ?? []).slice(0, 3);
-            return (
+          {sortedItems.map((i) => renderRow(i))}
+        </div>
+      )}
+
+      <IssueModal
+        open={creating || !!editing}
+        issue={editing}
+        defaultProjectId={projectId}
+        onClose={() => {
+          setCreating(false);
+          setEditing(null);
+          if (params.get('new') === '1') router.replace('/issues');
+        }}
+      />
+    </>
+  );
+
+  function renderRow(i: Issue) {
+    const project = i.projectId ? projectMap.get(i.projectId) : undefined;
+    const author = i.authorId ? userMap.get(i.authorId) : undefined;
+    const assignee = i.assigneeId ? userMap.get(i.assigneeId) : undefined;
+    const labels = (i.labels ?? []).slice(0, 3);
+    return (
               <Link
                 key={i._id}
                 href={`/issues/${i._id}`}
@@ -196,23 +360,8 @@ export default function IssuesPage() {
                   {assignee && <Avatar name={assignee.name} src={assignee.avatar} size="sm" />}
                 </div>
               </Link>
-            );
-          })}
-        </div>
-      )}
-
-      <IssueModal
-        open={creating || !!editing}
-        issue={editing}
-        defaultProjectId={projectId}
-        onClose={() => {
-          setCreating(false);
-          setEditing(null);
-          if (params.get('new') === '1') router.replace('/issues');
-        }}
-      />
-    </>
-  );
+    );
+  }
 }
 
 const Sep = () => <span className="opacity-40">·</span>;
