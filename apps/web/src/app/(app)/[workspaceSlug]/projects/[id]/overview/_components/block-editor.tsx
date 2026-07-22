@@ -13,7 +13,7 @@ import { Download, FileText, GripVertical, Palette, Paperclip, Plus, Trash2, Upl
 import type { NoteBlock, NoteBlockType, TableData } from '@/schemas/note';
 import { cn } from '@/lib/utils';
 import { filesService } from '@/hooks/use-files';
-import { SLASH_OPTIONS, videoEmbedURL, type SlashOption } from './constants';
+import { SLASH_OPTIONS, videoEmbedURL, type SlashOption } from './slash-options';
 
 const COLOR_SWATCHES: { name: string; value: string | null }[] = [
   { name: 'Default', value: null },

@@ -123,6 +123,107 @@
   font-weight: 500;
 }
 
+/* --- New shared-schema nodes (ADR 0009 §3): task list, tables, images --- */
+.prism-editor .ProseMirror ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.prism-editor .ProseMirror ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.prism-editor .ProseMirror ul[data-type='taskList'] li > label {
+  margin-top: 0.25em;
+}
+.prism-editor .ProseMirror ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+}
+
+.prism-editor .ProseMirror table {
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  width: auto;
+  font-size: 13px;
+}
+.prism-editor .ProseMirror th,
+.prism-editor .ProseMirror td {
+  border: 1px solid var(--border, #e4e4ee);
+  padding: 5px 9px;
+  min-width: 60px;
+  text-align: left;
+  vertical-align: top;
+}
+.prism-editor .ProseMirror th {
+  background: var(--bg-subtle, #fafafd);
+  font-weight: 600;
+}
+.prism-editor .ProseMirror .selectedCell {
+  background: color-mix(in srgb, var(--a, #6366f1) 12%, transparent);
+}
+
+.prism-editor .ProseMirror img {
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--border, #e4e4ee);
+  margin: 0.4em 0;
+}
+.prism-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--a, #6366f1);
+}
+
+/* --- CollabToolbar (spec §2.3) --- */
+.prism-collab-toolbar-wrap {
+  background: var(--bg-card, #fff);
+  container-type: inline-size;
+}
+.prism-collab-toolbar-wrap.is-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.prism-collab-toolbar {
+  /* Opaque + fixed floor so the `editor=null` skeleton bar never jumps. */
+  background: var(--bg-card, #fff);
+  min-height: 39px;
+}
+
+/* Narrow widths (< 560px container): heading label collapses to "Aa", group
+ * separators hide — buys back ~40px before flex-wrap kicks in. */
+.prism-collab-hlabel-sm {
+  display: none;
+}
+@container (max-width: 559px) {
+  .prism-collab-toolbar .prism-collab-hlabel {
+    display: none;
+  }
+  .prism-collab-toolbar .prism-collab-hlabel-sm {
+    display: inline;
+  }
+  .prism-collab-toolbar .prism-rich-text-btn {
+    min-width: 0;
+  }
+  .prism-collab-toolbar > .prism-rich-sep {
+    display: none;
+  }
+}
+
+/* Popovers must clamp within the viewport. */
+.prism-collab-toolbar .prism-rich-linkpop,
+.prism-collab-toolbar .prism-rich-emojipop {
+  max-width: min(300px, calc(100vw - 24px));
+}
+
+/* Host opt-in: let the page own scrolling (notes column) instead of the
+ * editor's internal scroll area, so the sticky toolbar tracks the page. */
+.prism-collab-inline .prism-editor-scroll {
+  overflow: visible;
+  padding: 0;
+}
+.prism-collab-inline .prism-editor {
+  padding: 12px 16px;
+}
+
 /* --- Remote carets (@tiptap/extension-collaboration-cursor) --- */
 .prism-editor .collaboration-cursor__caret {
   position: relative;

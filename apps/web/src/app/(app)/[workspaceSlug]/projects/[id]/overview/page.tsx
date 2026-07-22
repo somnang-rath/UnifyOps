@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Check, Loader2 } from 'lucide-react';
 import { useProject, useProjectMutations } from '@/hooks/use-projects';
-import { BlockEditor } from '@/app/(app)/notes/_components/block-editor';
+import { BlockEditor } from './_components/block-editor';
 import type { NoteBlock } from '@/schemas/note';
 import { cn } from '@/lib/utils';
 

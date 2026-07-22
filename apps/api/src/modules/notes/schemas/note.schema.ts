@@ -76,6 +76,20 @@ export class Note {
   @Prop({ type: [NoteBlockSchema], default: [] })
   blocks: NoteBlock[];
 
+  /**
+   * HTML representation of the note (ADR 0009 §3) — the Yjs seed source and
+   * the snapshot-back target. Authoritative once `migratedToDoc` is true.
+   */
+  @Prop({ default: '' })
+  contentHTML: string;
+
+  /**
+   * One-time lazy `blocks[]` → `contentHTML` conversion done (ADR 0009 §3).
+   * After this flips, `blocks[]` is retained read-only as a rollback copy.
+   */
+  @Prop({ default: false })
+  migratedToDoc: boolean;
+
   @Prop({ type: [String], default: [] })
   tags: string[];
 

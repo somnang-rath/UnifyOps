@@ -1,8 +1,8 @@
 import type { Hocuspocus } from '@hocuspocus/server';
 import type { Env } from './env';
 import type { ConnectionContext } from './auth';
-import { parseWikiDocumentName } from './auth';
-import { fetchWikiAccess } from './api-client';
+import { parseDocumentName } from './auth';
+import { fetchDocAccess } from './api-client';
 
 /**
  * Access is only checked at handshake, but a collab socket can stay open for
@@ -23,8 +23,8 @@ export async function sweepConnections(
   let closed = 0;
 
   for (const [documentName, document] of server.documents) {
-    const wikiPageId = parseWikiDocumentName(documentName);
-    if (!wikiPageId) continue;
+    const parsed = parseDocumentName(documentName);
+    if (!parsed) continue;
 
     // One access call per distinct user on the document, not per connection —
     // the same person in three tabs is one authorization question.
@@ -42,7 +42,7 @@ export async function sweepConnections(
       let canRead = false;
       let canWrite = false;
       try {
-        const access = await fetchWikiAccess(env, wikiPageId, userId);
+        const access = await fetchDocAccess(env, parsed.kind, parsed.id, userId);
         canRead = !!access?.canRead;
         canWrite = !!access?.canWrite;
       } catch (err) {

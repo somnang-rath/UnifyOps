@@ -1,10 +1,17 @@
 import jwt from 'jsonwebtoken';
 import type { onAuthenticatePayload } from '@hocuspocus/server';
 import type { Env } from './env';
-import { fetchWikiAccess } from './api-client';
+import { fetchDocAccess } from './api-client';
 
-/** documentName grammar (ADR 0001 §2 — LOCKED). */
-const DOCUMENT_NAME_RE = /^wiki:([0-9a-f]{24})$/;
+/**
+ * documentName grammar (ADR 0001 §2 — LOCKED; extended by ADR 0009 §1).
+ * `wiki:<24-hex>` (Phase 2) and `notes:<24-hex>` (ADR 0009) are the only
+ * accepted prefixes.
+ */
+const DOCUMENT_NAME_RE = /^(wiki|notes):([0-9a-f]{24})$/;
+
+/** The document kinds the live server serves. */
+export type DocKind = 'wiki' | 'notes';
 
 /**
  * Only tokens minted for the live server are accepted (docs/plan/01 §2, ADR 0007).
@@ -17,7 +24,8 @@ const AUD_COLLAB = 'collab';
 export interface ConnectionContext {
   userId: string;
   role: string;
-  wikiPageId: string;
+  docKind: DocKind;
+  docId: string;
 }
 
 interface CollabTokenPayload {
@@ -28,18 +36,28 @@ interface CollabTokenPayload {
   exp?: number;
 }
 
+/** A successfully parsed documentName. */
+export interface ParsedDocumentName {
+  kind: DocKind;
+  id: string;
+}
+
 /**
- * Parse `wiki:<24-hex>` → the wikiPageId, or null if it does not match the
- * frozen grammar. No other prefixes are valid in Phase 2.
+ * Parse `wiki:<24-hex>` / `notes:<24-hex>` → `{ kind, id }`, or null if it does
+ * not match the frozen grammar (ADR 0009 §1). No other prefixes are valid.
  */
-export function parseWikiDocumentName(documentName: string): string | null {
+export function parseDocumentName(
+  documentName: string,
+): ParsedDocumentName | null {
   const m = DOCUMENT_NAME_RE.exec(documentName);
-  return m ? m[1] : null;
+  return m ? { kind: m[1] as DocKind, id: m[2] } : null;
 }
 
 /**
  * Verify a collab token for one document. Exported so the periodic re-auth
- * timer can re-run the exact same check the handshake did.
+ * timer can re-run the exact same check the handshake did. The `doc` claim
+ * equality check is prefix-agnostic (ADR 0009 §5) — a token minted for
+ * `notes:<id>` opens exactly that document and nothing else.
  */
 export function verifyCollabToken(
   env: Env,
@@ -62,7 +80,7 @@ export function verifyCollabToken(
 
   if (!payload.sub) throw new Error('Token missing sub');
 
-  // Scope check: a token for wiki:A must not open wiki:B.
+  // Scope check: a token for wiki:A must not open wiki:B (or notes:A).
   if (payload.doc !== documentName) {
     throw new Error(
       `Token is scoped to ${payload.doc ?? '(none)'}, not ${documentName}`,
@@ -73,11 +91,12 @@ export function verifyCollabToken(
 }
 
 /**
- * Hocuspocus onAuthenticate hook (ADR 0001 §1, hardened per docs/plan/01 §3.3).
+ * Hocuspocus onAuthenticate hook (ADR 0001 §1, hardened per docs/plan/01 §3.3;
+ * notes grammar + routing per ADR 0009 §§1–2).
  *
- * 1. documentName must match `^wiki:[0-9a-f]{24}$`, else reject.
+ * 1. documentName must match `^(wiki|notes):[0-9a-f]{24}$`, else reject.
  * 2. Local JWT verify: aud=collab, not expired, `doc` claim === documentName.
- * 3. Authorization via the API internal access endpoint:
+ * 3. Authorization via the API internal access endpoint for the doc kind:
  *      canRead=false / non-200 → reject; canWrite=false → read-only connection.
  *
  * Throwing here makes Hocuspocus reject the connection (no anonymous access).
@@ -86,8 +105,8 @@ export function makeOnAuthenticate(env: Env) {
   return async (data: onAuthenticatePayload): Promise<ConnectionContext> => {
     const { token, documentName, connection } = data;
 
-    const wikiPageId = parseWikiDocumentName(documentName);
-    if (!wikiPageId) {
+    const parsed = parseDocumentName(documentName);
+    if (!parsed) {
       throw new Error(`Invalid documentName: ${documentName}`);
     }
 
@@ -99,9 +118,9 @@ export function makeOnAuthenticate(env: Env) {
     const payload = verifyCollabToken(env, token, documentName);
 
     // --- Authorization: delegated to the API (single source of truth) ---
-    const access = await fetchWikiAccess(env, wikiPageId, payload.sub);
+    const access = await fetchDocAccess(env, parsed.kind, parsed.id, payload.sub);
     if (!access || !access.canRead) {
-      throw new Error(`User ${payload.sub} may not read wiki:${wikiPageId}`);
+      throw new Error(`User ${payload.sub} may not read ${documentName}`);
     }
 
     if (!access.canWrite) {
@@ -112,7 +131,8 @@ export function makeOnAuthenticate(env: Env) {
     return {
       userId: payload.sub,
       role: payload.role ?? 'user',
-      wikiPageId,
+      docKind: parsed.kind,
+      docId: parsed.id,
     };
   };
 }

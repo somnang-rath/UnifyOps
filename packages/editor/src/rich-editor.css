@@ -177,6 +177,10 @@
 .prism-rich-linkpop-actions button.is-primary:hover {
   background: var(--a-600, #4f46e5);
 }
+.prism-rich-linkpop-actions button.is-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* --- emoji popover --- */
 .prism-rich-emoji-anchor {

@@ -1,6 +1,14 @@
 import { generateHTML } from '@tiptap/html';
 import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
 import type { Extensions } from '@tiptap/core';
 
 /**
@@ -12,9 +20,10 @@ import type { Extensions } from '@tiptap/core';
  * copy.
  *
  * INVARIANT: this array MUST stay identical to
- * `packages/editor/src/extensions.ts` (StarterKit minus history + Mention).
- * Any node/mark added client-side WITHOUT mirroring it here will be silently
- * dropped from server snapshots (ADR "Consequences").
+ * `packages/editor/src/extensions.ts` (StarterKit minus history + Mention +
+ * the ADR 0009 §3 set: TaskList/TaskItem, Table/TableRow/TableHeader/TableCell,
+ * Image, Link). Any node/mark added client-side WITHOUT mirroring it here will
+ * be silently dropped from server snapshots (ADR "Consequences").
  *
  * Notes for HTML rendering:
  * - `history` is disabled to match the collaborative client (Collaboration
@@ -25,6 +34,14 @@ import type { Extensions } from '@tiptap/core';
 export const editorExtensions: Extensions = [
   StarterKit.configure({ history: false }),
   Mention,
+  TaskList,
+  TaskItem,
+  Table,
+  TableRow,
+  TableHeader,
+  TableCell,
+  Image,
+  Link.configure({ openOnClick: false }),
 ];
 
 /**

@@ -1,14 +1,22 @@
 "use client"
-import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { AxiosError } from "axios"
 import {
   BookOpen,
   Check,
+  CloudOff,
   Download,
   FilePlus,
   Folder as FolderIcon,
   FolderPlus,
   ListTree,
+  Loader2,
   Lock,
   Maximize2,
   Mic,
@@ -22,34 +30,44 @@ import {
   Zap,
 } from "lucide-react"
 import {
+  CollaborativeEditor,
+  CollabToolbar,
+  userColor,
+  type ConnectionStatus,
+  type Editor,
+  type PresenceUser,
+  type SaveState,
+} from "@prism/editor"
+import { Avatar } from "@prism/ui"
+import {
   notesApi,
   useNote,
   useNoteFolders,
   useNoteMutations,
 } from "@/hooks/use-notes"
+import { useNoteCollab } from "@/hooks/use-note-collab"
+import { uploadEditorFile } from "@/lib/editor-upload"
+import { useAuthStore } from "@/stores/auth-store"
 import { toast } from "@/stores/toast-store"
 import { Confirm } from "@/components/ui/confirm"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
+import { SkeletonText } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { relTime } from "@/lib/format"
-import type { Note, NoteBlock } from "@/schemas/note"
-import { BlockEditor } from "./block-editor"
+import type { AuthUser } from "@/schemas/auth"
+import type { Note, NoteFolder } from "@/schemas/note"
 import { NoteTree } from "./note-tree"
 import { TextPrompt } from "./text-prompt"
-import {
-  AUTOSAVE_MS,
-  EMOJIS,
-  TEMPLATES,
-  readTime,
-  wordCount,
-} from "./constants"
+import { AUTOSAVE_MS, EMOJIS, TEMPLATES, readTime } from "./constants"
 import { LUCIDE_ICONS, NoteIcon, lucideValue } from "./note-icon"
 
+/**
+ * Metadata-only draft (ADR 0009 §6): content edits go through Yjs → apps/live,
+ * so the REST autosave carries only title/emoji/tags/pinned/folder.
+ */
 interface Draft {
   title: string
   emoji: string
-  blocks: NoteBlock[]
   tags: string[]
   pinned: boolean
   folderId: string | null
@@ -62,13 +80,39 @@ const TEMPLATE_ICONS: Record<string, typeof BookOpen> = {
   project: FolderIcon,
 }
 
+const LIVE_URL = process.env.NEXT_PUBLIC_LIVE_URL ?? ""
+
+const EDITOR_PLACEHOLDER =
+  "Start writing — use the toolbar for tasks, tables, images…"
+
 const emptyDraft = (folderId: string | null = null): Draft => ({
   title: "",
   emoji: "📄",
-  blocks: [{ type: "text", value: "" }],
   tags: [],
   pinned: false,
   folderId,
+})
+
+/** Collab state lifted from the keyed editor pane into the action bar/footer. */
+interface CollabUi {
+  status: ConnectionStatus
+  saveState: SaveState
+  presence: PresenceUser[]
+  /** null until the token resolves (unknown). */
+  canWrite: boolean | null
+  /** Token mint failed and no usable token is held — the red state (§3.2). */
+  tokenFailed: boolean
+  /** Token still loading (before the first mint resolves). */
+  connecting: boolean
+}
+
+const initialCollabUi = (): CollabUi => ({
+  status: "connecting",
+  saveState: "saving",
+  presence: [],
+  canWrite: null,
+  tokenFailed: false,
+  connecting: true,
 })
 
 /**
@@ -77,14 +121,16 @@ const emptyDraft = (folderId: string | null = null): Draft => ({
  * export lets the split-editor embed Notes natively via `embedded`.
  */
 export function NotesView({ embedded = false }: { embedded?: boolean }) {
+  const me = useAuthStore((s) => s.user)
   const { data: folders = [] } = useNoteFolders()
   const m = useNoteMutations()
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft())
   const [dirty, setDirty] = useState(false)
-  const [readOnly, setReadOnly] = useState(false)
-  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  // Fallback only: a 403 on the *metadata* autosave. Content read-only is known
+  // up front from the collab token's canWrite (§3.3).
+  const [metaReadOnly, setMetaReadOnly] = useState(false)
   const [tagInput, setTagInput] = useState("")
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [pickerTab, setPickerTab] = useState<"icon" | "emoji">("icon")
@@ -97,12 +143,28 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
   const [folderPrompt, setFolderPrompt] = useState<{
     parentId: string | null
   } | null>(null)
+  const [collabUi, setCollabUi] = useState<CollabUi>(initialCollabUi)
+  const [words, setWords] = useState(0)
+  const retryRef = useRef<() => void>(() => {})
   const skipNextLoadRef = useRef(false)
   const persistRef = useRef(false)
   const emojiBtnRef = useRef<HTMLDivElement>(null)
   const tplBtnRef = useRef<HTMLDivElement>(null)
 
   const { data: activeNote, error: activeNoteError } = useNote(activeId)
+
+  // Reset per-note collab state synchronously when the open note changes so the
+  // keyed pane below always reports into a clean slate.
+  const [lastCollabId, setLastCollabId] = useState(activeId)
+  if (lastCollabId !== activeId) {
+    setLastCollabId(activeId)
+    setCollabUi(initialCollabUi())
+    setWords(0)
+  }
+
+  const patchCollabUi = useCallback((patch: Partial<CollabUi>) => {
+    setCollabUi((prev) => ({ ...prev, ...patch }))
+  }, [])
 
   // Restore the last-open note on mount so switching pages and coming back
   // keeps your place instead of resetting to the empty "Select a note" screen.
@@ -149,19 +211,18 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     setDraft({
       title: activeNote.title || "",
       emoji: activeNote.emoji || "📄",
-      blocks:
-        activeNote.blocks && activeNote.blocks.length
-          ? activeNote.blocks.map((b) => ({ ...b }))
-          : [{ type: "text", value: "" }],
       tags: activeNote.tags || [],
       pinned: !!activeNote.pinned,
       folderId: activeNote.folderId ?? null,
     })
     setDirty(false)
-    setReadOnly(false)
+    setMetaReadOnly(false)
   }, [activeNote])
 
-  // Auto-save (debounced). Skipped entirely once we've learned the note is read-only.
+  // Content read-only (known up front, §3.3) or metadata 403 fallback.
+  const readOnly = metaReadOnly || collabUi.canWrite === false
+
+  // Metadata auto-save (debounced). Skipped once we know the note is read-only.
   useEffect(() => {
     if (!dirty || !activeId || readOnly) return
     const t = setTimeout(() => {
@@ -169,17 +230,14 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
       m.update.mutate(
         { id: activeId, body: draft, config: { _skipErrorToast: true } },
         {
-          onSuccess: () => {
-            setDirty(false)
-            setSavedAt(new Date())
-          },
+          onSuccess: () => setDirty(false),
           onError: (err) => {
             skipNextLoadRef.current = false
             if (
               err instanceof AxiosError &&
               err.response?.status === 403
             ) {
-              setReadOnly(true)
+              setMetaReadOnly(true)
               return
             }
             toast("Save failed", "error")
@@ -205,7 +263,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     return () => document.removeEventListener("mousedown", onDoc)
   }, [emojiOpen, tplOpen])
 
-  // Keyboard shortcuts: Ctrl+S, Ctrl+Shift+N, Esc (exit fullscreen)
+  // Keyboard shortcuts: Ctrl+S (save details), Ctrl+Shift+N, Esc (exit fullscreen)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
@@ -251,18 +309,11 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     setDirty(true)
   }
 
-  const setBlocks = (
-    next: NoteBlock[] | ((prev: NoteBlock[]) => NoteBlock[]),
-  ) => {
-    setDraft((d) => ({
-      ...d,
-      blocks: typeof next === "function" ? next(d.blocks) : next,
-    }))
-  }
-
   const createNote = (folderId: string | null, fromTpl?: string) => {
     const tpl = fromTpl ? TEMPLATES.find((t) => t.key === fromTpl) : null
-    const body: Draft = tpl
+    // Template creation still POSTs blocks[] — the API's lazy migration
+    // converts them to contentHTML on first open (spec §4).
+    const body = tpl
       ? {
           title: tpl.title,
           emoji: tpl.emoji,
@@ -271,7 +322,10 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
           pinned: false,
           folderId,
         }
-      : emptyDraft(folderId)
+      : {
+          ...emptyDraft(folderId),
+          blocks: [{ type: "text" as const, value: "" }],
+        }
     m.create.mutate(body, {
       onSuccess: (n: Note) => {
         setActiveId(n._id)
@@ -289,8 +343,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
       {
         onSuccess: () => {
           setDirty(false)
-          setSavedAt(new Date())
-          toast("Note saved", "success")
+          toast("Details saved", "success")
         },
         onError: (err) => {
           skipNextLoadRef.current = false
@@ -298,7 +351,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
             err instanceof AxiosError &&
             err.response?.status === 403
           ) {
-            setReadOnly(true)
+            setMetaReadOnly(true)
             return
           }
           toast("Save failed", "error")
@@ -307,15 +360,12 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     )
   }
 
+  // Content lives in Yjs and is snapshotted server-side — no pre-export flush.
+  // (Edits inside the snapshot debounce window may miss the PDF by a few
+  // seconds; accepted, matches wiki.)
   const exportPdf = async () => {
     if (!activeId) return
     try {
-      if (dirty && !readOnly) {
-        skipNextLoadRef.current = true
-        await m.update.mutateAsync({ id: activeId, body: draft })
-        setDirty(false)
-        setSavedAt(new Date())
-      }
       toast("Generating PDF…", "info")
       const blob = await notesApi.exportPdf(activeId)
       const url = URL.createObjectURL(blob)
@@ -388,18 +438,39 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     return (id: string | null) => walk(id)
   }, [folders])
 
-  const wordsTotal = wordCount(draft.blocks)
-  const status = !activeId
-    ? "New — not yet saved"
-    : readOnly
-      ? "Read-only"
-      : dirty
-        ? "Saving…"
-        : savedAt
-          ? `Saved · ${savedAt.toLocaleTimeString()}`
-          : activeNote
-            ? `Last edited ${relTime(activeNote.updatedAt)}`
-            : ""
+  // Read-only banner copy (§3.3) — derived from data already on hand.
+  const activeFolder: NoteFolder | undefined = activeNote?.folderId
+    ? folders.find((f) => f._id === activeNote.folderId)
+    : undefined
+  const readOnlyNotice: React.ReactNode =
+    activeFolder?._access === "read" ? (
+      <>
+        View only — you have read access to the folder{" "}
+        <strong>{activeFolder.name}</strong>.
+      </>
+    ) : activeFolder?._access === "upload" &&
+      activeNote &&
+      me &&
+      activeNote.ownerId !== me.id ? (
+      <>
+        View only — upload access lets you add your own notes to{" "}
+        <strong>{activeFolder.name}</strong>, but only its author can edit
+        this one.
+      </>
+    ) : (
+      <>View only — you don&apos;t have permission to edit this note.</>
+    )
+
+  // Footer dot + text (§1.4), mirroring the sync pill.
+  const footer = collabUi.tokenFailed
+    ? { dot: "bg-red", text: "Disconnected" }
+    : collabUi.connecting || collabUi.status === "connecting"
+      ? { dot: "bg-text-muted", text: "Connecting…" }
+      : collabUi.status === "disconnected"
+        ? { dot: "bg-amber", text: "Offline — edits stored locally" }
+        : collabUi.saveState === "saving"
+          ? { dot: "bg-amber", text: "Syncing…" }
+          : { dot: "bg-green", text: "Synced" }
 
   return (
     <div
@@ -430,6 +501,21 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
           </button>
 
           <div className="flex-1" />
+
+          {/* Presence + sync pill (§1.3/§1.4) — before the buttons so they stay
+              visible at narrow widths. */}
+          {activeId && (
+            <>
+              <PresenceStack users={collabUi.presence} />
+              <SyncPill
+                connecting={collabUi.connecting}
+                status={collabUi.status}
+                tokenFailed={collabUi.tokenFailed}
+                onRetry={() => retryRef.current()}
+              />
+            </>
+          )}
+
           <div ref={tplBtnRef} className="relative">
             <ActionButton
               title="Templates"
@@ -536,7 +622,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
             )}
           </ActionButton>
           <ActionButton
-            title={readOnly ? "Read-only" : "Save"}
+            title={readOnly ? "Read-only" : "Save details"}
             onClick={manualSave}
             disabled={!activeId || !dirty || readOnly}
             primary
@@ -583,14 +669,6 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
           </div>
         ) : (
           <div className="max-w-[760px] mx-auto py-6 px-6">
-            {readOnly && (
-              <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-bg-subtle text-[12px] text-text-sub">
-                <Lock className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>
-                  Read-only — you don't have permission to edit this note.
-                </span>
-              </div>
-            )}
             <fieldset
               disabled={readOnly}
               className="contents disabled:opacity-100"
@@ -733,31 +811,35 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
                 className="flex-1 min-w-[120px] bg-transparent border-0 outline-none text-[12px] text-text-muted placeholder:text-text-muted"
               />
             </div>
-
-            <BlockEditor
-              blocks={draft.blocks}
-              setBlocks={setBlocks}
-              onDirty={() => setDirty(true)}
-            />
             </fieldset>
+
+            {/* Collaborative content (ADR 0009). Guard: never mount before the
+                note query resolves — initialHTML must be present at mount or a
+                legacy note seeds empty (§3.4). */}
+            {activeNote && activeNote._id === activeId && me ? (
+              <NoteEditorPane
+                key={activeNote._id}
+                note={activeNote}
+                me={me}
+                readOnlyNotice={readOnlyNotice}
+                onUi={patchCollabUi}
+                onWords={setWords}
+                retryRef={retryRef}
+              />
+            ) : (
+              <ConnectingPane />
+            )}
 
             <div className="flex items-center justify-between mt-8 pt-3 border-t border-border text-[11px] text-text-muted">
               <span>
-                {wordsTotal} word{wordsTotal === 1 ? "" : "s"} ·{" "}
-                {readTime(wordsTotal)}
+                {words} word{words === 1 ? "" : "s"} · {readTime(words)}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span
-                  className={cn(
-                    "w-1.5 h-1.5 rounded-full",
-                    readOnly
-                      ? "bg-text-muted"
-                      : dirty
-                        ? "bg-amber"
-                        : "bg-green",
-                  )}
+                  className={cn("w-1.5 h-1.5 rounded-full", footer.dot)}
                 />
-                {status}
+                {footer.text}
+                {dirty && !readOnly && " · Saving details…"}
               </span>
             </div>
           </div>
@@ -840,6 +922,239 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
         })}
       </Modal>
     </div>
+  )
+}
+
+/* ------------------------- Collaborative editor pane ------------------------ */
+
+/**
+ * The Yjs-backed content area for one note. Keyed by note id by the caller so
+ * the collab token, provider, and seed guard all reset cleanly on note switch.
+ * Presence/status/save state are lifted into the host's action bar and footer
+ * via `onUi` (§1.2).
+ */
+function NoteEditorPane({
+  note,
+  me,
+  readOnlyNotice,
+  onUi,
+  onWords,
+  retryRef,
+}: {
+  note: Note
+  me: AuthUser
+  readOnlyNotice: React.ReactNode
+  onUi: (patch: Partial<CollabUi>) => void
+  onWords: (n: number) => void
+  retryRef: React.MutableRefObject<() => void>
+}) {
+  const collab = useNoteCollab(note._id)
+
+  // Hold the last good token so a failed *renewal* doesn't unmount the editor —
+  // Yjs keeps buffering offline (§3.2); only a never-minted token is terminal.
+  const [heldToken, setHeldToken] = useState<string | null>(null)
+  useEffect(() => {
+    if (collab.token) setHeldToken(collab.token)
+  }, [collab.token])
+  const token = collab.token ?? heldToken
+
+  useEffect(() => {
+    retryRef.current = collab.refresh
+  }, [collab.refresh, retryRef])
+
+  // Lift token-derived state into the host chrome.
+  useEffect(() => {
+    onUi({
+      canWrite: collab.token || heldToken ? collab.canWrite : null,
+      tokenFailed: !!collab.error && !token,
+      connecting: !token && !collab.error,
+    })
+  }, [collab.token, collab.canWrite, collab.error, heldToken, token, onUi])
+
+  // Word count / read time from the live doc, throttled ~500ms (§4).
+  const wordsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleReady = useCallback(
+    (editor: Editor) => {
+      const compute = () => {
+        if (editor.isDestroyed) return
+        const doc = editor.state.doc
+        const text = doc.textBetween(0, doc.content.size, " ", " ")
+        onWords((text.match(/\S+/g) || []).length)
+      }
+      compute()
+      editor.on("update", () => {
+        if (wordsTimer.current) return
+        wordsTimer.current = setTimeout(() => {
+          wordsTimer.current = null
+          compute()
+        }, 500)
+      })
+    },
+    [onWords],
+  )
+  useEffect(
+    () => () => {
+      if (wordsTimer.current) clearTimeout(wordsTimer.current)
+    },
+    [],
+  )
+
+  // Token mint failed before we ever connected → red empty-state (§3.2).
+  if (!token && collab.error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-text-muted border border-border rounded-lg">
+        <CloudOff className="w-8 h-8 opacity-60" />
+        <p className="text-[13px]">
+          Connection to the collaboration server was lost.
+        </p>
+        <Button size="sm" variant="outline" onClick={collab.refresh}>
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  // Token still minting → connecting skeleton (§3.1).
+  if (!token) return <ConnectingPane />
+
+  const canWrite = collab.canWrite
+
+  return (
+    <div className="border border-border rounded-lg bg-bg-card">
+      <CollaborativeEditor
+        documentName={`notes:${note._id}`}
+        wsUrl={LIVE_URL}
+        token={token}
+        currentUser={{
+          id: me.id,
+          name: me.name,
+          color: userColor(me.id),
+          avatar: me.avatar ?? null,
+        }}
+        initialHTML={note.contentHTML}
+        editable={canWrite}
+        placeholder={EDITOR_PLACEHOLDER}
+        autofocus={canWrite}
+        onPresenceChange={(presence) => onUi({ presence })}
+        onStatusChange={(status) => onUi({ status })}
+        onSaveStateChange={(saveState) => onUi({ saveState })}
+        onReady={handleReady}
+        className="prism-collab-inline"
+        renderChrome={({ editor }) => (
+          <>
+            {!canWrite && (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg border-b border-border bg-bg-subtle text-[12px] text-text-sub">
+                <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{readOnlyNotice}</span>
+              </div>
+            )}
+            {canWrite && (
+              <CollabToolbar editor={editor} onUpload={uploadEditorFile} />
+            )}
+          </>
+        )}
+      />
+    </div>
+  )
+}
+
+/** Connecting state (§3.1): disabled toolbar skeleton + text skeleton. */
+function ConnectingPane() {
+  return (
+    <div
+      aria-busy="true"
+      className="border border-border rounded-lg bg-bg-card"
+    >
+      <CollabToolbar editor={null} sticky={false} />
+      <div className="px-4 py-4">
+        <SkeletonText lines={6} />
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------ Presence stack ----------------------------- */
+
+/** Remote peers (§1.3): xs avatars, caret-colored rings, max 4 + overflow. */
+function PresenceStack({ users }: { users: PresenceUser[] }) {
+  if (users.length === 0) return null
+  const shown = users.slice(0, 4)
+  const rest = users.length - shown.length
+  return (
+    <span
+      className="inline-flex items-center mr-1.5"
+      role="img"
+      aria-label={`${users.length} other ${users.length === 1 ? "person" : "people"} editing`}
+    >
+      {shown.map((u) => (
+        <span
+          key={u.id}
+          title={u.name}
+          className="inline-flex rounded-full ring-2 -ml-1 first:ml-0"
+          style={{ "--tw-ring-color": u.color } as React.CSSProperties}
+        >
+          <Avatar name={u.name} src={u.avatar} size="xs" />
+        </span>
+      ))}
+      {rest > 0 && (
+        <span className="-ml-1 inline-flex items-center justify-center rounded-full bg-bg-subtle text-text-muted text-[10px] font-semibold ring-1 ring-bg-card px-1 h-4 min-w-4">
+          +{rest}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/* -------------------------------- Sync pill -------------------------------- */
+
+/**
+ * Connection pill (§1.4). Hidden when connected — quiet when healthy; the
+ * footer dot carries the "Synced/Syncing" detail.
+ */
+function SyncPill({
+  connecting,
+  status,
+  tokenFailed,
+  onRetry,
+}: {
+  connecting: boolean
+  status: ConnectionStatus
+  tokenFailed: boolean
+  onRetry: () => void
+}) {
+  let pill: React.ReactNode = null
+  if (tokenFailed) {
+    pill = (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[color:color-mix(in_srgb,var(--red)_12%,transparent)] text-red">
+        Can&apos;t connect
+        <button
+          type="button"
+          onClick={onRetry}
+          className="underline underline-offset-2 font-semibold"
+        >
+          Retry
+        </button>
+      </span>
+    )
+  } else if (connecting || status === "connecting") {
+    pill = (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-bg-subtle text-text-muted">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Connecting…
+      </span>
+    )
+  } else if (status === "disconnected") {
+    pill = (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[color:color-mix(in_srgb,var(--amber)_14%,transparent)] text-amber">
+        <CloudOff className="w-3 h-3" />
+        Offline — reconnecting
+      </span>
+    )
+  }
+  return (
+    <span aria-live="polite" className="inline-flex items-center mr-1">
+      {pill}
+    </span>
   )
 }
 

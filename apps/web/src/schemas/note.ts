@@ -32,11 +32,25 @@ export interface Note {
   folderId: string | null;
   title: string;
   emoji: string;
+  /** Legacy block content — archival once `migratedToDoc` (ADR 0009 §3). */
   blocks: NoteBlock[];
+  /**
+   * HTML representation: the Yjs seed source + snapshot target. Lazily
+   * migrated from `blocks[]` by the API on `GET /notes/:id` (ADR 0009 §3).
+   */
+  contentHTML?: string;
+  migratedToDoc?: boolean;
   tags: string[];
   pinned: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** `POST /notes/:id/collab-token` (ADR 0009 §5). */
+export interface NoteCollabToken {
+  token: string;
+  expiresIn: number;
+  canWrite: boolean;
 }
 
 export type GrantLevel = 'none' | 'read' | 'upload' | 'edit';

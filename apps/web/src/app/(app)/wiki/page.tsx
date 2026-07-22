@@ -16,7 +16,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react"
-import { RichTextEditor, type UploadedAttachment } from "@prism/editor"
+import { RichTextEditor } from "@prism/editor"
 import { Button } from "@/components/ui/button"
 import { Confirm } from "@/components/ui/confirm"
 import { InputWithIcon } from "@/components/ui/input"
@@ -24,7 +24,7 @@ import { Select } from "@/components/ui/select"
 import { SkeletonText } from "@/components/ui/skeleton"
 import { MarkdownView } from "@/components/feature/issue/markdown-view"
 import { SyntaxHelpButton } from "./_components/syntax-help"
-import { api } from "@/lib/api"
+import { uploadEditorFile } from "@/lib/editor-upload"
 import { useDebounce } from "@/hooks/use-debounce"
 import { useProjects } from "@/hooks/use-projects"
 import { useWikiList, useWikiMutations, useWikiPage } from "@/hooks/use-wiki"
@@ -44,9 +44,6 @@ const emptyDraft = (): Draft => ({ active: false, title: "", content: "" })
 const SPACE_URL = process.env.NEXT_PUBLIC_SPACE_URL ?? ""
 
 const PLACEHOLDER = "Start writing… use the toolbar for headings, tables, code, callout boxes…"
-
-// Matches the API's MAX_UPLOAD (files.controller).
-const ATTACH_MAX_BYTES = 25 * 1024 * 1024
 
 export default function WikiPageRoute() {
   const me = useAuthStore((s) => s.user)
@@ -209,39 +206,6 @@ export default function WikiPageRoute() {
     })
   }
 
-  // Upload a dropped/attached file and hand the editor its public URL. Reuses the
-  // generic files endpoint (also used by the comment composer).
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
-  const handleUpload = async (
-    file: File,
-  ): Promise<UploadedAttachment | null> => {
-    if (file.size > ATTACH_MAX_BYTES) {
-      toast(
-        `"${file.name}" is too large (max ${ATTACH_MAX_BYTES / 1024 / 1024}MB)`,
-        "error",
-      )
-      return null
-    }
-    try {
-      const fd = new FormData()
-      fd.append("file", file)
-      const { data } = await api.post<{
-        _id: string
-        name: string
-        mimeType: string
-      }>("/files/comment-upload", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      return {
-        url: `${apiBase}/files/public/${data._id}`,
-        name: data.name,
-        isImage: (data.mimeType ?? file.type).startsWith("image/"),
-      }
-    } catch {
-      return null // api.ts toasts on 4xx/5xx
-    }
-  }
-
   const dirty =
     !!activePage &&
     (draft.title.trim() !== activePage.title ||
@@ -402,7 +366,7 @@ export default function WikiPageRoute() {
                     onChange={(md) =>
                       setDraft((d) => ({ ...d, content: md }))
                     }
-                    onUpload={handleUpload}
+                    onUpload={uploadEditorFile}
                     placeholder={PLACEHOLDER}
                     toolbar="full"
                     minHeight={440}

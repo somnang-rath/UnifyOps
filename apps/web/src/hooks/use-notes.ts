@@ -11,6 +11,7 @@ import type {
   GrantLevel,
   GrantRole,
   Note,
+  NoteCollabToken,
   NoteFolder,
   NoteFolderGrant,
 } from '@/schemas/note';
@@ -18,7 +19,8 @@ import type {
 interface SaveBody {
   title: string;
   emoji: string;
-  blocks: Note['blocks'];
+  /** Only sent on create (templates) — content edits go through Yjs (ADR 0009). */
+  blocks?: Note['blocks'];
   tags: string[];
   pinned: boolean;
   folderId: string | null;
@@ -48,6 +50,11 @@ const notesService = {
   exportPdf: (id: string) =>
     api
       .get<Blob>(`/notes/${id}/export.pdf`, { responseType: 'blob' })
+      .then((r) => r.data),
+  /** Mint a short-lived live-server token for `notes:<id>` (ADR 0009 §5). */
+  collabToken: (id: string) =>
+    api
+      .post<NoteCollabToken>(`/notes/${id}/collab-token`)
       .then((r) => r.data),
 
   listGrants: (folderId: string) =>

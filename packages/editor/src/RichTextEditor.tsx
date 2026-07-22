@@ -14,15 +14,11 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { Markdown } from 'tiptap-markdown';
 import {
-  ArrowLeftToLine,
-  ArrowRightToLine,
-  ArrowUpToLine,
-  ArrowDownToLine,
   Bold,
   ChevronDown,
   Code,
   Code2,
-  Heading,
+  ImagePlus,
   Info,
   Italic,
   Link as LinkIcon,
@@ -35,11 +31,13 @@ import {
   Smile,
   Strikethrough,
   Table as TableIcon,
-  Trash2,
-  X,
 } from 'lucide-react';
 import { createMention, type MentionUser } from './rich-mention';
 import { EMOJI_CATEGORIES } from './rich-emojis';
+import { Btn, Sep, cx } from './toolbar/primitives';
+import { LinkPopover } from './toolbar/LinkPopover';
+import { ImageUrlPopover } from './toolbar/ImageUrlPopover';
+import { TableBar } from './toolbar/TableBar';
 import './rich-editor.css';
 
 export type { MentionUser } from './rich-mention';
@@ -115,9 +113,8 @@ export function RichTextEditor({
   const [showHeadings, setShowHeadings] = React.useState(false);
   const [showEmoji, setShowEmoji] = React.useState(false);
   const [showLink, setShowLink] = React.useState(false);
+  const [showImage, setShowImage] = React.useState(false);
   const [showCallout, setShowCallout] = React.useState(false);
-  const [linkText, setLinkText] = React.useState('');
-  const [linkUrl, setLinkUrl] = React.useState('https://');
   const [dragOver, setDragOver] = React.useState(false);
 
   // Keep callbacks/roster fresh without re-creating the editor.
@@ -216,11 +213,13 @@ export function RichTextEditor({
 
   // Close popovers on outside click / Escape.
   React.useEffect(() => {
-    if (!showHeadings && !showEmoji && !showLink && !showCallout) return;
+    if (!showHeadings && !showEmoji && !showLink && !showImage && !showCallout)
+      return;
     const closeAll = () => {
       setShowHeadings(false);
       setShowEmoji(false);
       setShowLink(false);
+      setShowImage(false);
       setShowCallout(false);
     };
     const onDown = (e: MouseEvent) => {
@@ -237,7 +236,7 @@ export function RichTextEditor({
       document.removeEventListener('mousedown', onDown, true);
       document.removeEventListener('keydown', onKey);
     };
-  }, [showHeadings, showEmoji, showLink, showCallout]);
+  }, [showHeadings, showEmoji, showLink, showImage, showCallout]);
 
   if (!editor) {
     return (
@@ -267,31 +266,10 @@ export function RichTextEditor({
   };
 
   const openLink = () => {
-    const { from, to } = editor.state.selection;
-    const selected = editor.state.doc.textBetween(from, to, ' ');
-    setLinkText(selected);
-    const existing = editor.getAttributes('link').href as string | undefined;
-    setLinkUrl(existing || 'https://');
     setShowEmoji(false);
     setShowHeadings(false);
+    setShowImage(false);
     setShowLink((v) => !v);
-  };
-
-  const applyLink = () => {
-    const url = linkUrl.trim();
-    if (!url || url === 'https://') {
-      setShowLink(false);
-      editor.chain().focus().run();
-      return;
-    }
-    const { empty } = editor.state.selection;
-    if (empty) {
-      const label = (linkText || url).trim();
-      editor.chain().focus().insertContent(`[${label}](${url})`).run();
-    } else {
-      editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-    }
-    setShowLink(false);
   };
 
   const insertTable = () =>
@@ -455,39 +433,11 @@ export function RichTextEditor({
             <LinkIcon />
           </Btn>
           {showLink && (
-            <div
-              data-rte-pop
-              className="prism-rich-linkpop"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <input
-                autoFocus
-                type="text"
-                placeholder="Text"
-                value={linkText}
-                onChange={(e) => setLinkText(e.target.value)}
-              />
-              <input
-                type="url"
-                placeholder="https://"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    applyLink();
-                  }
-                }}
-              />
-              <div className="prism-rich-linkpop-actions">
-                <button type="button" onClick={() => setShowLink(false)}>
-                  Cancel
-                </button>
-                <button type="button" className="is-primary" onClick={applyLink}>
-                  Apply
-                </button>
-              </div>
-            </div>
+            <LinkPopover
+              editor={editor}
+              markdown
+              onClose={() => setShowLink(false)}
+            />
           )}
         </div>
         <Btn title="Table" onClick={insertTable}>
@@ -495,6 +445,28 @@ export function RichTextEditor({
         </Btn>
         {full && (
           <>
+            <div className="prism-rich-rel">
+              <Btn
+                title="Image by URL"
+                anchor
+                active={showImage}
+                onClick={() => {
+                  setShowImage((v) => !v);
+                  setShowHeadings(false);
+                  setShowEmoji(false);
+                  setShowLink(false);
+                  setShowCallout(false);
+                }}
+              >
+                <ImagePlus />
+              </Btn>
+              {showImage && (
+                <ImageUrlPopover
+                  editor={editor}
+                  onClose={() => setShowImage(false)}
+                />
+              )}
+            </div>
             <Btn
               title="Divider"
               onClick={() => editor.chain().focus().setHorizontalRule().run()}
@@ -595,132 +567,13 @@ export function RichTextEditor({
       </div>
 
       {/* Contextual table controls — shown only while the caret is in a table. */}
-      {editor.isActive('table') && (
-        <div className="prism-rich-tablebar">
-          <span className="prism-rich-tablebar-label">Table</span>
-          <TCtl
-            title="Insert column left"
-            onClick={() => editor.chain().focus().addColumnBefore().run()}
-          >
-            <ArrowLeftToLine />
-            Col
-          </TCtl>
-          <TCtl
-            title="Insert column right"
-            onClick={() => editor.chain().focus().addColumnAfter().run()}
-          >
-            <ArrowRightToLine />
-            Col
-          </TCtl>
-          <TCtl
-            title="Delete column"
-            onClick={() => editor.chain().focus().deleteColumn().run()}
-          >
-            <X />
-            Col
-          </TCtl>
-          <span className="prism-rich-sep" />
-          <TCtl
-            title="Insert row above"
-            onClick={() => editor.chain().focus().addRowBefore().run()}
-          >
-            <ArrowUpToLine />
-            Row
-          </TCtl>
-          <TCtl
-            title="Insert row below"
-            onClick={() => editor.chain().focus().addRowAfter().run()}
-          >
-            <ArrowDownToLine />
-            Row
-          </TCtl>
-          <TCtl
-            title="Delete row"
-            onClick={() => editor.chain().focus().deleteRow().run()}
-          >
-            <X />
-            Row
-          </TCtl>
-          <span className="prism-rich-sep" />
-          <TCtl
-            title="Toggle header row"
-            onClick={() => editor.chain().focus().toggleHeaderRow().run()}
-          >
-            <Heading />
-            Header
-          </TCtl>
-          <TCtl
-            title="Delete table"
-            danger
-            onClick={() => editor.chain().focus().deleteTable().run()}
-          >
-            <Trash2 />
-            Delete
-          </TCtl>
-        </div>
-      )}
+      <TableBar editor={editor} />
 
       <div className="prism-rich-body">
         <EditorContent editor={editor} />
       </div>
     </div>
   );
-}
-
-/* ---------- toolbar primitives ---------- */
-function Btn({
-  title,
-  active,
-  anchor,
-  onClick,
-  children,
-}: React.PropsWithChildren<{
-  title: string;
-  active?: boolean;
-  anchor?: boolean;
-  onClick: () => void;
-}>) {
-  return (
-    <button
-      type="button"
-      title={title}
-      data-rte-anchor={anchor ? '' : undefined}
-      onClick={onClick}
-      className={cx('prism-rich-btn', active && 'is-active')}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Sep() {
-  return <span className="prism-rich-sep" />;
-}
-
-function TCtl({
-  title,
-  onClick,
-  danger,
-  children,
-}: React.PropsWithChildren<{
-  title: string;
-  onClick: () => void;
-  danger?: boolean;
-}>) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={cx('prism-rich-tctl', danger && 'is-danger')}
-    >
-      {children}
-    </button>
-  );
-}
-
-function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(' ');
 }
 
 export type { Editor };

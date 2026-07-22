@@ -2,8 +2,10 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Header,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -17,6 +19,7 @@ import {
   AuthUserPayload,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { AuthService } from '../auth/auth.service';
 import { NotesService } from './notes.service';
 import { NotesPdfService } from './notes-pdf.service';
 import {
@@ -42,6 +45,7 @@ export class NotesController {
   constructor(
     private notes: NotesService,
     private pdf: NotesPdfService,
+    private auth: AuthService,
   ) {}
 
   @Get()
@@ -127,6 +131,27 @@ export class NotesController {
   @Get(':id')
   byId(@CurrentUser() u: AuthUserPayload, @Param('id') id: string) {
     return this.notes.byId(u, id);
+  }
+
+  /**
+   * Mint a short-lived token for the live server (ADR 0009 §5, mirroring the
+   * wiki endpoint). Re-checks read access via the folder-grant rules; the
+   * token is good for this one `notes:<id>` document for five minutes and is
+   * rejected outright by the REST API (aud=collab).
+   */
+  @HttpCode(200)
+  @Post(':id/collab-token')
+  async collabToken(
+    @CurrentUser() u: AuthUserPayload,
+    @Param('id') id: string,
+  ) {
+    const { canRead, canWrite } = await this.notes.accessFor(u.id, id);
+    if (!canRead) throw new ForbiddenException('No access to this note');
+    const { token, expiresIn } = await this.auth.mintCollabToken(
+      u.id,
+      `notes:${id}`,
+    );
+    return { token, expiresIn, canWrite };
   }
 
   @Post()

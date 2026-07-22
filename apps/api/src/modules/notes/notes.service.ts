@@ -13,6 +13,7 @@ import {
 } from './schemas/note-folder.schema';
 import { UsersService } from '../users/users.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { blocksToHTML, NoteBlockLike } from './blocks-to-html.util';
 import {
   CreateFolderDto,
   SaveNoteDto,
@@ -331,37 +332,104 @@ export class NotesService {
   }
 
   /**
-   * Read access: owner, or read+ on the containing folder.
+   * The one source of truth for per-note access (ADR 0009 §2) — the former
+   * `byId` read rule and `canMutateNote` write rule, computed together:
+   *
+   *  - canRead:  note owner, OR read+ grant on the containing folder.
+   *  - canWrite: folder owner / edit grant; upload grant only if also the
+   *    note's owner; root notes (`folderId: null`) → owner only.
+   */
+  private async noteAccess(
+    viewer: { id: string; role: string },
+    n: { ownerId: any; folderId: any },
+  ): Promise<{ canRead: boolean; canWrite: boolean }> {
+    const isOwner = String(n.ownerId) === viewer.id;
+    if (!n.folderId) return { canRead: isOwner, canWrite: isOwner };
+    const folder = await this.folderModel.findById(n.folderId).lean();
+    if (!folder) return { canRead: isOwner, canWrite: isOwner };
+    const access = await this.resolveAccess(viewer, folder);
+    return {
+      canRead: isOwner || meets(access, 'read'),
+      canWrite:
+        access === 'owner' ||
+        access === 'edit' ||
+        (access === 'upload' && isOwner),
+    };
+  }
+
+  /**
+   * Access decision for the live server (ADR 0009 §2). The caller only knows
+   * the user id, so the role (grants can be role-based) is loaded here.
+   * Throws NotFound for a missing note (→ 404, which live treats as reject);
+   * an unknown user fails closed to `{ false, false }`.
+   */
+  async accessFor(
+    userId: string,
+    noteId: string,
+  ): Promise<{ canRead: boolean; canWrite: boolean }> {
+    if (!Types.ObjectId.isValid(noteId)) throw new NotFoundException();
+    const n = await this.noteModel
+      .findById(noteId, { ownerId: 1, folderId: 1 })
+      .lean();
+    if (!n) throw new NotFoundException();
+    const user = await this.users.findById(userId).lean();
+    if (!user) return { canRead: false, canWrite: false };
+    return this.noteAccess({ id: userId, role: user.role }, n);
+  }
+
+  /**
+   * Read access: owner, or read+ on the containing folder. First read of a
+   * legacy note lazily migrates `blocks[]` → `contentHTML` (ADR 0009 §3).
    */
   async byId(viewer: { id: string; role: string }, id: string) {
     const n = await this.noteModel.findById(id).lean();
     if (!n) throw new NotFoundException();
-    if (String(n.ownerId) === viewer.id) return n;
-    if (!n.folderId) throw new ForbiddenException();
-    const folder = await this.folderModel.findById(n.folderId).lean();
-    if (!folder) throw new ForbiddenException();
-    const access = await this.resolveAccess(viewer, folder);
-    if (!meets(access, 'read')) throw new ForbiddenException();
+    const { canRead } = await this.noteAccess(viewer, n);
+    if (!canRead) throw new ForbiddenException();
+
+    if (!n.migratedToDoc) {
+      const contentHTML = blocksToHTML(n.blocks as NoteBlockLike[]);
+      // Conditional filter → idempotent under concurrent opens: exactly one
+      // write per note, ever. blocks[] is retained as the rollback copy.
+      await this.noteModel.updateOne(
+        { _id: n._id, migratedToDoc: false },
+        { $set: { contentHTML, migratedToDoc: true } },
+      );
+      n.contentHTML = contentHTML;
+      n.migratedToDoc = true;
+    }
     return n;
   }
 
   /**
-   * Mutate rule (rename/edit/move/pin):
-   *  - owner of note AND (folder owner OR upload+ on folder OR root note)
-   *  - OR edit+ on folder
+   * Machine write of `contentHTML` from the debounced Yjs snapshot
+   * (ADR 0009 §4). No notifications, no `blocks[]` touch. `editedBy` is
+   * accepted for attribution but not persisted (kept cheap, same as wiki).
+   */
+  async snapshotContent(
+    id: string,
+    content: string,
+    _editedBy?: string,
+  ): Promise<{ ok: boolean; updatedAt: string }> {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const n = await this.noteModel.findByIdAndUpdate(
+      id,
+      { $set: { contentHTML: content } },
+      { new: true, timestamps: true },
+    );
+    if (!n) throw new NotFoundException();
+    const updatedAt = n.get('updatedAt') as Date;
+    return { ok: true, updatedAt: updatedAt.toISOString() };
+  }
+
+  /**
+   * Mutate rule (rename/edit/move/pin) — see {@link noteAccess} canWrite.
    */
   private async canMutateNote(
     viewer: { id: string; role: string },
     n: { ownerId: any; folderId: any },
   ): Promise<boolean> {
-    const isOwner = String(n.ownerId) === viewer.id;
-    if (!n.folderId) return isOwner;
-    const folder = await this.folderModel.findById(n.folderId).lean();
-    if (!folder) return isOwner;
-    const access = await this.resolveAccess(viewer, folder);
-    if (access === 'owner' || access === 'edit') return true;
-    if (access === 'upload' && isOwner) return true;
-    return false;
+    return (await this.noteAccess(viewer, n)).canWrite;
   }
 
   async create(viewer: { id: string; role: string }, dto: SaveNoteDto) {
@@ -404,7 +472,10 @@ export class NotesService {
     }
     if (dto.title !== undefined) n.title = dto.title;
     if (dto.emoji !== undefined) n.emoji = dto.emoji;
-    if (dto.blocks !== undefined) n.blocks = dto.blocks as any;
+    // ADR 0009 §3: once migrated, contentHTML (via the snapshot path) is
+    // authoritative — blocks[] is a frozen rollback copy, writes are ignored.
+    if (dto.blocks !== undefined && !n.migratedToDoc)
+      n.blocks = dto.blocks as any;
     if (dto.tags !== undefined) n.tags = dto.tags;
     if (dto.pinned !== undefined) n.pinned = dto.pinned;
     return n.save();

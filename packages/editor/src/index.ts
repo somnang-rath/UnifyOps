@@ -22,6 +22,18 @@ export type {
   MentionUser,
 } from './RichTextEditor';
 
+// The Tiptap editor instance type (for `onReady`/toolbar consumers).
+export type { Editor } from '@tiptap/react';
+
+// Shared formatting toolbar for the collaborative editor (spec §2.3) + the
+// extracted primitives it is composed from.
+export { CollabToolbar } from './toolbar/CollabToolbar';
+export type { CollabToolbarProps } from './toolbar/CollabToolbar';
+export { Btn, Sep, TCtl } from './toolbar/primitives';
+export { LinkPopover } from './toolbar/LinkPopover';
+export { ImageUrlPopover } from './toolbar/ImageUrlPopover';
+export { TableBar } from './toolbar/TableBar';
+
 // React client surface.
 export { CollaborativeEditor } from './CollaborativeEditor';
 export type {
