@@ -7,7 +7,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"src/**/*.ts\" --fix",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts",
     "seed:test-data": "ts-node -r tsconfig-paths/register src/seed/seed-test-data.ts",
     "test:security": "node test/security.e2e.mjs",
@@ -52,6 +53,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.11.0",
     "@nestjs/cli": "^10.4.5",
     "@nestjs/schematics": "^10.1.4",
     "@types/bcrypt": "^5.0.2",
@@ -64,8 +66,11 @@
     "@types/qrcode": "^1.5.6",
     "@types/sanitize-html": "^2.13.0",
     "@types/speakeasy": "^2.0.10",
+    "eslint": "^9.11.0",
+    "eslint-config-prettier": "^9.1.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.8.0"
   }
 }

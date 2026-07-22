@@ -50,7 +50,7 @@ export class BackupExportService {
 
     const fetch = async (scope: BackupScope, model: Model<unknown>, filter: Record<string, unknown>) => {
       if (!scopeSet.has(scope)) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const docs = await (model as Model<any>).find(filter).lean();
       data[scope] = sanitize(docs as Record<string, unknown>[]);
     };

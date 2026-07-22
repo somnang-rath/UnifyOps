@@ -77,7 +77,7 @@ export class BackupController {
     }
 
     const dateStr  = new Date().toISOString().slice(0, 10);
-    const safeName = dto.fileName.replace(/[^a-zA-Z0-9 _\-]/g, '').trim() || 'Backup UnifyOps';
+    const safeName = dto.fileName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'Backup UnifyOps';
     const fileName = `${safeName} ${dateStr}.prismback`;
 
     res.setHeader('Content-Type',        'application/octet-stream');

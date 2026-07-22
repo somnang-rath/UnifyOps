@@ -47,7 +47,7 @@ export async function xlsxBufferToSheets(
   buffer: Buffer,
 ): Promise<ImportedSheet[]> {
   const wb = new ExcelJS.Workbook();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   await wb.xlsx.load(buffer as any);
 
   const result: ImportedSheet[] = [];

@@ -1385,7 +1385,7 @@ function sleep(ms: number): Promise<void> {
  * Replace it with 127.0.0.1 so local dev APIs are always reachable.
  */
 function normalizeLocalUrl(rawUrl: string): string {
-  return rawUrl.replace(/^(https?:\/\/)0\.0\.0\.0([:\/]|$)/, '$1127.0.0.1$2');
+  return rawUrl.replace(/^(https?:\/\/)0\.0\.0\.0([:/]|$)/, '$1127.0.0.1$2');
 }
 
 /**

@@ -46,7 +46,7 @@ async function bootstrap() {
       // Reject by omitting the CORS headers — never throw here. A thrown error
       // propagates to Express as a 500, so a disallowed origin would surface as
       // "Internal server error" on the client instead of a clean CORS block.
-      // eslint-disable-next-line no-console
+       
       console.warn(`CORS: origin ${origin} not in WEB_ORIGIN allowlist`);
       cb(null, false);
     },
@@ -63,12 +63,12 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT ?? 4000)
   await app.listen(port)
-  // eslint-disable-next-line no-console
+   
   console.log(`🚀 API ready at http://localhost:${port}/api/v1`)
 
   for (const sig of ['SIGTERM', 'SIGINT'] as const) {
     process.on(sig, async () => {
-      // eslint-disable-next-line no-console
+       
       console.log(`\n${sig} received — shutting down gracefully`)
       await app.close()
       process.exit(0)
