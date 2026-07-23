@@ -3,12 +3,8 @@ import { useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { AxiosError } from "axios"
 import {
-  Copy,
-  CloudOff,
-  ExternalLink,
   Eye,
   FileText,
-  Globe,
   ListTree,
   Loader2,
   Pencil,
@@ -24,6 +20,7 @@ import { InputWithIcon } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { SkeletonText } from "@/components/ui/skeleton"
 import { MarkdownView } from "@/components/feature/issue/markdown-view"
+import { PublishControl } from "@/components/feature/publish/publish-control"
 import {
   AddCoverButton,
   CoverBanner,
@@ -44,7 +41,7 @@ import { useAssistantContext } from "@/hooks/use-assistant-context"
 import { useAuthStore } from "@/stores/auth-store"
 import { toast } from "@/stores/toast-store"
 import { cn } from "@/lib/utils"
-import type { WikiPage, WikiPageMeta } from "@/schemas/wiki"
+import type { WikiPageMeta } from "@/schemas/wiki"
 
 type Draft = { active: boolean; title: string; content: string }
 type Mode = "edit" | "preview"
@@ -397,7 +394,8 @@ export default function WikiPageRoute() {
                     )}
                     {activeId && activePage && canPublish && (
                       <PublishControl
-                        page={activePage}
+                        published={!!activePage.isPublic}
+                        anchor={activePage.anchor ?? null}
                         spaceUrl={SPACE_URL}
                         pending={
                           pub.publish.isPending || pub.unpublish.isPending
@@ -667,124 +665,5 @@ const PageBrowser = ({
 }
 
 /* ---------------------------- Publish to Space ---------------------------- */
-
-function PublishControl({
-  page,
-  spaceUrl,
-  pending,
-  onPublish,
-  onUnpublish,
-}: {
-  page: WikiPage
-  spaceUrl: string
-  pending: boolean
-  onPublish: () => void
-  onUnpublish: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as HTMLElement
-      if (ref.current && !ref.current.contains(t)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onDoc)
-    return () => document.removeEventListener("mousedown", onDoc)
-  }, [open])
-
-  const isPublic = !!page.isPublic && !!page.anchor
-  // Space serves published pages under its /spaces base path (ADR 0002 §5).
-  const url =
-    isPublic && spaceUrl ? `${spaceUrl}/spaces/${page.anchor}` : ""
-
-  const copy = () => {
-    if (!url) return
-    navigator.clipboard
-      ?.writeText(url)
-      .then(() => toast("Link copied", "success"))
-      .catch(() => toast("Could not copy link", "error"))
-  }
-
-  if (!isPublic) {
-    return (
-      <Button size="sm" variant="outline" onClick={onPublish} disabled={pending}>
-        {pending ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        ) : (
-          <Globe className="w-3.5 h-3.5" />
-        )}
-        Publish
-      </Button>
-    )
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => setOpen((v) => !v)}
-        className="text-green"
-      >
-        <Globe className="w-3.5 h-3.5" /> Public
-      </Button>
-      <div
-        className={cn(
-          "absolute right-0 top-full mt-2 w-[320px] z-30 origin-top-right",
-          "bg-[color:color-mix(in_srgb,var(--bg-card)_94%,transparent)] backdrop-blur-2xl",
-          "border border-border rounded-lg shadow-xl p-3",
-          open ? "animate-popover-in" : "hidden",
-        )}
-      >
-        <p className="text-[11px] font-bold uppercase tracking-[.08em] text-text-muted mb-2">
-          Public link
-        </p>
-        {spaceUrl ? (
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <input
-              readOnly
-              value={url}
-              onFocus={(e) => e.currentTarget.select()}
-              className="flex-1 min-w-0 bg-bg-subtle border border-border rounded-sm px-2 py-1.5 text-[12px] text-text-sub outline-none"
-            />
-            <Button size="sm" variant="outline" onClick={copy} title="Copy link">
-              <Copy className="w-3.5 h-3.5" />
-            </Button>
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              title="Open in Space"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-sm border border-border text-text-muted hover:bg-bg-hover hover:text-text transition-colors"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        ) : (
-          <p className="text-[12px] text-text-muted mb-2.5">
-            Set <code>NEXT_PUBLIC_SPACE_URL</code> to show the shareable link.
-          </p>
-        )}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            onUnpublish()
-            setOpen(false)
-          }}
-          disabled={pending}
-          className="w-full justify-center text-red"
-        >
-          {pending ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <CloudOff className="w-3.5 h-3.5" />
-          )}
-          Unpublish
-        </Button>
-      </div>
-    </div>
-  )
-}
+// PublishControl moved to components/feature/publish/publish-control.tsx
+// (publish-to-space spec §2.1) — shared with ViewsBar and project settings.

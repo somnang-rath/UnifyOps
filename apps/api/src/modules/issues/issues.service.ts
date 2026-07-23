@@ -10,9 +10,13 @@ import { Issue, IssueDocument } from './schemas/issue.schema';
 import {
   CalendarRangeQuery,
   CreateIssueDto,
+  CreateIssueSchema,
+  ImportIssuesDto,
+  ISSUE_PRIORITIES,
   ListIssueQuery,
   UpdateIssueDto,
 } from './dto/issue.dto';
+import { z } from 'zod';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   extractMentionTokens,
@@ -289,6 +293,95 @@ export class IssuesService {
     }).catch(() => {});
 
     return issue;
+  }
+
+  /** Same shape CreateIssueSchema accepts for dueDate — reused per row. */
+  private static readonly importDueDate = z
+    .string()
+    .datetime()
+    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/));
+
+  /**
+   * Bulk CSV import (Phase 8 workstream B). One write gate up front (same as
+   * create), then each row funnels through {@link create} so imported issues
+   * get exactly the regular-path defaults and side-effects — no forked logic.
+   *
+   * Row rules: invalid status/priority/dueDate → that row is skipped with a
+   * reason. `assigneeEmail` resolves only against members of the project's
+   * workspace; a miss silently drops the assignee (never fails the row, never
+   * reveals whether the email exists elsewhere — no cross-tenant probe).
+   */
+  async importIssues(userId: string, dto: ImportIssuesDto) {
+    await this.access.assertProjectWritable(userId, dto.projectId);
+    const fields = await this.access.getAccessFields(dto.projectId);
+    const workspaceId = fields?.workspaceId ?? null;
+
+    // email (lowercased) → workspace-member user id, or null on a miss.
+    const emailCache = new Map<string, string | null>();
+    const resolveAssignee = async (email?: string) => {
+      if (!email || !workspaceId) return undefined;
+      const key = email.toLowerCase().trim();
+      if (!emailCache.has(key)) {
+        let resolved: string | null = null;
+        const user = await this.users.findByEmail(key);
+        if (
+          user &&
+          (await this.access.isWorkspaceMember(String(user._id), workspaceId))
+        ) {
+          resolved = String(user._id);
+        }
+        emailCache.set(key, resolved);
+      }
+      return emailCache.get(key) ?? undefined;
+    };
+
+    let created = 0;
+    const skipped: { row: number; reason: string }[] = [];
+
+    for (const [i, row] of dto.rows.entries()) {
+      const rowNo = i + 1;
+      if (
+        row.priority !== undefined &&
+        !(ISSUE_PRIORITIES as readonly string[]).includes(row.priority)
+      ) {
+        skipped.push({ row: rowNo, reason: `invalid priority "${row.priority}"` });
+        continue;
+      }
+      const status = row.status?.trim();
+      if (row.status !== undefined && (!status || status.length > 40)) {
+        skipped.push({ row: rowNo, reason: `invalid status "${row.status}"` });
+        continue;
+      }
+      if (
+        row.dueDate !== undefined &&
+        !IssuesService.importDueDate.safeParse(row.dueDate).success
+      ) {
+        skipped.push({ row: rowNo, reason: `invalid dueDate "${row.dueDate}"` });
+        continue;
+      }
+
+      const assigneeId = await resolveAssignee(row.assigneeEmail);
+      // The regular create schema applies the normal defaults (type, status,
+      // labels, …) exactly as a hand-made POST /issues would get.
+      const parsed = CreateIssueSchema.safeParse({
+        projectId: dto.projectId,
+        title: row.title,
+        desc: row.description,
+        status,
+        priority: row.priority,
+        labels: row.labels,
+        dueDate: row.dueDate,
+        assigneeId,
+      });
+      if (!parsed.success) {
+        skipped.push({ row: rowNo, reason: 'invalid row' });
+        continue;
+      }
+      await this.create(userId, parsed.data);
+      created += 1;
+    }
+
+    return { created, skipped };
   }
 
   async update(actorId: string, id: string, dto: UpdateIssueDto) {

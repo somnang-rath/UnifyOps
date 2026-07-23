@@ -20,7 +20,9 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
 - **Phase 7 — Feature parity A** 🟡 (`docs/plan/03-feature-parity.md`) — 7b route
   consolidation done 2026-07-23 (ADR 0011 route tiers: Tier W under `/[workspaceSlug]/`
   with permanent flat shims; Tier P/G flat forever). Open: bulk ops, `?layout=` param.
-- **Phase 8 — Feature parity B** 🟡
+- **Phase 8 — Feature parity B** — done 2026-07-23 except OAuth credentials:
+  publish views/projects → space (ADR 0012, `test:publish-space` 16/16) ·
+  templates + CSV import (`test:templates-import` 14/14) · browser E2E 10/10
 - **Phase 9 — Team chat + Telegram bridge** ✅ (ADR 0007, `docs/telegram-bridge-setup.md`)
 
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
@@ -46,11 +48,11 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
 
 ## E2E testing
 
-- `pnpm test:e2e:full` — canonical run: all 7 API suites (128 checks) via
+- `pnpm test:e2e:full` — canonical run: all 9 API suites (158 checks) via
   `scripts/e2e-full.mjs`, against a running dev stack + the E2E fixture. The runner handles
   the 5/min login throttle (65s cool-downs, override `E2E_COOLDOWN_MS`) and boots a
   disposable API on :4012 for the notes-collab suite.
-- Single suite: `pnpm --filter api test:security|phase7|phase8|oauth|analytics|notes-collab|cross-app`
+- Single suite: `pnpm --filter api test:security|phase7|phase8|oauth|analytics|notes-collab|cross-app|publish-space|templates-import`
   — plain-fetch `.mjs` scripts in `apps/api/test/`, no framework. Manual back-to-back runs
   hit the login throttle (429s) — space them ~65s, or just use the runner.
   `test:notes-collab` needs its own API instance (the runner provides :4012).

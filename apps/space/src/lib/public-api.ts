@@ -1,25 +1,35 @@
 import sanitizeHtml from 'sanitize-html';
+import type {
+  PublicAnchorPayload,
+  PublicBoardColumn,
+  PublicIssue,
+  PublicProject,
+  PublicView,
+  PublicWikiPage,
+} from '@prism/types';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000/api/v1';
 
-export interface PublicWikiPage {
-  type: 'wiki';
-  anchor: string;
-  title: string;
-  contentHTML: string;
-  /** Hotlinked cover URL — the only non-content public field (ADR 0010 §3). */
-  coverImage: string | null;
-  updatedAt: string;
-}
+// Re-export the payload types so space code has a single import point
+// (canonical definitions live in @prism/types — ADR 0012 §6).
+export type {
+  PublicAnchorPayload,
+  PublicBoardColumn,
+  PublicIssue,
+  PublicProject,
+  PublicView,
+  PublicWikiPage,
+};
 
 /**
- * Resolve a published page by its public anchor (ADR 0002 §4). Server-side only.
+ * Resolve a published anchor to its payload (ADR 0012 §5) — a discriminated
+ * union over wiki pages, views, and projects. Server-side only.
  * Returns null on 404 (unpublished or non-existent — indistinguishable) so the
  * route can render notFound(); throws on other/network errors.
  */
-export async function getPublicPage(
+export async function getPublicPayload(
   anchor: string,
-): Promise<PublicWikiPage | null> {
+): Promise<PublicAnchorPayload | null> {
   const res = await fetch(
     `${API_URL}/public/anchor/${encodeURIComponent(anchor)}`,
     { cache: 'no-store' },
@@ -28,13 +38,14 @@ export async function getPublicPage(
   if (!res.ok) {
     throw new Error(`Public API responded ${res.status}`);
   }
-  return (await res.json()) as PublicWikiPage;
+  return (await res.json()) as PublicAnchorPayload;
 }
 
 /**
  * Sanitize editor-produced HTML before it is rendered to the public. This is
  * the single security boundary between wiki content and anonymous visitors
  * (ADR 0002 §5) — never render `contentHTML` without passing it through here.
+ * Issue payloads (view/project) are plain scalars and never pass through this.
  */
 export function sanitizeContent(html: string): string {
   return sanitizeHtml(html, {

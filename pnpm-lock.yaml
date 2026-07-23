@@ -326,6 +326,9 @@ importers:
 
   apps/space:
     dependencies:
+      '@prism/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@prism/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -417,6 +420,9 @@ importers:
       next:
         specifier: ^14.2.13
         version: 14.2.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      papaparse:
+        specifier: ^5.5.4
+        version: 5.5.4
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -454,6 +460,9 @@ importers:
       '@types/node':
         specifier: ^22.5.5
         version: 22.19.18
+      '@types/papaparse':
+        specifier: ^5.5.2
+        version: 5.5.2
       '@types/react':
         specifier: ^18.3.10
         version: 18.3.28
@@ -1834,6 +1843,9 @@ packages:
 
   '@types/pako@2.0.4':
     resolution: {integrity: sha512-VWDCbrLeVXJM9fihYodcLiIv0ku+AlOa/TQ1SvYOaBuyrSKgEcro95LJyIsJ4vSo6BXIxOKxiJAat04CmST9Fw==}
+
+  '@types/papaparse@5.5.2':
+    resolution: {integrity: sha512-gFnFp/JMzLHCwRf7tQHrNnfhN4eYBVYYI897CGX4MY1tzY9l2aLkVyx2IlKZ/SAqDbB3I1AOZW5gTMGGsqWliA==}
 
   '@types/passport-jwt@4.0.1':
     resolution: {integrity: sha512-Y0Ykz6nWP4jpxgEUYq8NoVZeCQPo1ZndJLfapI249g1jHChvRfZRO/LS3tqu26YgAS/laI1qx98sYGz0IalRXQ==}
@@ -4714,6 +4726,9 @@ packages:
   pako@2.2.0:
     resolution: {integrity: sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w==}
 
+  papaparse@5.5.4:
+    resolution: {integrity: sha512-SwzWD9gl/ElwYLCI0nUja1mFJzjq2D8ziShfNBa7zCHzkOozeOGDwHWQ+tvCzEZcewecWZ5U7kUopDnG+DFYEQ==}
+
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
     engines: {node: '>=6'}
@@ -7294,6 +7309,10 @@ snapshots:
       '@types/node': 22.19.18
 
   '@types/pako@2.0.4': {}
+
+  '@types/papaparse@5.5.2':
+    dependencies:
+      '@types/node': 22.19.18
 
   '@types/passport-jwt@4.0.1':
     dependencies:
@@ -10792,6 +10811,8 @@ snapshots:
   pako@1.0.11: {}
 
   pako@2.2.0: {}
+
+  papaparse@5.5.4: {}
 
   parent-module@1.0.1:
     dependencies:

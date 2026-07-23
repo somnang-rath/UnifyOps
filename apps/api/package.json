@@ -14,10 +14,12 @@
     "test:security": "node test/security.e2e.mjs",
     "test:phase7": "node test/views-relations.e2e.mjs",
     "test:phase8": "node test/integrations.e2e.mjs",
+    "test:templates-import": "node test/templates-import.e2e.mjs",
     "test:oauth": "node test/oauth-disabled.e2e.mjs",
     "test:analytics": "node test/analytics.e2e.mjs",
     "test:notes-collab": "node test/notes-collab-api.e2e.mjs",
     "test:cross-app": "node test/cross-app.e2e.mjs",
+    "test:publish-space": "node test/publish-space.e2e.mjs",
     "test:e2e:all": "node test/security.e2e.mjs && node test/views-relations.e2e.mjs && node test/integrations.e2e.mjs"
   },
   "dependencies": {

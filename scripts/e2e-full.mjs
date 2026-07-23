@@ -27,10 +27,12 @@ const SUITES = [
   { script: 'test:security' },
   { script: 'test:phase7' },
   { script: 'test:phase8' },
+  { script: 'test:templates-import' },
   { script: 'test:analytics' },
   { script: 'test:notes-collab', isolatedApiPort: 4012 },
   { script: 'test:oauth' },
   { script: 'test:cross-app' },
+  { script: 'test:publish-space' },
 ];
 
 const COOLDOWN_MS = process.env.E2E_COOLDOWN_MS

@@ -60,6 +60,28 @@ export const ListIssueQuerySchema = z.object({
 });
 export type ListIssueQuery = z.infer<typeof ListIssueQuerySchema>;
 
+/**
+ * One CSV import row (Phase 8 workstream B). `status`/`priority`/`dueDate`
+ * are deliberately loose strings here: an invalid value must skip THAT row
+ * with a reason, not 400 the whole import — the service validates per row.
+ */
+export const ImportIssueRowSchema = z.object({
+  title: z.string().min(1).max(200).trim(),
+  description: z.string().max(10_000).optional(),
+  status: z.string().optional(),
+  priority: z.string().optional(),
+  labels: z.array(z.string().min(1).max(40)).optional(),
+  dueDate: z.string().optional(),
+  assigneeEmail: z.string().optional(),
+});
+export type ImportIssueRow = z.infer<typeof ImportIssueRowSchema>;
+
+export const ImportIssuesSchema = z.object({
+  projectId: objectId,
+  rows: z.array(ImportIssueRowSchema).min(1).max(500),
+});
+export type ImportIssuesDto = z.infer<typeof ImportIssuesSchema>;
+
 export const CommentSchema = z.object({
   body: z.string().min(1).max(50_000),
 });

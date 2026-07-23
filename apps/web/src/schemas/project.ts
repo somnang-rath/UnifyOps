@@ -60,6 +60,10 @@ export interface Project {
   boardLists?: BoardList[];
   /** Hotlinked cover URL (ADR 0010). Absent on pre-ADR documents. */
   coverImage?: string | null;
+  // Publish to Space (ADR 0012 §1) — owner-only mutation.
+  isPublic?: boolean;
+  anchor?: string | null;
+  publishedAt?: string | null;
   issueCount?: number;
   doneCount?: number;
   createdAt: string;

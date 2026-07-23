@@ -1,18 +1,25 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Bookmark, Plus, Users } from 'lucide-react';
+import { Bookmark, Globe, Plus, Users } from 'lucide-react';
 import { FilterChip } from '@prism/ui';
 import { Button } from '@/components/ui/button';
+import { Confirm } from '@/components/ui/confirm';
 import { Modal } from '@/components/ui/modal';
+import { PublishControl } from '@/components/feature/publish/publish-control';
 import { useAuthStore } from '@/stores/auth-store';
+import { useProjectsInWorkspace } from '@/hooks/use-projects';
 import { useWorkspaceBySlug } from '@/hooks/use-workspaces';
 import {
   useViewMutations,
+  useViewPublish,
   useViews,
   type SavedView,
   type SaveViewBody,
 } from '@/hooks/use-views';
+
+// Public Space origin — used to build the shareable link (ADR 0002 §6).
+const SPACE_URL = process.env.NEXT_PUBLIC_SPACE_URL ?? '';
 
 /** The page filter state a view snapshots (maps to the API's ViewFiltersSchema). */
 export interface ViewSnapshot {
@@ -36,6 +43,10 @@ interface ViewsBarProps {
  * (plus the selected project's, when one is filtered), a Save action that
  * snapshots the current filters/sort/group, and delete on the caller's own
  * views. Applying a view is the parent's job — it owns the filter state.
+ *
+ * Phase 8 (publish-to-space spec §2.2): when a saved view is active, a
+ * PublishControl appears after "Save view" — live for project views the
+ * caller can write, disabled with a tooltip for workspace-level views.
  */
 export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
   const me = useAuthStore((s) => s.user);
@@ -55,6 +66,8 @@ export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
     workspaceId: workspace?.id,
     projectId: snapshot.projectId || undefined,
   });
+  const pub = useViewPublish();
+  const { data: projects = [] } = useProjectsInWorkspace(workspace?.id ?? null);
 
   const views = useMemo(() => {
     const seen = new Set<string>();
@@ -68,6 +81,10 @@ export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [shared, setShared] = useState(false);
+  // Deleting a *published* view gets a Confirm — its public link stops
+  // working (the API unpublishes implicitly). Unpublished views delete
+  // directly, as before.
+  const [deletingView, setDeletingView] = useState<SavedView | null>(null);
 
   const submit = () => {
     const trimmed = name.trim();
@@ -98,6 +115,27 @@ export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
     });
   };
 
+  // Publish affordance for the active view (spec §2.2). Workspace-level views
+  // are unpublishable in v1 (ADR 0012 §3) → disabled + tooltip; non-members of
+  // the view's project see nothing (never offer a 403 — wiki `canPublish`
+  // principle).
+  const activeView = activeViewId
+    ? (views.find((v) => v._id === activeViewId) ?? null)
+    : null;
+  const activeViewProject = activeView?.projectId
+    ? (projects.find((p) => p._id === activeView.projectId) ?? null)
+    : null;
+  const canPublishActiveView = !!(
+    activeView &&
+    activeView.projectId &&
+    myId &&
+    activeViewProject &&
+    (activeViewProject.ownerId === myId ||
+      activeViewProject.members.includes(myId))
+  );
+  const showPublish =
+    !!activeView && (activeView.projectId === null || canPublishActiveView);
+
   if (!workspace) return null;
 
   return (
@@ -116,12 +154,21 @@ export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
             key={v._id}
             active={active}
             icon={
-              v.isShared ? (
+              // One icon max in a 26px chip — Globe (published) wins over
+              // Users (shared) when both apply (spec §2.2).
+              v.isPublic ? (
+                <Globe className="w-3 h-3" aria-label="Published view" />
+              ) : v.isShared ? (
                 <Users className="w-3 h-3" aria-label="Shared view" />
               ) : undefined
             }
             onClick={() => onApply(v)}
-            onRemove={mine ? () => remove.mutate(v._id) : undefined}
+            onRemove={
+              mine
+                ? () =>
+                    v.isPublic ? setDeletingView(v) : remove.mutate(v._id)
+                : undefined
+            }
             removeLabel={`Delete view ${v.name}`}
           >
             {v.name}
@@ -135,6 +182,33 @@ export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
       >
         <Plus className="w-3 h-3" /> Save view
       </button>
+
+      {showPublish && activeView && (
+        <>
+          <span aria-hidden className="mx-1 h-3.5 w-px bg-border" />
+          {activeView.projectId === null ? (
+            <PublishControl
+              published={false}
+              anchor={null}
+              spaceUrl={SPACE_URL}
+              pending={false}
+              onPublish={() => {}}
+              onUnpublish={() => {}}
+              disabled
+              disabledReason="Workspace views can't be published yet — publish a project view instead."
+            />
+          ) : (
+            <PublishControl
+              published={!!activeView.isPublic}
+              anchor={activeView.anchor ?? null}
+              spaceUrl={SPACE_URL}
+              pending={pub.publish.isPending || pub.unpublish.isPending}
+              onPublish={() => pub.publish.mutate(activeView._id)}
+              onUnpublish={() => pub.unpublish.mutate(activeView._id)}
+            />
+          )}
+        </>
+      )}
 
       <Modal
         open={saving}
@@ -182,6 +256,22 @@ export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
           </label>
         </div>
       </Modal>
+
+      <Confirm
+        open={!!deletingView}
+        title="Delete view"
+        body={
+          <>
+            This will delete <strong>{deletingView?.name}</strong>. This view
+            is public — its link will stop working.
+          </>
+        }
+        danger
+        onConfirm={() => {
+          if (deletingView) remove.mutate(deletingView._id);
+        }}
+        onClose={() => setDeletingView(null)}
+      />
     </div>
   );
 }

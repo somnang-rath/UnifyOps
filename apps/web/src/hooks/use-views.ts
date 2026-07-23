@@ -27,6 +27,17 @@ export interface SavedView {
   displayProperties: string[];
   isShared: boolean;
   position: number;
+  // Publish to Space (ADR 0012 §1/§3) — project-scoped views only.
+  isPublic?: boolean;
+  anchor?: string | null;
+  publishedAt?: string | null;
+}
+
+/** Response of POST /views/:id/publish (ADR 0012 §3). */
+export interface ViewPublishState {
+  anchor: string;
+  isPublic: boolean;
+  publishedAt: string | null;
 }
 
 export interface SaveViewBody {
@@ -55,6 +66,12 @@ const viewsService = {
     api.patch<SavedView>(`/views/${id}`, b).then((r) => r.data),
   remove: (id: string) =>
     api.delete<{ ok: true }>(`/views/${id}`).then((r) => r.data),
+  publish: (id: string) =>
+    api.post<ViewPublishState>(`/views/${id}/publish`).then((r) => r.data),
+  unpublish: (id: string) =>
+    api
+      .post<{ isPublic: boolean }>(`/views/${id}/unpublish`)
+      .then((r) => r.data),
 };
 
 /** Saved views for a scope. Pass a projectId for project views, else workspace. */
@@ -94,4 +111,35 @@ export function useViewMutations(scope: ViewScope) {
   });
 
   return { create, update, remove };
+}
+
+/**
+ * Publish / unpublish a saved view to the public Space (ADR 0012 §3).
+ * Mirrors `useWikiPublish`: publish/unpublish mutations that invalidate
+ * `['views']` so the chips and the active control pick up the new state.
+ * Workspace-level views are rejected server-side (400) — callers gate the UI.
+ */
+export function useViewPublish() {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['views'] });
+
+  return {
+    publish: useMutation({
+      mutationFn: (id: string) => viewsService.publish(id),
+      onSuccess: () => {
+        invalidate();
+        toast('Published to Space', 'success');
+      },
+      onError: (e: { response?: { data?: { message?: string } } }) =>
+        toast(e.response?.data?.message ?? 'Could not publish view', 'error'),
+    }),
+    unpublish: useMutation({
+      mutationFn: (id: string) => viewsService.unpublish(id),
+      onSuccess: () => {
+        invalidate();
+        toast('Unpublished', 'success');
+      },
+      onError: () => toast('Could not unpublish view', 'error'),
+    }),
+  };
 }

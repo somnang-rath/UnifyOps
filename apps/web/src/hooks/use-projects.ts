@@ -63,6 +63,16 @@ const projectsService = {
       .then((r) => r.data),
   remove: (id: string) =>
     api.delete<{ ok: true }>(`/projects/${id}`).then((r) => r.data),
+  publish: (id: string) =>
+    api
+      .post<{ anchor: string; isPublic: boolean; publishedAt: string | null }>(
+        `/projects/${id}/publish`,
+      )
+      .then((r) => r.data),
+  unpublish: (id: string) =>
+    api
+      .post<{ isPublic: boolean }>(`/projects/${id}/unpublish`)
+      .then((r) => r.data),
 };
 
 export const useProjects = () =>
@@ -120,6 +130,48 @@ export function useProjectMutations() {
     remove: useMutation({
       mutationFn: projectsService.remove,
       onSuccess: onDone('Project deleted'),
+    }),
+  };
+}
+
+/**
+ * Publish / unpublish a project to the public Space (ADR 0012 §4 —
+ * owner-only endpoints). Patches the cached project so the settings Switch
+ * and link row flip on success (no optimistic update — spec §2.3).
+ */
+export function useProjectPublish(projectId: string) {
+  const qc = useQueryClient();
+  const patchProject = (next: Partial<Project>) => {
+    qc.setQueryData<Project>(['projects', 'byId', projectId], (prev) =>
+      prev ? { ...prev, ...next } : prev,
+    );
+    qc.invalidateQueries({ queryKey: ['projects'] });
+  };
+
+  return {
+    publish: useMutation({
+      mutationFn: () => projectsService.publish(projectId),
+      onSuccess: (state) => {
+        patchProject({
+          isPublic: state.isPublic,
+          anchor: state.anchor,
+          publishedAt: state.publishedAt,
+        });
+        toast('Published to Space', 'success');
+      },
+      onError: (e: { response?: { data?: { message?: string } } }) =>
+        toast(
+          e.response?.data?.message ?? 'Could not publish project',
+          'error',
+        ),
+    }),
+    unpublish: useMutation({
+      mutationFn: () => projectsService.unpublish(projectId),
+      onSuccess: (state) => {
+        patchProject({ isPublic: state.isPublic });
+        toast('Unpublished', 'success');
+      },
+      onError: () => toast('Could not unpublish project', 'error'),
     }),
   };
 }

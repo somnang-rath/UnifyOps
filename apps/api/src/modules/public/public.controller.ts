@@ -16,9 +16,13 @@ import { PublicService } from './public.service';
 export class PublicController {
   constructor(private readonly publicSvc: PublicService) {}
 
-  /** GET /api/v1/public/anchor/:anchor → published wiki page (field-stripped) */
+  /**
+   * GET /api/v1/public/anchor/:anchor → published content, field-stripped.
+   * Discriminated union on `type`: wiki | view | project, resolved in that
+   * fixed order (ADR 0012 §5). 404 = unpublished = nonexistent.
+   */
   @Get('anchor/:anchor')
   anchor(@Param('anchor') anchor: string) {
-    return this.publicSvc.getWikiByAnchor(anchor);
+    return this.publicSvc.getByAnchor(anchor);
   }
 }

@@ -49,8 +49,8 @@ const nextConfig = {
   // A published page therefore resolves at /spaces/<anchor> — matching the link
   // apps/web builds from NEXT_PUBLIC_SPACE_URL (ADR 0002 §5).
   basePath: '/spaces',
-  // Shared design system ships as TypeScript source, so Next must compile it.
-  transpilePackages: ['@prism/ui'],
+  // Shared packages ship as TypeScript source, so Next must compile them.
+  transpilePackages: ['@prism/ui', '@prism/types'],
   // Never advertise the framework version to anonymous visitors.
   poweredByHeader: false,
   experimental: {

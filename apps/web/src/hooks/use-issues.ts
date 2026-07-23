@@ -5,6 +5,7 @@ import {
   useQueryClient,
   type QueryKey,
 } from '@tanstack/react-query';
+import type { ImportResult, ImportRow } from '@prism/types';
 import { api } from '@/lib/api';
 import { toast } from '@/stores/toast-store';
 import type { Issue, IssueTodo, IssueListResponse } from '@/schemas/issue';
@@ -51,6 +52,10 @@ const issuesService = {
     api.delete<{ ok: true }>(`/issues/${id}`).then((r) => r.data),
   comment: (id: string, body: string) =>
     api.post<Issue>(`/issues/${id}/comments`, { body }).then((r) => r.data),
+  import: (projectId: string, rows: ImportRow[]) =>
+    api
+      .post<ImportResult>('/issues/import', { projectId, rows })
+      .then((r) => r.data),
   calendar: (from: string, to: string, workspaceId?: string) =>
     api
       .get<Issue[]>('/issues/calendar/range', {
@@ -109,6 +114,29 @@ function queryMatches(params: IssueListParams, body: SaveBody): boolean {
     if (!hay.includes(needle)) return false;
   }
   return true;
+}
+
+/**
+ * CSV bulk import (templates-csv-import spec §1/§4): one request, all rows
+ * attempted, per-row skip — never half-crashed. The dialog owns success/error
+ * rendering (result step), so no toast here; the lists refetch on success.
+ */
+export function useIssueImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      rows,
+    }: {
+      projectId: string;
+      rows: ImportRow[];
+    }) => issuesService.import(projectId, rows),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['issues'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['calendar'] });
+    },
+  });
 }
 
 export function useIssueMutations() {

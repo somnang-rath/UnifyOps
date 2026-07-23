@@ -55,6 +55,18 @@ export class ViewsController {
     return this.views.reorder(user.id, dto.ids);
   }
 
+  /** Publish to the public Space (ADR 0012 §3) → { anchor, isPublic, publishedAt }. */
+  @Post(':id/publish')
+  publish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.views.publish(user.id, id);
+  }
+
+  /** Unpublish (anchor preserved, ADR 0012 §3) → { isPublic: false }. */
+  @Post(':id/unpublish')
+  unpublish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.views.unpublish(user.id, id);
+  }
+
   @Patch(':id')
   @UsePipes(new ZodValidationPipe(UpdateViewSchema))
   update(

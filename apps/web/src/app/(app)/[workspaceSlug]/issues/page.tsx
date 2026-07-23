@@ -7,7 +7,7 @@ import {
   useRouter,
   useSearchParams,
 } from 'next/navigation';
-import { AlertCircle, Plus, Search } from 'lucide-react';
+import { AlertCircle, Plus, Search, Upload } from 'lucide-react';
 import { FilterBar, FilterSpacer } from '@prism/ui';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { useProjectsInWorkspace } from '@/hooks/use-projects';
 import { useUsers } from '@/hooks/use-users';
 import { useWorkspaceBySlug } from '@/hooks/use-workspaces';
 import { useDebounce } from '@/hooks/use-debounce';
+import { CsvImportDialog } from '@/components/feature/import/csv-import-dialog';
 import { IssueModal } from '@/components/feature/issue/issue-modal';
 import { IssuePeek } from '@/components/feature/issue/issue-peek';
 import { IssueTypeIcon } from '@/components/feature/issue/icons';
@@ -94,6 +95,7 @@ export default function IssuesPage() {
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [creating, setCreating] = useState(params.get('new') === '1');
   const [editing, setEditing] = useState<Issue | null>(null);
+  const [importing, setImporting] = useState(false);
 
   // Any manual filter change means we've drifted from the applied saved view.
   const touched =
@@ -104,7 +106,9 @@ export default function IssuesPage() {
     };
 
   const applyView = (v: SavedView) => {
-    const f = v.filters as {
+    // filters can be absent: Mongoose `minimize` drops an empty {} at save,
+    // so an API-created view with no filters loads without the field.
+    const f = (v.filters ?? {}) as {
       status?: string;
       type?: string;
       priority?: string;
@@ -252,9 +256,19 @@ export default function IssuesPage() {
             Track bugs, tasks, and features
           </p>
         </div>
-        <Button variant="primary" onClick={() => setCreating(true)}>
-          <Plus className="w-3.5 h-3.5" /> New task
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImporting(true)}
+            aria-label="Import work items from CSV"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Import</span>
+          </Button>
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus className="w-3.5 h-3.5" /> New task
+          </Button>
+        </div>
       </div>
 
       <ViewsBar
@@ -356,6 +370,12 @@ export default function IssuesPage() {
           setEditing(null);
           if (params.get('new') === '1') router.replace(pathname);
         }}
+      />
+
+      <CsvImportDialog
+        open={importing}
+        onClose={() => setImporting(false)}
+        defaultProjectId={projectId || undefined}
       />
 
       {peekId && (

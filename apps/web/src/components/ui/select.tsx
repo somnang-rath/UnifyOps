@@ -57,7 +57,6 @@ export function Select<T extends string = string>({
   const btnRef = React.useRef<HTMLButtonElement>(null);
   const wrapRef = React.useRef<HTMLDivElement>(null);
   const dropRef = React.useRef<HTMLDivElement>(null);
-  const isMouseFocusRef = React.useRef(false);
 
   const computePos = React.useCallback(() => {
     if (!btnRef.current) return;
@@ -225,14 +224,10 @@ export function Select<T extends string = string>({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onMouseDown={() => { isMouseFocusRef.current = true; }}
-        onFocus={() => {
-          if (!isMouseFocusRef.current) {
-            const selIdx = options.findIndex((o) => o.value === value);
-            openAt(selIdx >= 0 ? selIdx : 0);
-          }
-          isMouseFocusRef.current = false;
-        }}
+        // Receiving focus must NOT open the popup (ARIA combobox pattern):
+        // Modal's focus trap focuses the first focusable on open, and a Select
+        // in that spot would auto-expand its dropdown. ArrowDown/Enter/Space
+        // open it for keyboard users (handleKeyDown).
         onBlur={(e) => {
           if (dropRef.current?.contains(e.relatedTarget as Node)) return;
           setOpen(false);

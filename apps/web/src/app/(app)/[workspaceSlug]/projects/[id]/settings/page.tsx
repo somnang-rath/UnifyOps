@@ -12,6 +12,8 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
 import { fmtDate } from '@/lib/format';
+import { PublishSection } from './_components/publish-section';
+import { TemplatesSection } from './_components/templates-section';
 
 export default function ProjectSettingsPage() {
   const id = useParams<{ id: string }>().id;
@@ -145,6 +147,10 @@ export default function ProjectSettingsPage() {
         </section>
       )}
 
+      {/* Publish to Space (ADR 0012 §4) — owner-only, same strict gate as
+          cover: publishing is a project PATCH-level write. */}
+      {canEditCover && <PublishSection project={project} />}
+
       {/* Members */}
       <section>
         <h2 className="text-[15px] font-semibold mb-3">Members</h2>
@@ -270,6 +276,10 @@ export default function ProjectSettingsPage() {
           Created {fmtDate(project.createdAt)}
         </p>
       </section>
+
+      {/* Issue templates (templates-csv-import spec §2) — visible to all
+          project members; mutation affordances follow the write gate. */}
+      <TemplatesSection project={project} />
 
       {/* Danger zone */}
       {isOwner && (

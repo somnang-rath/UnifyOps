@@ -83,6 +83,18 @@ export class ProjectsController {
     return this.projects.updateBoard(user.id, id, dto);
   }
 
+  /** Publish to the public Space (ADR 0012 §4, owner only) → { anchor, isPublic, publishedAt }. */
+  @Post(':id/publish')
+  publish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.projects.publish(user.id, id);
+  }
+
+  /** Unpublish (anchor preserved, ADR 0012 §4, owner only) → { isPublic: false }. */
+  @Post(':id/unpublish')
+  unpublish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.projects.unpublish(user.id, id);
+  }
+
   @Post(':id/board/lists/:listId/clear')
   clearList(
     @CurrentUser() user: { id: string },

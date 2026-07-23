@@ -4,7 +4,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { randomBytes } from 'crypto';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { WikiPage, WikiPageDocument } from './schemas/wiki-page.schema';
 import {
@@ -19,19 +18,11 @@ import {
   newMentions,
 } from '../notifications/mentions.util';
 import { UsersService } from '../users/users.service';
+// Hoisted to common/ by ADR 0012 §2 so views + projects mint the same grammar.
+import { anchorFor } from '../../common/anchor.util';
 
 const oid = (v?: string | null) =>
   v ? new Types.ObjectId(v) : null;
-
-/** Public-slug helper (ADR 0002 §2): `slug(title).slice(0,50)-<8hex>`. */
-const anchorFor = (title: string) => {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 50);
-  return `${slug}-${randomBytes(4).toString('hex')}`;
-};
 
 @Injectable()
 export class WikiService {

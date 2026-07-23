@@ -13,6 +13,19 @@ import {
   UpdateViewDto,
 } from './dto/view.dto';
 import { ProjectAccessService } from '../projects/access/project-access.service';
+import {
+  WikiPage,
+  WikiPageDocument,
+} from '../wiki/schemas/wiki-page.schema';
+import {
+  Project,
+  ProjectDocument,
+} from '../projects/schemas/project.schema';
+import {
+  anchorFor,
+  isDuplicateAnchorError,
+  mintUniqueAnchor,
+} from '../../common/anchor.util';
 
 const oid = (v: string) => new Types.ObjectId(v);
 
@@ -21,6 +34,10 @@ export class ViewsService {
   constructor(
     @InjectModel(View.name) private model: Model<ViewDocument>,
     private access: ProjectAccessService,
+    // Anchor-collision checks only (ADR 0012 §2): minting scans all three
+    // published-content collections so the anchor namespace is global.
+    @InjectModel(WikiPage.name) private wikiModel: Model<WikiPageDocument>,
+    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
   ) {}
 
   /**
@@ -157,6 +174,76 @@ export class ViewsService {
       ),
     );
     return { ok: true };
+  }
+
+  /**
+   * Publish a project-scoped view to the public Space (ADR 0012 §3).
+   *
+   * Authz deliberately relaxes the owner-only-edit rule: publishing is a
+   * project-level act, so any caller who can read the view (owner, or shared)
+   * AND write to its project may publish — same spirit as wiki publishing
+   * (ADR 0002 §3). Workspace-level views are NOT publishable in v1: they span
+   * every project in the tenant, so one anchor would leak issues across the
+   * whole workspace → 400.
+   *
+   * Mints a stable `anchor` on first publish and reuses it thereafter.
+   */
+  async publish(userId: string, id: string) {
+    const view = await this.loadPublishable(userId, id);
+
+    if (!view.anchor) {
+      view.anchor = await mintUniqueAnchor(view.name, [
+        this.wikiModel,
+        this.model,
+        this.projectModel,
+      ]);
+    }
+    view.isPublic = true;
+    view.publishedAt = new Date();
+    view.publishedBy = oid(userId);
+    try {
+      await view.save();
+    } catch (err) {
+      // E11000 on the partial unique index — the backstop (ADR 0012 §2):
+      // re-mint once and retry.
+      if (!isDuplicateAnchorError(err)) throw err;
+      view.anchor = anchorFor(view.name);
+      await view.save();
+    }
+
+    return {
+      anchor: view.anchor,
+      isPublic: view.isPublic,
+      publishedAt: view.publishedAt,
+    };
+  }
+
+  /**
+   * Unpublish (ADR 0012 §3). Keeps the `anchor` so a later re-publish yields
+   * the same URL. Same authz as {@link publish}.
+   */
+  async unpublish(userId: string, id: string) {
+    const view = await this.loadPublishable(userId, id);
+    view.isPublic = false;
+    await view.save();
+    return { isPublic: view.isPublic };
+  }
+
+  /** Shared load + authz for publish/unpublish (ADR 0012 §3). */
+  private async loadPublishable(userId: string, id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException('View not found');
+    const view = await this.model.findById(id);
+    if (!view) throw new NotFoundException('View not found');
+    // Read gate first (404, no existence leak for strangers)…
+    await this.assertCanRead(userId, view);
+    if (!view.projectId) {
+      throw new BadRequestException(
+        'Workspace-level views cannot be published: they span every project in the workspace. Publish a project view instead.',
+      );
+    }
+    // …then the write gate on the project (403 for a readable non-member).
+    await this.access.assertProjectWritable(userId, view.projectId);
+    return view;
   }
 
   private async assertCanRead(

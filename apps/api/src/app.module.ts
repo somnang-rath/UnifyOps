@@ -17,6 +17,7 @@ import { RolesModule } from './modules/roles/roles.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { IssuesModule } from './modules/issues/issues.module';
 import { ViewsModule } from './modules/views/views.module';
+import { TemplatesModule } from './modules/templates/templates.module';
 import { KanbanModule } from './modules/kanban/kanban.module';
 import { MrsModule } from './modules/mrs/mrs.module';
 import { FilesModule } from './modules/files/files.module';
@@ -72,6 +73,7 @@ const bullRootImport = process.env.REDIS_URL
     ProjectsModule,
     IssuesModule,
     ViewsModule,
+    TemplatesModule,
     KanbanModule,
     MrsModule,
 

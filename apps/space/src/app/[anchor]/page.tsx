@@ -1,56 +1,70 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getPublicPage, sanitizeContent } from '@/lib/public-api';
-import { SpaceCover } from '@/components/space-cover';
+import { getPublicPayload } from '@/lib/public-api';
+import { WikiArticle } from '@/components/wiki-article';
+import { SpaceIssuesPage } from '@/components/space-issues-page';
 
-// Always render fresh — published content can change (Phase 2 snapshot-back).
+// Always render fresh — published content is a live query, not a snapshot
+// (ADR 0002 Phase 2 snapshot-back; ADR 0012 §5 for issues).
 export const dynamic = 'force-dynamic';
 
 type Params = { params: { anchor: string } };
 
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
 export async function generateMetadata({
   params,
 }: Params): Promise<Metadata> {
-  const page = await getPublicPage(params.anchor);
-  if (!page) return { title: 'Not found · Prism Space' };
-  return {
-    title: `${page.title} · Prism Space`,
-    description: `Published page: ${page.title}`,
-    openGraph: { title: page.title, type: 'article' },
-  };
+  // A metadata error bypasses error.tsx entirely (Next 14) — swallow it here
+  // and let the page's own fetch throw, so §3.6's error boundary renders.
+  const payload = await getPublicPayload(params.anchor).catch(() => null);
+  if (!payload) return { title: 'Not found · Prism Space' };
+  switch (payload.type) {
+    case 'wiki':
+      return {
+        title: `${payload.title} · Prism Space`,
+        description: `Published page: ${payload.title}`,
+        openGraph: { title: payload.title, type: 'article' },
+      };
+    case 'view':
+      return {
+        title: payload.projectName
+          ? `${payload.title} · ${payload.projectName} · Prism Space`
+          : `${payload.title} · Prism Space`,
+        description: payload.projectName
+          ? `Public board for ${payload.projectName}`
+          : 'Published view',
+        openGraph: { title: payload.title, type: 'website' },
+      };
+    case 'project':
+      return {
+        title: `${payload.title} · Prism Space`,
+        description: truncate(
+          payload.description ?? 'Published project board',
+          160,
+        ),
+        openGraph: { title: payload.title, type: 'website' },
+      };
+    default:
+      return { title: 'Not found · Prism Space' };
+  }
 }
 
 export default async function PublicPage({ params }: Params) {
-  const page = await getPublicPage(params.anchor);
-  if (!page) notFound();
+  const payload = await getPublicPayload(params.anchor);
+  if (!payload) notFound();
 
-  const html = sanitizeContent(page.contentHTML);
-  const updated = new Date(page.updatedAt).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-
-  return (
-    <main className="min-h-screen">
-      <article className="mx-auto max-w-[720px] px-6 py-14">
-        {page.coverImage && <SpaceCover src={page.coverImage} />}
-        <header className="mb-8 border-b border-gray-100 dark:border-gray-800 pb-6">
-          <h1 className="text-3xl font-bold tracking-tight">{page.title}</h1>
-          <p className="mt-2 text-[13px] text-gray-500">
-            Last updated {updated}
-          </p>
-        </header>
-        <div
-          className="prose-space"
-          // Sanitized in sanitizeContent() — the single security boundary for
-          // public rendering (ADR 0002 §5).
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-        <footer className="mt-14 pt-6 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-400">
-          Published with Prism
-        </footer>
-      </article>
-    </main>
-  );
+  // Branch on the discriminated union (ADR 0012 §6). Unknown types → 404, so
+  // an older space build degrades to "not found", never to a crash.
+  switch (payload.type) {
+    case 'wiki':
+      return <WikiArticle page={payload} />;
+    case 'view':
+    case 'project':
+      return <SpaceIssuesPage payload={payload} />;
+    default:
+      notFound();
+  }
 }

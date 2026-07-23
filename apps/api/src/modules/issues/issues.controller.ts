@@ -22,6 +22,8 @@ import {
   CreateIssueSchema,
   CreateRelationDto,
   CreateRelationSchema,
+  ImportIssuesDto,
+  ImportIssuesSchema,
   ListIssueQuery,
   ListIssueQuerySchema,
   UpdateIssueDto,
@@ -63,6 +65,16 @@ export class IssuesController {
     @Body() dto: CreateIssueDto,
   ) {
     return this.issues.create(user.id, dto);
+  }
+
+  /** Bulk CSV import (Phase 8 workstream B) — max 500 rows per call. */
+  @Post('import')
+  @UsePipes(new ZodValidationPipe(ImportIssuesSchema))
+  importIssues(
+    @CurrentUser() user: { id: string },
+    @Body() dto: ImportIssuesDto,
+  ) {
+    return this.issues.importIssues(user.id, dto);
   }
 
   @Patch(':id')

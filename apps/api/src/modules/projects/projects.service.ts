@@ -22,6 +22,16 @@ import {
 } from './dto/project.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AutomationsService } from '../automations/automations.service';
+import {
+  WikiPage,
+  WikiPageDocument,
+} from '../wiki/schemas/wiki-page.schema';
+import { View, ViewDocument } from '../views/schemas/view.schema';
+import {
+  anchorFor,
+  isDuplicateAnchorError,
+  mintUniqueAnchor,
+} from '../../common/anchor.util';
 
 const slug = (s: string) =>
   s.toLowerCase().trim().replace(/\s+/g, '-').slice(0, 60);
@@ -37,6 +47,10 @@ export class ProjectsService {
     @InjectModel(Issue.name) private issueModel: Model<IssueDocument>,
     private notifs: NotificationsService,
     private autos: AutomationsService,
+    // Anchor-collision checks only (ADR 0012 §2): minting scans all three
+    // published-content collections so the anchor namespace is global.
+    @InjectModel(WikiPage.name) private wikiModel: Model<WikiPageDocument>,
+    @InjectModel(View.name) private viewModel: Model<ViewDocument>,
   ) {}
 
   private async notifyNewMembers(
@@ -343,6 +357,62 @@ export class ProjectsService {
     }
     const saved = await project.save();
     return saved.toObject();
+  }
+
+  /**
+   * Publish the project's board to the public Space (ADR 0012 §4). Project
+   * OWNER only — the same gate as the ADR 0010 cover mutation (`update`):
+   * members cannot expose a project to the internet. Mints a stable `anchor`
+   * on first publish and reuses it thereafter.
+   */
+  async publish(userId: string, id: string) {
+    const project = await this.loadOwned(userId, id);
+
+    if (!project.anchor) {
+      project.anchor = await mintUniqueAnchor(project.name, [
+        this.wikiModel,
+        this.viewModel,
+        this.projectModel,
+      ]);
+    }
+    project.isPublic = true;
+    project.publishedAt = new Date();
+    project.publishedBy = new Types.ObjectId(userId);
+    try {
+      await project.save();
+    } catch (err) {
+      // E11000 on the partial unique index — the backstop (ADR 0012 §2):
+      // re-mint once and retry.
+      if (!isDuplicateAnchorError(err)) throw err;
+      project.anchor = anchorFor(project.name);
+      await project.save();
+    }
+
+    return {
+      anchor: project.anchor,
+      isPublic: project.isPublic,
+      publishedAt: project.publishedAt,
+    };
+  }
+
+  /**
+   * Unpublish (ADR 0012 §4). Keeps the `anchor` so a later re-publish yields
+   * the same URL. Owner only, like {@link publish}.
+   */
+  async unpublish(userId: string, id: string) {
+    const project = await this.loadOwned(userId, id);
+    project.isPublic = false;
+    await project.save();
+    return { isPublic: project.isPublic };
+  }
+
+  /** Owner-only load for publish/unpublish (mirrors the `update` gate). */
+  private async loadOwned(userId: string, id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const project = await this.projectModel.findById(id);
+    if (!project) throw new NotFoundException();
+    if (String(project.ownerId) !== userId) throw new ForbiddenException();
+    return project;
   }
 
   async remove(userId: string, id: string) {

@@ -12,12 +12,21 @@ import { UsersModule } from '../users/users.module';
 import { IssuesModule } from '../issues/issues.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AutomationsModule } from '../automations/automations.module';
+import {
+  WikiPage,
+  WikiPageSchema,
+} from '../wiki/schemas/wiki-page.schema';
+import { View, ViewSchema } from '../views/schemas/view.schema';
 
 @Module({
   imports: [
+    // WikiPage + View bindings exist only for anchor-collision checks at
+    // publish time (ADR 0012 §2) — own registration, no module dependency.
     MongooseModule.forFeature([
       { name: Project.name, schema: ProjectSchema },
       { name: Workspace.name, schema: WorkspaceSchema },
+      { name: WikiPage.name, schema: WikiPageSchema },
+      { name: View.name, schema: ViewSchema },
     ]),
     ProjectAccessModule,
     UsersModule,
