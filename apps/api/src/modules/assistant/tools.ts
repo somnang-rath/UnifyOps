@@ -185,7 +185,7 @@ export async function runTool(
         if (!/^[0-9a-fA-F]{24}$/.test(id)) return err('invalid wiki page id');
         const { canRead } = await deps.wiki.accessFor(user.id, id);
         if (!canRead) return err('You do not have access to that wiki page');
-        const page = await deps.wiki.byId(id);
+        const page = await deps.wiki.byId(user.id, id);
         return ok({ title: page.title, contentHTML: page.content });
       }
 

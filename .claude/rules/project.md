@@ -17,7 +17,9 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
 - **Phase 5 — Security core** ✅ (`docs/plan/01-security-model.md`)
 - **Phase 6 — Design system** ✅ (`docs/plan/02-design-system.md`) — closed 2026-07-23:
   shared `AppShell` (web+admin) + Tier 3 (`CommandPalette` ⌘K · `FilterBar` · `SidebarNav`)
-- **Phase 7 — Feature parity A** 🟡 (`docs/plan/03-feature-parity.md`)
+- **Phase 7 — Feature parity A** 🟡 (`docs/plan/03-feature-parity.md`) — 7b route
+  consolidation done 2026-07-23 (ADR 0011 route tiers: Tier W under `/[workspaceSlug]/`
+  with permanent flat shims; Tier P/G flat forever). Open: bulk ops, `?layout=` param.
 - **Phase 8 — Feature parity B** 🟡
 - **Phase 9 — Team chat + Telegram bridge** ✅ (ADR 0007, `docs/telegram-bridge-setup.md`)
 
@@ -44,7 +46,7 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
 
 ## E2E testing
 
-- `pnpm test:e2e:full` — canonical run: all 7 API suites (118 checks) via
+- `pnpm test:e2e:full` — canonical run: all 7 API suites (128 checks) via
   `scripts/e2e-full.mjs`, against a running dev stack + the E2E fixture. The runner handles
   the 5/min login throttle (65s cool-downs, override `E2E_COOLDOWN_MS`) and boots a
   disposable API on :4012 for the notes-collab suite.
@@ -52,7 +54,7 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
   — plain-fetch `.mjs` scripts in `apps/api/test/`, no framework. Manual back-to-back runs
   hit the login throttle (429s) — space them ~65s, or just use the runner.
   `test:notes-collab` needs its own API instance (the runner provides :4012).
-- `pnpm --filter web test:browser-smoke` — Playwright smoke (7 checks) across web/admin/space;
+- `pnpm --filter web test:browser-smoke` — Playwright smoke (8 checks) across web/admin/space;
   needs the full dev stack up.
 
 ## Conversion principle

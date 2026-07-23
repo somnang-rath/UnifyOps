@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { ChevronDown, ChevronRight, Clock, Plus } from 'lucide-react';
 import { PriorityPill } from '@/components/feature/issue/pills';
 import { fmtDateShort } from '@/lib/format';
@@ -17,6 +18,9 @@ import {
 } from './shared';
 
 export function ListView({ projectId, issues, userMap }: ViewProps) {
+  // This view only renders under /[workspaceSlug]/projects/[id] — issue links
+  // stay inside the workspace instead of bouncing through the flat shim.
+  const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
   const groups = groupByStatus(issues);
   const [collapsed, setCollapsed] = useState<Set<StatusId>>(new Set());
 
@@ -49,7 +53,7 @@ export function ListView({ projectId, issues, userMap }: ViewProps) {
               </span>
               <span className="text-[12px] text-text-muted">{rows.length}</span>
               <Link
-                href={`/issues?new=1&project=${projectId}&status=${s}`}
+                href={`/${slug}/issues?new=1&project=${projectId}&status=${s}`}
                 onClick={(e) => e.stopPropagation()}
                 className="ml-auto opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-muted hover:bg-bg-hover hover:text-text transition-opacity"
                 title="New work item"
@@ -68,7 +72,7 @@ export function ListView({ projectId, issues, userMap }: ViewProps) {
                   rows.map((i) => (
                     <Link
                       key={i._id}
-                      href={`/issues/${i._id}`}
+                      href={`/${slug}/issues/${i._id}`}
                       className="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 hover:bg-bg-hover transition-colors"
                     >
                       <span className="flex-1 truncate text-[13px]">

@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   Activity,
   BarChart2,
@@ -75,6 +76,12 @@ export function IssuePeek({
   const me = useAuthStore((s) => s.user);
   const titleId = 'issue-peek-title';
   const bodyRef = useRef<HTMLDivElement>(null);
+  // The peek only ever renders on the issues list, whose pathname is now
+  // /[workspaceSlug]/issues (ADR 0011 §4) — build the full-page URL relative
+  // to it rather than hard-coding a flat /issues that would bounce through
+  // the redirect shim.
+  const pathname = usePathname();
+  const fullPageHref = `${pathname}/${issueId}`;
 
   const [comment, setComment] = useState('');
   const [editing, setEditing] = useState(false);
@@ -111,7 +118,7 @@ export function IssuePeek({
   const copyLink = async () => {
     // The canonical URL, not the ?peek one — it works from anywhere.
     try {
-      await navigator.clipboard.writeText(`${location.origin}/issues/${issueId}`);
+      await navigator.clipboard.writeText(`${location.origin}${fullPageHref}`);
     } catch {
       return;
     }
@@ -185,7 +192,7 @@ export function IssuePeek({
       </IconButton>
       {issue ? (
         <IconButton size="sm" variant="ghost" aria-label="Open full page" asChild>
-          <Link href={`/issues/${issueId}`}>
+          <Link href={fullPageHref}>
             <Maximize2 />
           </Link>
         </IconButton>

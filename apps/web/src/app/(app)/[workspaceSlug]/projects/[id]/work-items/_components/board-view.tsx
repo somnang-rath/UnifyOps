@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   ChevronRight,
   Clock,
@@ -41,6 +41,7 @@ const genId = () =>
 
 export function BoardView({ projectId, issues, userMap }: ViewProps) {
   const router = useRouter();
+  const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
   const { data: project } = useProject(projectId);
   const { update, create } = useIssueMutations();
   const board = useBoardMutations(projectId);
@@ -208,7 +209,7 @@ export function BoardView({ projectId, issues, userMap }: ViewProps) {
                     setDragId(null);
                     setOver(null);
                   }}
-                  onClick={() => router.push(`/issues/${i._id}`)}
+                  onClick={() => router.push(`/${slug}/issues/${i._id}`)}
                 />
               ))}
 

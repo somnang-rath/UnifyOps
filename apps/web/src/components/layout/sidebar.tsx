@@ -54,10 +54,11 @@ interface NavItem {
   assistantOnly?: boolean
   badge?: BadgeKey
   /**
-   * Lives under /[workspaceSlug] (ADR 0006). Only `projects` is genuinely
-   * workspace-scoped — Board/Calendar/Tasks/Approvals are per-USER views
-   * (KanbanService keys the board by userId; issues/MRs list by userId), so
-   * nesting them under a workspace would imply scoping the data doesn't have.
+   * Lives under /[workspaceSlug] — Tier W in the ADR 0011 route census.
+   * All Tier W routes are migrated (projects: ADR 0006 · chat: Phase 9 ·
+   * analytics: Phase 7b part A · issues/calendar/timeline/wiki: part B).
+   * Per-user views (Board/My Work/Approvals/…) are Tier P and stay flat
+   * forever — nesting them would imply scoping the data doesn't have.
    */
   workspaceScoped?: boolean
 }
@@ -75,18 +76,18 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Plan & Track",
     items: [
-      { href: "/issues", label: "Tasks", Icon: AlertCircle, badge: "issues" },
+      { href: "/issues", label: "Tasks", Icon: AlertCircle, badge: "issues", workspaceScoped: true },
       { href: "/kanban", label: "Board", Icon: Trello },
-      { href: "/calendar", label: "Calendar", Icon: Calendar },
+      { href: "/calendar", label: "Calendar", Icon: Calendar, workspaceScoped: true },
       { href: "/approvals", label: "Approvals", Icon: GitMerge, badge: "approvals" },
-      { href: "/analytics", label: "Analytics", Icon: BarChart3 },
+      { href: "/analytics", label: "Analytics", Icon: BarChart3, workspaceScoped: true },
     ],
   },
   {
     section: "Knowledge",
     items: [
       { href: "/files", label: "Storage", Icon: FileText },
-      { href: "/wiki", label: "Wiki", Icon: BookOpen },
+      { href: "/wiki", label: "Wiki", Icon: BookOpen, workspaceScoped: true },
       { href: "/notes", label: "Notes", Icon: StickyNote },
       { href: "/tables", label: "Tables", Icon: Database },
       { href: "/reports", label: "Reports", Icon: FileBarChart2 },
@@ -98,7 +99,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { href: "/notifications", label: "Notifications", Icon: Bell, badge: "notifications" },
       { href: "/automations", label: "Automations", Icon: Zap },
-      { href: "/timeline", label: "Timeline", Icon: Activity },
+      { href: "/timeline", label: "Timeline", Icon: Activity, workspaceScoped: true },
       { href: "/users", label: "People", Icon: Users, adminOnly: true },
       { href: "/debug", label: "Debug & Errors", Icon: Bug, superAdminOnly: true },
       { href: "/settings", label: "Settings", Icon: SettingsIcon },

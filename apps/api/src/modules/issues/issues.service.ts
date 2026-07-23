@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Issue, IssueDocument } from './schemas/issue.schema';
 import {
+  CalendarRangeQuery,
   CreateIssueDto,
   ListIssueQuery,
   UpdateIssueDto,
@@ -84,6 +85,35 @@ export class IssuesService {
       .catch(() => {});
   }
 
+  /**
+   * The access-scope branch shared by {@link list} and {@link calendar}
+   * (ADR 0003/0005; workspace param per ADR 0011 §2b). Absent `workspaceId`:
+   * issues in projects the caller can read, plus their own personal
+   * (project-less) issues. Present: readable projects *in that workspace*
+   * only — personal issues belong to no workspace and are dropped, and an
+   * unknown/non-member workspace yields a filter that matches nothing.
+   */
+  private async accessScope(
+    userId: string,
+    workspaceId?: string,
+  ): Promise<FilterQuery<IssueDocument>> {
+    if (workspaceId) {
+      const projectIds = await this.access.readableProjectIdsInWorkspace(
+        userId,
+        workspaceId,
+      );
+      return { projectId: { $in: projectIds } };
+    }
+    const me = new Types.ObjectId(userId);
+    const readableProjects = await this.access.readableProjectIds(userId);
+    return {
+      $or: [
+        { projectId: { $in: readableProjects } },
+        { projectId: null, $or: [{ authorId: me }, { assigneeId: me }] },
+      ],
+    };
+  }
+
   async list(userId: string, q: ListIssueQuery) {
     const filter: FilterQuery<IssueDocument> = {};
     if (q.projectId) filter.projectId = new Types.ObjectId(q.projectId);
@@ -98,21 +128,10 @@ export class IssuesService {
         { desc: { $regex: q.q, $options: 'i' } },
       ];
 
-    // Access scope (ADR 0003/0005), matching byId: issues in a project the
-    // caller can read, plus their own personal (project-less) issues. Combined
-    // via $and so it can't collide with the text-search $or above.
-    const me = new Types.ObjectId(userId);
-    const readableProjects = await this.access.readableProjectIds(userId);
+    // Access scope, matching byId. Combined via $and so it can't collide with
+    // the text-search $or above.
     const scopedFilter: FilterQuery<IssueDocument> = {
-      $and: [
-        filter,
-        {
-          $or: [
-            { projectId: { $in: readableProjects } },
-            { projectId: null, $or: [{ authorId: me }, { assigneeId: me }] },
-          ],
-        },
-      ],
+      $and: [filter, await this.accessScope(userId, q.workspaceId)],
     };
 
     const skip = (q.page - 1) * q.limit;
@@ -166,13 +185,22 @@ export class IssuesService {
     return issue;
   }
 
-  async calendar(from: string, to: string) {
+  /**
+   * Scoped exactly like {@link list} (ADR 0011 context #2 — the previous
+   * date-only filter returned every tenant's issues in the range).
+   */
+  async calendar(userId: string, q: CalendarRangeQuery) {
     return this.model
       .find({
-        dueDate: {
-          $gte: new Date(`${from}T00:00:00.000Z`),
-          $lte: new Date(`${to}T23:59:59.999Z`),
-        },
+        $and: [
+          {
+            dueDate: {
+              $gte: new Date(`${q.from}T00:00:00.000Z`),
+              $lte: new Date(`${q.to}T23:59:59.999Z`),
+            },
+          },
+          await this.accessScope(userId, q.workspaceId),
+        ],
       })
       .sort({ dueDate: 1 })
       .lean();

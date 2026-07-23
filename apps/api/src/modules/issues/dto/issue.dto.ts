@@ -45,6 +45,11 @@ export type CreateRelationDto = z.infer<typeof CreateRelationSchema>;
 
 export const ListIssueQuerySchema = z.object({
   projectId: objectId.optional(),
+  /**
+   * ADR 0011 §2b: absent → personal cross-project scope (readable projects +
+   * own personal issues); present → readable projects in that workspace only.
+   */
+  workspaceId: objectId.optional(),
   assigneeId: objectId.optional(),
   status: z.enum(['open', 'closed', 'all']).default('all'),
   type: z.enum(ISSUE_TYPES).optional(),
@@ -63,5 +68,7 @@ export type CommentDto = z.infer<typeof CommentSchema>;
 export const CalendarRangeSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD'),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
+  /** ADR 0011 §2b: same scoping semantics as `GET /issues`. */
+  workspaceId: objectId.optional(),
 });
 export type CalendarRangeQuery = z.infer<typeof CalendarRangeSchema>;

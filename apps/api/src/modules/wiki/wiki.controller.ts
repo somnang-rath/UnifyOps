@@ -35,13 +35,16 @@ export class WikiController {
   ) {}
 
   @Get()
-  list(@Query(new ZodQueryPipe(ListWikiQuerySchema)) q: ListWikiQuery) {
-    return this.wiki.list(q);
+  list(
+    @CurrentUser() u: { id: string },
+    @Query(new ZodQueryPipe(ListWikiQuerySchema)) q: ListWikiQuery,
+  ) {
+    return this.wiki.list(u.id, q);
   }
 
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.wiki.byId(id);
+  byId(@CurrentUser() u: { id: string }, @Param('id') id: string) {
+    return this.wiki.byId(u.id, id);
   }
 
   @Post()

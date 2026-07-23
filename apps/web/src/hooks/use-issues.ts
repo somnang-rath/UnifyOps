@@ -16,6 +16,12 @@ export interface IssueListParams {
   priority?: string;
   q?: string;
   assigneeId?: string;
+  /**
+   * ADR 0011 §2: present → only issues of readable projects in that workspace
+   * (personal `projectId: null` issues are dropped by the API); absent →
+   * today's personal cross-project list. Part of the query key via `params`.
+   */
+  workspaceId?: string;
 }
 
 interface SaveBody {
@@ -45,9 +51,11 @@ const issuesService = {
     api.delete<{ ok: true }>(`/issues/${id}`).then((r) => r.data),
   comment: (id: string, body: string) =>
     api.post<Issue>(`/issues/${id}/comments`, { body }).then((r) => r.data),
-  calendar: (from: string, to: string) =>
+  calendar: (from: string, to: string, workspaceId?: string) =>
     api
-      .get<Issue[]>('/issues/calendar/range', { params: { from, to } })
+      .get<Issue[]>('/issues/calendar/range', {
+        params: { from, to, workspaceId },
+      })
       .then((r) => r.data),
 };
 
@@ -65,10 +73,14 @@ export const useIssue = (id: string | null) =>
     enabled: !!id,
   });
 
-export const useCalendarIssues = (from: string, to: string) =>
+export const useCalendarIssues = (
+  from: string,
+  to: string,
+  workspaceId?: string,
+) =>
   useQuery({
-    queryKey: ['calendar', from, to],
-    queryFn: () => issuesService.calendar(from, to),
+    queryKey: ['calendar', from, to, workspaceId ?? null],
+    queryFn: () => issuesService.calendar(from, to, workspaceId),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
@@ -76,6 +88,10 @@ export const useCalendarIssues = (from: string, to: string) =>
 // Does a list query's params plausibly include this newly-created issue?
 // We use this to decide whether to optimistically inject the temp issue.
 function queryMatches(params: IssueListParams, body: SaveBody): boolean {
+  // A workspace-scoped list never contains personal issues (ADR 0011 §2).
+  // Whether a project-linked issue's project is in that workspace can't be
+  // told client-side — inject optimistically; the settled invalidate corrects.
+  if (params.workspaceId && !body.projectId) return false;
   if (params.projectId && params.projectId !== (body.projectId ?? undefined))
     return false;
   if (

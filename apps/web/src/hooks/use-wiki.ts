@@ -9,10 +9,8 @@ import { toast } from '@/stores/toast-store';
 import type { WikiPage, WikiPageMeta } from '@/schemas/wiki';
 
 const wikiService = {
-  list: (projectId: string, q?: string) =>
-    api
-      .get<WikiPageMeta[]>('/wiki', { params: { projectId, q } })
-      .then((r) => r.data),
+  list: (params: { projectId?: string; workspaceId?: string; q?: string }) =>
+    api.get<WikiPageMeta[]>('/wiki', { params }).then((r) => r.data),
   byId: (id: string) =>
     api.get<WikiPage>(`/wiki/${id}`).then((r) => r.data),
   create: (b: {
@@ -35,10 +33,26 @@ const wikiService = {
     api.delete(`/wiki/${id}`).then((r) => r.data),
 };
 
-export const useWikiList = (projectId: string | null, q: string) =>
+/**
+ * Per-project page list. `workspaceId` (ADR 0011 §2) is an additional honest
+ * filter — the API intersects both, so a stale project restored from another
+ * workspace yields `[]` instead of leaking cross-workspace titles. It sits in
+ * the key *after* `q` so the mutations' `['wiki', projectId]` prefix
+ * invalidation keeps matching.
+ */
+export const useWikiList = (
+  projectId: string | null,
+  q: string,
+  workspaceId?: string | null,
+) =>
   useQuery({
-    queryKey: ['wiki', projectId, q],
-    queryFn: () => wikiService.list(projectId!, q || undefined),
+    queryKey: ['wiki', projectId, q, workspaceId ?? null],
+    queryFn: () =>
+      wikiService.list({
+        projectId: projectId!,
+        workspaceId: workspaceId ?? undefined,
+        q: q || undefined,
+      }),
     enabled: !!projectId,
     placeholderData: (prev) => prev,
   });

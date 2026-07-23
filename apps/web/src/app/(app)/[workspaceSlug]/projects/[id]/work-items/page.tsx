@@ -40,7 +40,10 @@ const RENDER: Record<ViewId, (p: ViewProps) => React.ReactNode> = {
 };
 
 export default function WorkItemsPage() {
-  const projectId = useParams<{ id: string }>().id;
+  const { id: projectId, workspaceSlug } = useParams<{
+    id: string;
+    workspaceSlug: string;
+  }>();
   const { data: issuesResp, isLoading } = useIssues({
     projectId,
     status: 'all',
@@ -88,7 +91,7 @@ export default function WorkItemsPage() {
             {issues.length} item{issues.length === 1 ? '' : 's'}
           </span>
           <Button asChild variant="primary">
-            <Link href={`/issues?new=1&project=${projectId}`}>
+            <Link href={`/${workspaceSlug}/issues?new=1&project=${projectId}`}>
               <Plus /> Add work item
             </Link>
           </Button>

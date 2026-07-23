@@ -18,8 +18,19 @@ export const UpdateWikiSchema = SaveWikiSchema.omit({
 }).partial();
 export type UpdateWikiDto = z.infer<typeof UpdateWikiSchema>;
 
-export const ListWikiQuerySchema = z.object({
-  projectId: objectId,
-  q: z.string().trim().optional(),
-});
+/**
+ * ADR 0011 §2b: at least one of `projectId` / `workspaceId` is required so the
+ * endpoint never serves an unbounded list. `projectId` alone → per-project
+ * list; `workspaceId` alone → pages across the caller's readable projects in
+ * that workspace; both → intersected.
+ */
+export const ListWikiQuerySchema = z
+  .object({
+    projectId: objectId.optional(),
+    workspaceId: objectId.optional(),
+    q: z.string().trim().optional(),
+  })
+  .refine((v) => v.projectId || v.workspaceId, {
+    message: 'projectId or workspaceId is required',
+  });
 export type ListWikiQuery = z.infer<typeof ListWikiQuerySchema>;

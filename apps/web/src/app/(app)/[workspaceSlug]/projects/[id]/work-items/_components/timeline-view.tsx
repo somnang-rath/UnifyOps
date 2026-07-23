@@ -1,6 +1,6 @@
 'use client';
 import { useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { fmtDateShort } from '@/lib/format';
 import { STATUS_DOT, STATUS_ORDER, type StatusId, type ViewProps } from './shared';
@@ -9,6 +9,7 @@ const DAY = 86_400_000;
 
 export function TimelineView({ issues }: ViewProps) {
   const router = useRouter();
+  const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
 
   const model = useMemo(() => {
     const rows = issues
@@ -79,7 +80,7 @@ export function TimelineView({ issues }: ViewProps) {
           return (
             <button
               key={issue._id}
-              onClick={() => router.push(`/issues/${issue._id}`)}
+              onClick={() => router.push(`/${slug}/issues/${issue._id}`)}
               className="relative h-9 border-b border-border last:border-b-0 hover:bg-bg-hover text-left group"
             >
               <div

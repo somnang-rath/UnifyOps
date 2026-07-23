@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select';
 import { useAuthStore } from '@/stores/auth-store';
 import { useIssues, useIssueMutations } from '@/hooks/use-issues';
 import { useProjects } from '@/hooks/use-projects';
+import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { StatusPill } from '@/components/feature/issue/pills';
 import { fmtDateShort, today as todayIso } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,10 @@ const PRIO_DOT: Record<Issue['priority'], string> = {
 export default function MyWorkPage() {
   const me = useAuthStore((s) => s.user)!;
   const router = useRouter();
+  // "New task" goes to the slugged issues list (ADR 0011). Row opens
+  // (`/issues/<id>`) stay flat on purpose — My Work spans all workspaces, and
+  // the flat shim resolves each issue's own workspace.
+  const ws = useWorkspaceHref();
   const [projectId, setProjectId] = useState('');
   const [statusFilter, setStatusFilter] = useState<'open' | 'all'>('open');
   const [collapsed, setCollapsed] = useState<Set<GroupKey>>(new Set());
@@ -149,7 +154,7 @@ export default function MyWorkPage() {
             ]}
           />
           <Button asChild variant="primary">
-            <Link href="/issues?new=1">
+            <Link href={ws('/issues?new=1')}>
               <Plus /> New task
             </Link>
           </Button>

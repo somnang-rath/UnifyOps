@@ -44,9 +44,11 @@ export class IssuesController {
   }
 
   @Get('calendar/range')
-  calendar(@Query() q: CalendarRangeQuery) {
-    const parsed = CalendarRangeSchema.parse(q);
-    return this.issues.calendar(parsed.from, parsed.to);
+  calendar(
+    @CurrentUser() user: { id: string },
+    @Query(new ZodQueryPipe(CalendarRangeSchema)) q: CalendarRangeQuery,
+  ) {
+    return this.issues.calendar(user.id, q);
   }
 
   @Get(':id')

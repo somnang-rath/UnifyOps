@@ -1,5 +1,5 @@
 'use client';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { PriorityPill, StatusPill } from '@/components/feature/issue/pills';
 import { Avatar } from '@/components/ui/avatar';
 import { fmtDateShort } from '@/lib/format';
@@ -8,6 +8,7 @@ import { dueClass, type ViewProps } from './shared';
 
 export function TableView({ issues, userMap }: ViewProps) {
   const router = useRouter();
+  const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
 
   if (issues.length === 0) {
     return (
@@ -35,7 +36,7 @@ export function TableView({ issues, userMap }: ViewProps) {
             return (
               <tr
                 key={i._id}
-                onClick={() => router.push(`/issues/${i._id}`)}
+                onClick={() => router.push(`/${slug}/issues/${i._id}`)}
                 className="border-t border-border hover:bg-bg-hover cursor-pointer"
               >
                 <td className="px-3 py-2.5 truncate max-w-0">{i.title}</td>

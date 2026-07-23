@@ -30,6 +30,7 @@ import {
 } from '@prism/ui';
 import { useIssues } from '@/hooks/use-issues';
 import { useProjects } from '@/hooks/use-projects';
+import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useUIStore } from '@/stores/ui-store';
 import { useLayoutStore } from '@/stores/layout-store';
@@ -56,6 +57,11 @@ export function CommandPalette() {
   const router = useRouter();
   const pathname = usePathname();
   const logout = useLogout();
+  // Tier W list routes (ADR 0011) go straight to the slugged URL instead of
+  // bouncing through the flat redirect shims. Entity results below stay flat
+  // on purpose: search spans all readable workspaces, and the flat shims
+  // resolve each entity's own workspace.
+  const ws = useWorkspaceHref();
 
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q, 180);
@@ -80,20 +86,20 @@ export function CommandPalette() {
     const actions: CommandPaletteItem[] = [
       { group: 'Navigate', icon: icon(Home), title: 'Go to Home', onSelect: go('/home') },
       { group: 'Navigate', icon: icon(CheckSquare), title: 'Go to My Work', onSelect: go('/my-work') },
-      { group: 'Navigate', icon: icon(Grid3x3), title: 'Go to Projects', onSelect: go('/projects') },
-      { group: 'Navigate', icon: icon(AlertCircle), title: 'Go to Tasks', onSelect: go('/issues') },
+      { group: 'Navigate', icon: icon(Grid3x3), title: 'Go to Projects', onSelect: go(ws('/projects')) },
+      { group: 'Navigate', icon: icon(AlertCircle), title: 'Go to Tasks', onSelect: go(ws('/issues')) },
       { group: 'Navigate', icon: icon(Trello), title: 'Go to Board', onSelect: go('/kanban') },
-      { group: 'Navigate', icon: icon(Calendar), title: 'Go to Calendar', onSelect: go('/calendar') },
+      { group: 'Navigate', icon: icon(Calendar), title: 'Go to Calendar', onSelect: go(ws('/calendar')) },
       { group: 'Navigate', icon: icon(GitMerge), title: 'Go to Approvals', onSelect: go('/approvals') },
       { group: 'Navigate', icon: icon(FileText), title: 'Go to Storage', onSelect: go('/files') },
-      { group: 'Navigate', icon: icon(BookOpen), title: 'Go to Wiki', onSelect: go('/wiki') },
+      { group: 'Navigate', icon: icon(BookOpen), title: 'Go to Wiki', onSelect: go(ws('/wiki')) },
       { group: 'Navigate', icon: icon(StickyNote), title: 'Go to Notes', onSelect: go('/notes') },
       { group: 'Navigate', icon: icon(Database), title: 'Go to Tables', onSelect: go('/tables') },
       { group: 'Navigate', icon: icon(Users), title: 'Go to People', onSelect: go('/users') },
       { group: 'Navigate', icon: icon(SettingsIcon), title: 'Go to Settings', onSelect: go('/settings') },
       { group: 'Navigate', icon: icon(SettingsIcon), title: 'Go to Automations', onSelect: go('/automations') },
-      { group: 'Create', icon: icon(Plus), title: 'New task', onSelect: go('/issues?new=1') },
-      { group: 'Create', icon: icon(Plus), title: 'New project', onSelect: go('/projects?new=1') },
+      { group: 'Create', icon: icon(Plus), title: 'New task', onSelect: go(ws('/issues?new=1')) },
+      { group: 'Create', icon: icon(Plus), title: 'New project', onSelect: go(ws('/projects?new=1')) },
       { group: 'Create', icon: icon(StickyNote), title: 'New note', onSelect: go('/notes?new=1') },
       {
         group: 'Actions',
@@ -204,6 +210,7 @@ export function CommandPalette() {
     resetLayout,
     pathname,
     logout,
+    ws,
   ]);
 
   return (

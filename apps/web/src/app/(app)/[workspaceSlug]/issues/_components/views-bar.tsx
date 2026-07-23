@@ -1,11 +1,12 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { Bookmark, Plus, Users } from 'lucide-react';
 import { FilterChip } from '@prism/ui';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useAuthStore } from '@/stores/auth-store';
-import { useCurrentWorkspace } from '@/hooks/use-workspaces';
+import { useWorkspaceBySlug } from '@/hooks/use-workspaces';
 import {
   useViewMutations,
   useViews,
@@ -39,7 +40,10 @@ interface ViewsBarProps {
 export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
   const me = useAuthStore((s) => s.user);
   const myId = me?._id ?? me?.id;
-  const { current: workspace } = useCurrentWorkspace();
+  // The bar lives under /[workspaceSlug]/issues (Phase 7b) — resolve from the
+  // URL, not the persisted selection, so the chips match the list's scope.
+  const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
+  const { data: workspace } = useWorkspaceBySlug(slug ?? null);
 
   const { data: wsViews = [] } = useViews({
     workspaceId: workspace?.id,

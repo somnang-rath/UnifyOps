@@ -152,6 +152,36 @@ export class ProjectAccessService {
     return projects.map((p) => p._id);
   }
 
+  /**
+   * ADR 0011 §2a (the seam planned in ADR 0006 §4): the subset of
+   * {@link readableProjectIds} whose project sits in the given workspace. A
+   * plain intersection — no membership assert. For a non-member the visibility
+   * branch contributes nothing (the workspace is not in their set), so their
+   * result is empty unless they own/joined a project parked there; either way
+   * it only ever contains projects the caller could already read. Invalid or
+   * unknown `workspaceId` → empty array, never a throw.
+   */
+  async readableProjectIdsInWorkspace(
+    userId: string,
+    workspaceId: Types.ObjectId | string | null | undefined,
+  ): Promise<Types.ObjectId[]> {
+    if (!workspaceId || !Types.ObjectId.isValid(String(workspaceId))) {
+      return [];
+    }
+    const readable = await this.readableProjectIds(userId);
+    if (readable.length === 0) return [];
+    const projects = await this.projectModel
+      .find(
+        {
+          _id: { $in: readable },
+          workspaceId: new Types.ObjectId(String(workspaceId)),
+        },
+        { _id: 1 },
+      )
+      .lean();
+    return projects.map((p) => p._id);
+  }
+
   // ── Write gate (ADR 0005: members + stakeholders) ──────────────────
 
   /**

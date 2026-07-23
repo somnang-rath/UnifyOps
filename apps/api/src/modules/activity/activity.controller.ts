@@ -15,6 +15,6 @@ export class ActivityController {
   ) {
     // Non-admins can only view their own activity
     const forceUserId = me.role !== 'admin' ? me.id : undefined;
-    return this.activity.list(q, forceUserId);
+    return this.activity.list(me.id, q, forceUserId);
   }
 }

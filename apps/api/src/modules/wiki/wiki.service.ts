@@ -63,9 +63,32 @@ export class WikiService {
     });
   }
 
-  list(q: ListWikiQuery) {
+  /**
+   * List page metadata the caller can read (read gate per ADR 0011 context
+   * #3). `projectId` alone → that project's pages, gated by the canonical
+   * read rule — an unreadable project yields an empty list, consistent with
+   * the list-filter convention (ADR 0011 §2c). `workspaceId` → pages across
+   * `readableProjectIdsInWorkspace`; with both, the project must also sit in
+   * that readable set.
+   */
+  async list(userId: string, q: ListWikiQuery) {
+    let projectIds: Types.ObjectId[];
+    if (q.workspaceId) {
+      const inWorkspace = await this.access.readableProjectIdsInWorkspace(
+        userId,
+        q.workspaceId,
+      );
+      projectIds = q.projectId
+        ? inWorkspace.filter((id) => String(id) === q.projectId)
+        : inWorkspace;
+    } else {
+      // The DTO refine guarantees projectId is present on this branch.
+      projectIds = (await this.access.canReadProjectById(userId, q.projectId))
+        ? [new Types.ObjectId(q.projectId as string)]
+        : [];
+    }
     const filter: FilterQuery<WikiPageDocument> = {
-      projectId: new Types.ObjectId(q.projectId),
+      projectId: { $in: projectIds },
     };
     if (q.q) filter.title = { $regex: q.q, $options: 'i' };
     return this.model
@@ -74,9 +97,15 @@ export class WikiService {
       .lean();
   }
 
-  async byId(id: string) {
+  async byId(userId: string, id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
     const page = await this.model.findById(id).lean();
     if (!page) throw new NotFoundException();
+    // 404 — not 403 — on an unreadable project so a page id can't be used to
+    // probe existence (ADR 0004/0005 convention, applied per ADR 0011).
+    if (!(await this.access.canReadProjectById(userId, page.projectId))) {
+      throw new NotFoundException();
+    }
     return page;
   }
 

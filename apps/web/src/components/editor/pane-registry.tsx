@@ -1,5 +1,8 @@
 import type { ComponentType } from 'react';
-import WikiPageRoute from '@/app/(app)/wiki/page';
+// Wiki moved under the workspace slug (ADR 0011 / Phase 7b); the pane path
+// stays `/wiki` (a stable pane identifier), and the component falls back to
+// the current workspace when rendered without a slug param.
+import WikiPageRoute from '@/app/(app)/[workspaceSlug]/wiki/page';
 import { NotesView } from '@/app/(app)/notes/_components/notes-view';
 import ReportsPage from '@/app/(app)/reports/page';
 

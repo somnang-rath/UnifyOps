@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { AuthUser } from '@/schemas/auth';
 import type { DashboardIssue, DashboardOverview } from '@/schemas/dashboard';
+import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { KpiCard } from '@/components/feature/dashboard/kpi-card';
@@ -220,6 +221,10 @@ interface Props {
 
 export function UserDashboard({ user, overview, isLoading, projectById, onQuickDone }: Props) {
   const router = useRouter();
+  // Tier W list routes go straight to the slugged URL (ADR 0011). Entity
+  // links (`/issues/<id>`) stay flat on purpose — the dashboard spans all
+  // workspaces, and the flat shim resolves each issue's own workspace.
+  const ws = useWorkspaceHref();
 
   const buckets = useMemo(() => bucketMyWork(overview?.myWork ?? []), [overview?.myWork]);
 
@@ -276,7 +281,7 @@ export function UserDashboard({ user, overview, isLoading, projectById, onQuickD
           </div>
         </div>
         <div className="relative z-10 flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push('/issues?new=1')}>
+          <Button variant="outline" size="sm" onClick={() => router.push(ws('/issues?new=1'))}>
             <Plus className="w-3.5 h-3.5" /> New task
           </Button>
           <Button variant="outline" size="sm" onClick={() => router.push('/my-work')}>

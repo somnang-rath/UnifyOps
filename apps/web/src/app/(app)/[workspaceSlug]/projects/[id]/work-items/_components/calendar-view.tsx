@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { isoDay, monthLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function CalendarView({ issues }: ViewProps) {
   const router = useRouter();
+  const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -113,7 +114,7 @@ export function CalendarView({ issues }: ViewProps) {
                   return (
                     <button
                       key={i._id}
-                      onClick={() => router.push(`/issues/${i._id}`)}
+                      onClick={() => router.push(`/${slug}/issues/${i._id}`)}
                       className="flex items-center gap-1 px-1 py-0.5 rounded text-[11px] text-left hover:bg-bg-hover truncate w-full"
                     >
                       <span

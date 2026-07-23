@@ -9,6 +9,8 @@
  *
  * Checks:
  *   1. Web login (alice) -> authenticated shell renders (sidebar, /home).
+ *      1b. Flat /issues shim redirects to /<workspaceSlug>/issues, query intact
+ *          (Phase 7b route consolidation, ADR 0011).
  *   2. Admin God Mode login (instance admin) -> /god-mode/general renders.
  *   3. Admin auth settings: flip "Allow new sign-ups" OFF, verify it persists
  *      across reload, verify the web register page is invitation-only in a
@@ -117,6 +119,18 @@ async function run() {
     await expectVisible(web.locator('aside a[href="/my-work"]'), 'sidebar "My Work" link');
     await expectVisible(web.locator('aside button:has-text("Quick jump")'), 'quick-jump button');
     if (web.url().includes('/login')) throw new Error('redirected back to /login');
+  });
+
+  // ── 1b. Phase 7b route consolidation (ADR 0011): flat Tier W shim ──────────
+  // Flat /issues is a permanent redirect into the current workspace; the query
+  // string must survive verbatim (stored notification links depend on it).
+  await check('web: flat /issues redirects to /<workspaceSlug>/issues (query preserved)', async () => {
+    await web.goto(`${WEB}/issues?from=smoke`, { waitUntil: 'domcontentloaded' });
+    // workspace-redirect.tsx resolves persisted-selection-else-first workspace.
+    await web.waitForURL(/\/[a-z0-9-]+\/issues\?from=smoke$/, { timeout: TIMEOUT });
+    // apps/web/src/app/(app)/[workspaceSlug]/issues/page.tsx heading.
+    await expectVisible(web.locator('h1:has-text("Tasks")'), 'Tasks heading on slugged issues page');
+    if (web.url().includes('/login')) throw new Error('bounced to /login');
   });
 
   // ── 2. Admin God Mode login (instance admin) ───────────────────────────────

@@ -3,16 +3,34 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Activity, ActivityDocument } from './schemas/activity.schema';
 import { ListActivityDto } from './dto/activity.dto';
+import { ProjectAccessService } from '../projects/access/project-access.service';
 
 @Injectable()
 export class ActivityService {
   constructor(
     @InjectModel(Activity.name) private model: Model<ActivityDocument>,
+    private access: ProjectAccessService,
   ) {}
 
-  async list(q: ListActivityDto, forceUserId?: string) {
+  async list(callerId: string, q: ListActivityDto, forceUserId?: string) {
     const filter: FilterQuery<ActivityDocument> = {};
-    if (q.projectId) filter.projectId = new Types.ObjectId(q.projectId);
+    if (q.workspaceId) {
+      // ADR 0011 §2b: workspace timeline — rows from the caller's readable
+      // projects in that workspace only. Project-less rows belong to no
+      // workspace; the $in naturally excludes them. Non-member/unknown
+      // workspace → empty set → empty list.
+      const wsProjects = await this.access.readableProjectIdsInWorkspace(
+        callerId,
+        q.workspaceId,
+      );
+      filter.projectId = {
+        $in: q.projectId
+          ? wsProjects.filter((id) => String(id) === q.projectId)
+          : wsProjects,
+      };
+    } else if (q.projectId) {
+      filter.projectId = new Types.ObjectId(q.projectId);
+    }
 
     const uid = forceUserId ?? q.userId;
     if (uid) filter.actorId = new Types.ObjectId(uid);
