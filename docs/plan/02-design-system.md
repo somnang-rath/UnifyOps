@@ -98,14 +98,14 @@ keyboard គ្រប់, `forwardRef`, `cva` variants, RSC-safe (`'use client'`
 
 ## 5. ការងារត្រូវធ្វើ
 
-- [ ] សរសេរ token layer ក្នុង `packages/ui/src/tokens.css` + `tailwind-preset.ts` (web/admin/space import preset ដដែល)
-- [ ] ផ្លាស់ primitives ពី `apps/web/src/components/ui/` → `packages/ui` (Tier 1 មុន)
+- [x] សរសេរ token layer ក្នុង `packages/ui/src/tokens.css` + `tailwind-preset.ts` (web/admin/space import preset ដដែល)
+- [x] ផ្លាស់ primitives ពី `apps/web/src/components/ui/` → `packages/ui` (Tier 1 មុន)
       ទុក re-export shim ក្នុង web (`@/components/ui` → `@prism/ui`) ដើម្បីកុំបាក់ call sites 100+
-- [ ] Tier 2 + Tier 3
-- [ ] `AppShell` រួម → web + admin ប្រើ (space មាន shell public ដាច់ដោយឡែក)
-- [ ] កែ `apps/admin` និង `apps/space` ឲ្យប្រើ preset + primitives ដដែល
-- [ ] A11y pass: focus ring, contrast ≥ 4.5:1, keyboard nav, `prefers-reduced-motion`, ARIA លើ overlay
-- [ ] ទំព័រ `/debug/ui` (dev only) បង្ហាញគ្រប់ component គ្រប់ state — ជំនួស Storybook
+- [x] Tier 2 + Tier 3 — Tier 3 (2026-07-23): `CommandPalette`/`useCommandK` · `FilterBar`/`FilterChip` · `SidebarNav`/`SidebarSection`/`SidebarItem`; `IssuePeek` នៅជា web feature (data-bound, consumer តែមួយ)
+- [x] `AppShell` រួម → web + admin ប្រើ (space មាន shell public ដាច់ដោយឡែក) — 2026-07-23, វាស់ 220/48/40px ក្នុង browser
+- [x] កែ `apps/admin` និង `apps/space` ឲ្យប្រើ preset + primitives ដដែល
+- [x] A11y pass: focus ring, contrast ≥ 4.5:1, keyboard nav, `prefers-reduced-motion`, ARIA លើ overlay
+- [x] ទំព័រ `/debug/ui` (dev only) បង្ហាញគ្រប់ component គ្រប់ state — ជំនួស Storybook
 
 ## 6. Definition of done
 Primitive ណាមួយកែម្តង → ប្តូរគ្រប់ app · web/admin/space build ✅ · គ្មាន `components/ui` ស្ទួន ·

@@ -27,6 +27,7 @@ import {
   BarChart3,
   ShieldCheck,
 } from "lucide-react"
+import { SidebarNav, SidebarSection, SidebarItem } from "@prism/ui"
 import { UnifyOpsLogo } from "@/components/icons/logo"
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher"
 import { useWorkspaceHref } from "@/hooks/use-workspaces"
@@ -105,11 +106,14 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
 ]
 
+/**
+ * Sidebar column *content* — the fixed positioning, width, and slide
+ * transitions belong to the shared AppShell in the (app) layout.
+ */
 export function Sidebar() {
   const pathname = usePathname()
   const ws = useWorkspaceHref()
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
-  const hidden = useUIStore((s) => s.sidebarHidden)
   const toggle = useUIStore((s) => s.toggleSidebar)
   const setPalette = useUIStore((s) => s.setPalette)
   const user = useAuthStore((s) => s.user)
@@ -121,15 +125,7 @@ export function Sidebar() {
   const openAssistant = useAssistantStore((s) => s.openPanel)
 
   return (
-    <aside
-      className={cn(
-        "fixed inset-y-0 left-0 z-40 flex flex-col h-screen border-r border-[color:var(--sidebar-border)]",
-        "bg-[color:var(--sidebar-bg)] backdrop-blur-xl transition-[width,transform] duration-300 ease-[cubic-bezier(.4,0,.2,1)]",
-        collapsed ? "w-sb-collapsed" : "w-sb",
-        hidden && "-translate-x-full",
-      )}
-      aria-hidden={hidden}
-    >
+    <>
       <div
         className={cn(
           "flex items-center gap-2.5 px-3.5 py-4",
@@ -203,7 +199,7 @@ export function Sidebar() {
         </button>
       )}
 
-      <nav className="flex-1 overflow-y-auto px-2.5 pb-4 flex flex-col gap-0.5">
+      <SidebarNav>
         {NAV.map(({ section, items }) => {
           const visible = items.filter(
             (i) =>
@@ -213,12 +209,7 @@ export function Sidebar() {
           )
           if (visible.length === 0) return null
           return (
-            <div key={section} className="flex flex-col gap-0.5">
-              {!collapsed && (
-                <span className="px-2.5 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-[.08em] text-text-muted">
-                  {section}
-                </span>
-              )}
+            <SidebarSection key={section} label={section} collapsed={collapsed}>
               {visible.map((item) => {
                 // Workspace-scoped items render as /[slug]/… , and must stay
                 // active on both that and the legacy flat path (which redirects).
@@ -229,70 +220,38 @@ export function Sidebar() {
                   (item.workspaceScoped &&
                     (pathname === item.href ||
                       pathname.startsWith(item.href + "/")))
-                const count = item.badge ? (badges?.[item.badge] ?? 0) : 0
                 return (
-                  <Link
+                  <SidebarItem
                     key={item.href}
+                    as={Link}
                     href={href}
-                    className={cn(
-                      "group relative flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-[13px] font-medium text-text-sub",
-                      "transition-all duration-[var(--dur)] ease-[cubic-bezier(.4,0,.2,1)] hover:bg-bg-hover hover:text-text",
-                      active &&
-                        "bg-accent-50 text-accent-700 dark:bg-[rgba(99,102,241,.15)] dark:text-[var(--a-200)]",
-                      collapsed && "justify-center px-2",
-                    )}
-                    title={collapsed ? item.label : undefined}
-                  >
-                    {active && (
-                      <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-[2px] bg-accent" />
-                    )}
-                    <div className="relative flex-shrink-0">
-                      <item.Icon
-                        className={cn(
-                          "w-4 h-4 transition-colors duration-[var(--dur)]",
-                          active
-                            ? "text-accent dark:text-[var(--a-400)]"
-                            : "text-text-muted group-hover:text-text",
-                        )}
-                      />
-                      {collapsed && count > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-accent text-white text-[9px] font-bold px-[3px]">
-                          {count > 99 ? "99+" : count}
-                        </span>
-                      )}
-                    </div>
-                    {!collapsed && <span className="flex-1">{item.label}</span>}
-                    {!collapsed && count > 0 && (
-                      <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold px-1">
-                        {count > 99 ? "99+" : count}
-                      </span>
-                    )}
-                  </Link>
+                    icon={<item.Icon className="w-4 h-4" />}
+                    label={item.label}
+                    active={!!active}
+                    collapsed={collapsed}
+                    badge={item.badge ? (badges?.[item.badge] ?? 0) : 0}
+                  />
                 )
               })}
-            </div>
+            </SidebarSection>
           )
         })}
-      </nav>
+      </SidebarNav>
 
       {isInstanceAdmin && (
         <div className="px-2.5 pb-3 pt-1 border-t border-[color:var(--sidebar-border)]">
-          <a
+          <SidebarItem
+            as="a"
             href={`${ADMIN_URL}/god-mode`}
             target="_blank"
             rel="noopener noreferrer"
             title="God Mode — instance admin"
-            className={cn(
-              "group flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-[13px] font-medium text-text-sub",
-              "transition-all duration-[var(--dur)] hover:bg-bg-hover hover:text-text",
-              collapsed && "justify-center px-2",
-            )}
-          >
-            <ShieldCheck className="w-4 h-4 flex-shrink-0 text-text-muted group-hover:text-text" />
-            {!collapsed && <span className="flex-1">God Mode</span>}
-          </a>
+            icon={<ShieldCheck className="w-4 h-4" />}
+            label="God Mode"
+            collapsed={collapsed}
+          />
         </div>
       )}
-    </aside>
+    </>
   )
 }

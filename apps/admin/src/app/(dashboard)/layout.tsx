@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -12,11 +12,22 @@ import {
   Send,
   LogOut,
   ArrowLeft,
+  Moon,
+  type LucideIcon,
 } from 'lucide-react';
+import {
+  AppShell,
+  SidebarNav,
+  SidebarSection,
+  SidebarItem,
+  CommandPalette,
+  useCommandK,
+  type CommandPaletteItem,
+} from '@prism/ui';
 import { getToken, setToken } from '@/lib/auth';
 import { api, bootstrapSession } from '@/lib/api';
 import { UnifyAdminLockup } from '@/components/logo';
-import { ThemeToggle } from '@/components/theme';
+import { ThemeToggle, useTheme } from '@/components/theme';
 
 // The main web app lives on a different origin, so this is a plain cross-app
 // link (not next/link). Defaults to the local web dev server.
@@ -24,7 +35,7 @@ const WEB_URL = process.env.NEXT_PUBLIC_WEB_URL ?? 'http://localhost:3000';
 
 const NAV: {
   section: string;
-  items: { href: string; label: string; icon: typeof Settings }[];
+  items: { href: string; label: string; icon: LucideIcon }[];
 }[] = [
   {
     section: 'Instance',
@@ -52,12 +63,18 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { toggle: toggleTheme } = useTheme();
   // 'checking' → verifying session + admin status; 'ok' → render dashboard;
   // 'forbidden' → authenticated but not an instance admin (show notice, no redirect
   // loop since the user already has a valid session).
   const [status, setStatus] = useState<'checking' | 'ok' | 'forbidden'>(
     'checking',
   );
+
+  // ⌘K palette — same shared component as web (docs/plan/02-design-system.md §4).
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQ, setPaletteQ] = useState('');
+  useCommandK(useCallback(() => setPaletteOpen(true), []));
 
   useEffect(() => {
     (async () => {
@@ -79,10 +96,66 @@ export default function DashboardLayout({
     })();
   }, [router]);
 
-  function onLogout() {
+  const onLogout = useCallback(() => {
     setToken(null);
     router.replace('/login');
-  }
+  }, [router]);
+
+  const closePalette = useCallback(() => {
+    setPaletteOpen(false);
+    setPaletteQ('');
+  }, []);
+
+  const paletteItems: CommandPaletteItem[] = useMemo(() => {
+    const go = (href: string) => () => {
+      router.push(href);
+      closePalette();
+    };
+    const items: CommandPaletteItem[] = [
+      ...NAV.flatMap(({ items }) =>
+        items.map(
+          ({ href, label, icon: Icon }): CommandPaletteItem => ({
+            id: href,
+            group: 'Navigate',
+            icon: <Icon className="w-[15px] h-[15px]" />,
+            title: `Go to ${label}`,
+            onSelect: go(href),
+          }),
+        ),
+      ),
+      {
+        group: 'Actions',
+        icon: <ArrowLeft className="w-[15px] h-[15px]" />,
+        title: 'Back to UnifyOps',
+        onSelect: () => {
+          closePalette();
+          window.location.href = WEB_URL;
+        },
+      },
+      {
+        group: 'Actions',
+        icon: <Moon className="w-[15px] h-[15px]" />,
+        title: 'Toggle theme',
+        onSelect: () => {
+          toggleTheme();
+          closePalette();
+        },
+      },
+      {
+        group: 'Actions',
+        icon: <LogOut className="w-[15px] h-[15px]" />,
+        title: 'Sign out',
+        onSelect: () => {
+          closePalette();
+          onLogout();
+        },
+      },
+    ];
+    const needle = paletteQ.toLowerCase().trim();
+    return needle
+      ? items.filter((i) => i.title.toLowerCase().includes(needle))
+      : items;
+  }, [router, paletteQ, closePalette, toggleTheme, onLogout]);
 
   if (status === 'checking') {
     return (
@@ -120,77 +193,69 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen bg-canvas">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-surface">
-        <div className="flex h-16 items-center border-b border-line px-5">
-          <UnifyAdminLockup />
-        </div>
+    <>
+      <AppShell
+        sidebar={
+          <>
+            <div className="flex h-16 items-center border-b border-[color:var(--sidebar-border,var(--border))] px-5">
+              <UnifyAdminLockup />
+            </div>
 
-        <a
-          href={WEB_URL}
-          className="group mx-3 mt-3 flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
-        >
-          <ArrowLeft
-            size={15}
-            className="text-fg-subtle transition-transform group-hover:-translate-x-0.5 group-hover:text-fg"
-          />
-          Back to UnifyOps
-        </a>
+            <a
+              href={WEB_URL}
+              className="group mx-2.5 mt-3 mb-1 flex items-center gap-2 rounded-sm border border-border px-2.5 py-1.5 text-xs font-medium text-text-sub transition-colors hover:bg-bg-hover hover:text-text"
+            >
+              <ArrowLeft
+                size={14}
+                className="text-text-muted transition-transform group-hover:-translate-x-0.5 group-hover:text-text"
+              />
+              Back to UnifyOps
+            </a>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {NAV.map(({ section, items }) => (
-            <div key={section} className="mb-5">
-              <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-fg-subtle">
-                {section}
-              </p>
-              {items.map(({ href, label, icon: Icon }) => {
-                const active =
-                  pathname === href || pathname.startsWith(href + '/');
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={`group relative mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      active
-                        ? 'bg-brand-soft text-brand'
-                        : 'text-fg-muted hover:bg-surface-hover hover:text-fg'
-                    }`}
-                  >
-                    {active && (
-                      <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-brand" />
-                    )}
-                    <Icon
-                      size={17}
-                      className={
-                        active
-                          ? 'text-brand'
-                          : 'text-fg-subtle group-hover:text-fg'
+            <SidebarNav>
+              {NAV.map(({ section, items }) => (
+                <SidebarSection key={section} label={section}>
+                  {items.map(({ href, label, icon: Icon }) => (
+                    <SidebarItem
+                      key={href}
+                      as={Link}
+                      href={href}
+                      icon={<Icon className="w-4 h-4" />}
+                      label={label}
+                      active={
+                        pathname === href || pathname.startsWith(href + '/')
                       }
                     />
-                    {label}
-                  </Link>
-                );
-              })}
+                  ))}
+                </SidebarSection>
+              ))}
+            </SidebarNav>
+
+            <div className="flex items-center justify-between border-t border-[color:var(--sidebar-border,var(--border))] px-4 py-3">
+              <ThemeToggle />
+              <button
+                type="button"
+                onClick={onLogout}
+                className="inline-flex items-center gap-2 rounded-sm px-2.5 py-2 text-sm font-medium text-text-sub transition-colors hover:bg-bg-hover hover:text-text"
+              >
+                <LogOut size={15} />
+                Sign out
+              </button>
             </div>
-          ))}
-        </nav>
+          </>
+        }
+        mainClassName="px-8 py-10"
+      >
+        <div className="mx-auto max-w-3xl">{children}</div>
+      </AppShell>
 
-        <div className="flex items-center justify-between border-t border-line px-4 py-3">
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={onLogout}
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
-          >
-            <LogOut size={16} />
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-8 py-10">{children}</div>
-      </main>
-    </div>
+      <CommandPalette
+        open={paletteOpen}
+        onClose={closePalette}
+        items={paletteItems}
+        query={paletteQ}
+        onQueryChange={setPaletteQ}
+      />
+    </>
   );
 }

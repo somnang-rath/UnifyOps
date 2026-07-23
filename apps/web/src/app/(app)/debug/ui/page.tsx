@@ -8,7 +8,11 @@ import {
   Badge,
   Button,
   Checkbox,
+  CommandPalette,
   Field,
+  FilterBar,
+  FilterChip,
+  FilterSpacer,
   IconButton,
   Input,
   InputWithIcon,
@@ -18,6 +22,9 @@ import {
   Radio,
   SearchInput,
   Separator,
+  SidebarItem,
+  SidebarNav,
+  SidebarSection,
   Skeleton,
   Spinner,
   StateBadge,
@@ -49,6 +56,14 @@ const STATES: WorkItemState[] = [
   'cancelled',
 ];
 
+/** Static demo commands for the shared ⌘K palette (onSelect added at render). */
+const PALETTE_DEMO = [
+  { group: 'Navigate', icon: <Settings className="w-[15px] h-[15px]" />, title: 'Go to Settings' },
+  { group: 'Navigate', icon: <Search className="w-[15px] h-[15px]" />, title: 'Go to Search' },
+  { group: 'Create', icon: <Plus className="w-[15px] h-[15px]" />, title: 'New work item', badge: 'C' },
+  { group: 'Actions', icon: <Trash2 className="w-[15px] h-[15px]" />, title: 'Delete something' },
+];
+
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 py-2 border-b border-border last:border-0">
@@ -76,6 +91,8 @@ function Section({
 export default function UiGalleryPage() {
   const { density, setDensity } = useThemeStore();
   const [modal, setModal] = React.useState(false);
+  const [palette, setPalette] = React.useState(false);
+  const [paletteQ, setPaletteQ] = React.useState('');
   const [tab, setTab] = React.useState('list');
   const [checked, setChecked] = React.useState(true);
   const [on, setOn] = React.useState(true);
@@ -302,6 +319,72 @@ export default function UiGalleryPage() {
             Open modal
           </Button>
         </Row>
+        <Row label="⌘K palette">
+          <Button variant="outline" onClick={() => setPalette(true)}>
+            Open command palette
+          </Button>
+          <span className="text-2xs text-text-muted">
+            ↑↓ navigate · ↵ run · Esc close
+          </span>
+        </Row>
+      </Section>
+
+      <Section title="FilterBar (Tier 3)">
+        <FilterBar className="rounded-md border border-border px-2">
+          <FilterChip label="State" active onRemove={() => {}}>
+            Started
+          </FilterChip>
+          <FilterChip label="Priority" onRemove={() => {}}>
+            Urgent
+          </FilterChip>
+          <FilterChip icon={<Search className="w-3 h-3" />} onClick={() => {}}>
+            Saved view
+          </FilterChip>
+          <FilterSpacer />
+          <Button size="sm" variant="ghost">
+            Group: status
+          </Button>
+          <Button size="sm" variant="ghost">
+            Sort: newest
+          </Button>
+        </FilterBar>
+      </Section>
+
+      <Section title="SidebarNav (Tier 3)">
+        <div className="flex gap-4">
+          {[false, true].map((collapsed) => (
+            <div
+              key={String(collapsed)}
+              className={
+                'rounded-md border border-border bg-bg-subtle py-2 ' +
+                (collapsed ? 'w-12' : 'w-52')
+              }
+            >
+              <SidebarNav className="pb-2">
+                <SidebarSection label="Workspace" collapsed={collapsed}>
+                  <SidebarItem
+                    icon={<Settings className="w-4 h-4" />}
+                    label="Active + badge"
+                    active
+                    collapsed={collapsed}
+                    badge={12}
+                  />
+                  <SidebarItem
+                    icon={<Plus className="w-4 h-4" />}
+                    label="Default"
+                    collapsed={collapsed}
+                  />
+                  <SidebarItem
+                    icon={<Trash2 className="w-4 h-4" />}
+                    label="Overflow badge"
+                    collapsed={collapsed}
+                    badge={120}
+                  />
+                </SidebarSection>
+              </SidebarNav>
+            </div>
+          ))}
+        </div>
       </Section>
 
       <Modal
@@ -325,6 +408,18 @@ export default function UiGalleryPage() {
           button that opened it.
         </p>
       </Modal>
+
+      <CommandPalette
+        open={palette}
+        onClose={() => setPalette(false)}
+        items={PALETTE_DEMO.filter(
+          (i) =>
+            !paletteQ.trim() ||
+            i.title.toLowerCase().includes(paletteQ.toLowerCase().trim()),
+        ).map((i) => ({ ...i, onSelect: () => setPalette(false) }))}
+        query={paletteQ}
+        onQueryChange={setPaletteQ}
+      />
     </div>
   );
 }

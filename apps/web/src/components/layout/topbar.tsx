@@ -1,5 +1,4 @@
 'use client';
-import { useEffect } from 'react';
 import Link from 'next/link';
 import { LogOut, Moon, Plus, Search, Sun, User } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
@@ -11,6 +10,11 @@ import { useThemeStore } from '@/stores/theme-store';
 import { useThemePrefs } from '@/hooks/use-theme-prefs';
 import { useLogout } from '@/lib/auth';
 
+/**
+ * Topbar row *content* — the sticky 40px header element itself comes from the
+ * shared AppShell in the (app) layout. The ⌘K binding lives in the layout too
+ * (useCommandK), so it works even on screens that hide this bar.
+ */
 export function Topbar() {
   const user = useAuthStore((s) => s.user)!;
   const setPalette = useUIStore((s) => s.setPalette);
@@ -20,20 +24,8 @@ export function Topbar() {
   const { setTheme } = useThemePrefs();
   const logout = useLogout();
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPalette(true);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [setPalette]);
-
   return (
-    <header className="sticky top-0 z-30 h-tb border-b border-border bg-[color:var(--topbar-bg)] backdrop-blur-xl">
-      <div className="h-full flex items-center gap-3 px-5">
+    <div className="h-full flex items-center gap-3 px-5">
         <div className="flex-1 max-w-[560px] mx-auto w-full">
           <button
             type="button"
@@ -115,7 +107,6 @@ export function Topbar() {
             </div>
           )}
         </div>
-      </div>
-    </header>
+    </div>
   );
 }

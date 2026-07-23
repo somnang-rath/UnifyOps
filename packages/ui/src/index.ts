@@ -52,6 +52,16 @@ export { Tabs } from './Tabs';
 export type { TabsProps, TabItem } from './Tabs';
 export { Table, THead, TBody, TRow } from './Table';
 
+// Tier 3 — product (shell)
+export { AppShell } from './AppShell';
+export type { AppShellProps } from './AppShell';
+export { SidebarNav, SidebarSection, SidebarItem } from './SidebarNav';
+export type { SidebarSectionProps, SidebarItemProps } from './SidebarNav';
+export { CommandPalette, useCommandK } from './CommandPalette';
+export type { CommandPaletteProps, CommandPaletteItem } from './CommandPalette';
+export { FilterBar, FilterChip, FilterSpacer } from './FilterBar';
+export type { FilterChipProps } from './FilterBar';
+
 // States
 export { Skeleton, SkeletonText, EmptyState, ErrorState } from './states';
 export type { SkeletonProps } from './states';

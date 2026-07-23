@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { AppShell, useCommandK } from '@prism/ui';
 import { useAuthStore } from '@/stores/auth-store';
 import { useUIStore } from '@/stores/ui-store';
 import { CommandPalette } from '@/components/layout/command-palette';
@@ -13,7 +14,6 @@ import { useLayoutStore } from '@/stores/layout-store';
 import { useNotificationsSocket } from '@/hooks/use-notifications-socket';
 import { useTabBadge } from '@/hooks/use-tab-badge';
 import { refreshAuth } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { LoadingScreen } from '@/components/ui/loading-screen'
 import { ErrorCollector } from '@/components/feature/debug/error-collector';
 import { PaneGroup } from '@/components/editor/pane-group';
@@ -52,6 +52,11 @@ export default function AppLayout({
   const triedRef = useRef(false);
   useNotificationsSocket();
   useTabBadge();
+
+  // ⌘K opens the command palette from anywhere in the app — bound here (not in
+  // the Topbar) so it keeps working on screens that hide the topbar.
+  const setPalette = useUIStore((s) => s.setPalette);
+  useCommandK(() => setPalette(true));
 
   useEffect(() => {
     if (booted || triedRef.current) return;
@@ -130,31 +135,24 @@ export default function AppLayout({
 
   return (
     <ErrorCollector>
-      <div className="min-h-screen">
-        <NavigationProgress />
-        <Sidebar />
-        <div
-          className={cn(
-            'transition-[margin] duration-300 ease-[cubic-bezier(.4,0,.2,1)]',
-            sidebarHidden ? 'ml-0' : collapsed ? 'ml-sb-collapsed' : 'ml-sb',
-          )}
-        >
-          {!isReportEditor && <Topbar />}
-          <main
-            className={cn(
-              isReportEditor
-                ? 'h-screen overflow-hidden'
-                : isSplit
-                  ? 'h-[calc(100vh-theme(spacing.tb))] overflow-hidden'
-                  : 'px-6 py-5',
-            )}
-          >
-            <PaneGroup>{children}</PaneGroup>
-          </main>
-        </div>
-        <CommandPalette />
-        <AssistantPanel />
-      </div>
+      <NavigationProgress />
+      <AppShell
+        sidebar={<Sidebar />}
+        topbar={isReportEditor ? undefined : <Topbar />}
+        collapsed={collapsed}
+        sidebarHidden={sidebarHidden}
+        mainClassName={
+          isReportEditor
+            ? 'h-screen overflow-hidden'
+            : isSplit
+              ? 'h-[calc(100vh-theme(spacing.tb))] overflow-hidden'
+              : undefined
+        }
+      >
+        <PaneGroup>{children}</PaneGroup>
+      </AppShell>
+      <CommandPalette />
+      <AssistantPanel />
     </ErrorCollector>
   );
 }

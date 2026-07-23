@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Plus, Search } from 'lucide-react';
+import { FilterBar, FilterSpacer } from '@prism/ui';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { InputWithIcon } from '@/components/ui/input';
@@ -245,7 +246,7 @@ export default function IssuesPage() {
         onApply={applyView}
       />
 
-      <div className="flex items-center gap-2.5 mb-5 flex-wrap">
+      <FilterBar className="gap-2.5 mb-5">
         <Tabs<Tab>
           value={tab}
           onChange={touched(setTab)}
@@ -255,7 +256,7 @@ export default function IssuesPage() {
             { value: 'all', label: 'All', count: data?.totals.all },
           ]}
         />
-        <div className="flex-1" />
+        <FilterSpacer />
 
         <InputWithIcon
           icon={<Search />}
@@ -301,7 +302,7 @@ export default function IssuesPage() {
           options={GROUP_OPTS}
           aria-label="Group"
         />
-      </div>
+      </FilterBar>
 
       {isLoading && !data ? (
         <div className="text-text-muted text-[13px]">Loading…</div>

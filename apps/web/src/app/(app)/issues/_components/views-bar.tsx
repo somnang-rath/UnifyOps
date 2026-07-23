@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { Bookmark, Plus, Users, X } from 'lucide-react';
+import { Bookmark, Plus, Users } from 'lucide-react';
+import { FilterChip } from '@prism/ui';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useAuthStore } from '@/stores/auth-store';
@@ -11,7 +12,6 @@ import {
   type SavedView,
   type SaveViewBody,
 } from '@/hooks/use-views';
-import { cn } from '@/lib/utils';
 
 /** The page filter state a view snapshots (maps to the API's ViewFiltersSchema). */
 export interface ViewSnapshot {
@@ -108,37 +108,20 @@ export function ViewsBar({ snapshot, activeViewId, onApply }: ViewsBarProps) {
         const active = v._id === activeViewId;
         const mine = v.ownerId === myId;
         return (
-          <span
+          <FilterChip
             key={v._id}
-            className={cn(
-              'group inline-flex items-center gap-1 rounded-full border text-[12px] leading-none',
-              'pl-2.5 py-1 transition-colors duration-[var(--dur)]',
-              mine ? 'pr-1' : 'pr-2.5',
-              active
-                ? 'border-accent text-accent bg-[color:color-mix(in_srgb,var(--a)_10%,transparent)]'
-                : 'border-border text-text-muted hover:text-text hover:bg-bg-hover',
-            )}
+            active={active}
+            icon={
+              v.isShared ? (
+                <Users className="w-3 h-3" aria-label="Shared view" />
+              ) : undefined
+            }
+            onClick={() => onApply(v)}
+            onRemove={mine ? () => remove.mutate(v._id) : undefined}
+            removeLabel={`Delete view ${v.name}`}
           >
-            <button
-              type="button"
-              onClick={() => onApply(v)}
-              className="inline-flex items-center gap-1 cursor-pointer"
-              aria-pressed={active}
-            >
-              {v.isShared && <Users className="w-3 h-3 opacity-70" aria-label="Shared view" />}
-              {v.name}
-            </button>
-            {mine && (
-              <button
-                type="button"
-                onClick={() => remove.mutate(v._id)}
-                aria-label={`Delete view ${v.name}`}
-                className="rounded-full p-0.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </span>
+            {v.name}
+          </FilterChip>
         );
       })}
       <button
