@@ -1,21 +1,10 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { PublicInstance } from '@prism/types';
 
-/**
- * Shape of the unauthenticated `GET /instance` payload. `config` values are
- * *effective* booleans — e.g. `GOOGLE_OAUTH_ENABLED` is true only when the
- * toggle is on AND credentials exist (ADR 0008 §1). The client never learns
- * why a provider is off, just the boolean.
- */
-export interface PublicInstance {
-  instanceId: string;
-  instanceName: string;
-  currentVersion: string;
-  isSetupDone: boolean;
-  adminExists: boolean;
-  config: Record<string, boolean>;
-}
+// Canonical shape lives in @prism/types (shared with admin) — see ADR 0008 §1.
+export type { PublicInstance } from '@prism/types';
 
 /** Public instance config — drives login-method affordances (OAuth buttons). */
 export function usePublicInstance() {

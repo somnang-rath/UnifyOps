@@ -26,3 +26,18 @@ export interface Paginated<T> {
 // export * from './issue';
 // export * from './project';
 // export * from './workspace';
+
+/**
+ * Shape of the unauthenticated `GET /instance` payload. `config` values are
+ * *effective* booleans — e.g. `GOOGLE_OAUTH_ENABLED` is true only when the
+ * toggle is on AND credentials exist (ADR 0008 §1). The client never learns
+ * why a provider is off, just the boolean.
+ */
+export interface PublicInstance {
+  instanceId: string;
+  instanceName: string;
+  currentVersion: string;
+  isSetupDone: boolean;
+  adminExists: boolean;
+  config: Record<string, boolean>;
+}

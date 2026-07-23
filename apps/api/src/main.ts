@@ -22,6 +22,12 @@ async function bootstrap() {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean)
+  // Boot-time visibility: CORS drift between .env and the running process is
+  // otherwise invisible until a browser call fails (WEB_ORIGIN unset falls
+  // back to web:3000 only — admin/space will be refused).
+  console.log(
+    `CORS allowlist (WEB_ORIGIN${process.env.WEB_ORIGIN ? "" : " unset — default"}): ${allowedOrigins.join(", ")}`,
+  )
 
   app.use(
     helmet({

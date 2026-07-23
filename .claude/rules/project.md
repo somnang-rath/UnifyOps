@@ -9,10 +9,11 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
 - **Phase 1 — Instance Admin (`apps/admin`, `instance` module)** ✅
 - **Phase 2 — Realtime (`apps/live`, Yjs wiki collab)** ✅
 - **Phase 3 — Public Space (`apps/space`, `public` module, wiki publishing)** ✅
-- **Phase 4 — Auth providers + polish** — in progress
-  - [ ] OAuth Google/GitHub, toggled by instance config
+- **Phase 4 — Auth providers + polish** — done except OAuth credentials
+  - [ ] OAuth Google/GitHub — code-complete (ADR 0008); blocked on real credentials only
   - [x] Docker: admin, space, live services
-  - [ ] E2E tests across all apps
+  - [x] E2E tests across all apps — `pnpm test:e2e:full` (7 suites, 118 checks) +
+        `pnpm --filter web test:browser-smoke` (7 checks), both green 2026-07-23
 
 Known deferred work: projects/roadmap publishing (no `views` module yet); notes collab
 (`blocks[]` model); admin Workspaces page (needs an instance-workspaces endpoint).

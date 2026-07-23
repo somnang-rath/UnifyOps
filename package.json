@@ -12,7 +12,8 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "seed": "pnpm --filter api seed",
-    "test:security": "pnpm --filter api test:security"
+    "test:security": "pnpm --filter api test:security",
+    "test:e2e:full": "node scripts/e2e-full.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"

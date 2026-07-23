@@ -1,11 +1,15 @@
 'use client';
-import { cn } from '@/lib/utils';
+/**
+ * Moved to @prism/ui (docs/plan/02-design-system.md).
+ *
+ * Thin adapter kept so the `@/components/ui/tabs` call sites keep their
+ * `onChange` prop name; the implementation — WAI-ARIA tab pattern, roving
+ * tabindex, arrow-key navigation — comes from the shared package. The old
+ * local pill styling maps to the package's `pill` variant.
+ */
+import { Tabs as UITabs } from '@prism/ui';
 
-export interface TabItem<V extends string = string> {
-  value: V;
-  label: string;
-  count?: number;
-}
+export type { TabItem } from '@prism/ui';
 
 export function Tabs<V extends string>({
   value,
@@ -14,40 +18,14 @@ export function Tabs<V extends string>({
 }: {
   value: V;
   onChange: (v: V) => void;
-  items: TabItem<V>[];
+  items: { value: V; label: string; count?: number }[];
 }) {
   return (
-    <div className="flex gap-px p-[3px] bg-bg-card border border-border rounded-sm">
-      {items.map((t) => {
-        const active = t.value === value;
-        return (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => onChange(t.value)}
-            className={cn(
-              'flex items-center gap-1.5 px-3.5 py-1.5 rounded-[5px] text-[12px] font-medium transition-all duration-[var(--dur)]',
-              active
-                ? 'bg-accent text-white shadow-xs'
-                : 'text-text-muted hover:text-text',
-            )}
-          >
-            {t.label}
-            {typeof t.count === 'number' && (
-              <span
-                className={cn(
-                  'text-[10px] font-bold px-1.5 py-px rounded-full',
-                  active
-                    ? 'bg-white/20 text-white'
-                    : 'bg-border text-text-sub',
-                )}
-              >
-                {t.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
+    <UITabs<V>
+      value={value}
+      onValueChange={onChange}
+      items={items}
+      variant="pill"
+    />
   );
 }

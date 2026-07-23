@@ -12,9 +12,9 @@ import {
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
+import { InstanceService } from '../instance/instance.service';
 import { AuthService, SessionMeta } from './auth.service';
 import {
   AcceptInviteDto,
@@ -58,7 +58,7 @@ function meta(req: Request): SessionMeta {
 export class AuthController {
   constructor(
     private auth: AuthService,
-    private cfg: ConfigService,
+    private instance: InstanceService,
   ) {}
 
   @Public()
@@ -69,7 +69,10 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (!this.cfg.get<boolean>('ALLOW_PUBLIC_REGISTER')) {
+    // Effective signup switch (ADR 0008 §5): instance config row wins when
+    // set, else the `ALLOW_PUBLIC_REGISTER` env — same gate the OAuth signup
+    // path already applies in OAuthService.
+    if (!(await this.instance.isSignupEnabled())) {
       throw new ForbiddenException(
         'Registration is by invitation only. Ask a workspace admin to invite you.',
       );

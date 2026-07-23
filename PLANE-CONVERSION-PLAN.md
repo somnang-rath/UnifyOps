@@ -256,7 +256,7 @@ MONGODB_URI=mongodb://localhost:27017/prism
 ### Phase 4 — Auth Providers + Polish
 - [ ] OAuth Google/GitHub (បើក/បិទតាម instance config) — **code-complete, រង់ចាំ credentials ពិត** (2026-07-22): ADR 0008 · hand-rolled `OAuthService` (គ្មាន dependency ថ្មី) · `GET /auth/oauth/:provider` + callback (404 ពេលមិន effectively enabled) · effective booleans ក្នុង `GET /instance` · login buttons gated · admin hint "credentials missing"។ **Disabled-state E2E 15/15 pass** (`pnpm --filter api test:oauth`)។ នៅសល់តែ: ចុះឈ្មោះ OAuth apps + full-flow E2E ជាមួយ credentials ពិត
 - [x] Docker: បន្ថែម admin, space, live services — all 7 services build + boot; publish→space verified E2E through compose (2026-07-10). Fixed 2 blocking gaps: api service was missing `LIVE_INTERNAL_TOKEN` (required by env schema → api couldn't boot); web Dockerfile predated `packages/` (missing `@prism/*` manifests+source → build failed)
-- [ ] E2E test គ្រប់ apps
+- [x] E2E test គ្រប់ apps — **`pnpm test:e2e:full` green 2026-07-23**: runner `scripts/e2e-full.mjs` (7 suites · **118 checks** · cool-down 65s រវាង suites ព្រោះ login throttle · boot isolated api :4012 សម្រាប់ notes-collab · pin 127.0.0.1 ជៀស localhost→::1 flake) + suite ថ្មី `cross-app.e2e.mjs` (23: CORS matrix, cookie audience split, instance-admin step-up flows, all-apps liveness, publish→space round-trip) + browser smoke `apps/web/test/browser-smoke.e2e.mjs` (7/7: web login, God Mode, sign-up toggle persist, space public)។ រកឃើញ+កែ: `/auth/register` មិនគោរព `isSignupEnabled()` (ADR 0008 §5) · dev `.env` WEB_ORIGIN ខ្វះ 3001 · `PublicInstance` duplicate web/admin → `@prism/types` · web `Modal`/`Tabs` → `@prism/ui` shims
 
 > **v2 (Phase 5–8)** — ផែនការលម្អិត៖ `docs/plan/` (01 security · 02 design system ·
 > 03 feature parity · 04 structure)។ **DRAFT — រង់ចាំការយល់ព្រម។**
@@ -346,12 +346,12 @@ MONGODB_URI=mongodb://localhost:27017/prism
 
 ## 10. Checklist ថាតើ "ល្អ" ឬអត់ (Definition of Done)
 
-- [ ] `pnpm dev` បើក web+admin+space+live+api ព្រមគ្នាដោយគ្មាន error
-- [ ] Shared code នៅ `packages/` — គ្មាន duplicate types/UI រវាង apps
-- [ ] Instance admin អាចបិទ sign-up + config SMTP + បើក OAuth
+- [x] `pnpm dev` បើក web+admin+space+live+api ព្រមគ្នាដោយគ្មាន error — verified 2026-07-23 (clean boot ×3, liveness checks ក្នុង cross-app suite)
+- [x] Shared code នៅ `packages/` — គ្មាន duplicate types/UI រវាង apps — audit 2026-07-23: `cn`/api-client/editor PASS; កែ `PublicInstance` → `@prism/types`, web `Modal`/`Tabs` → shims។ នៅសល់ minor: admin `inputCls` (6 កន្លែង) មិនប្រើ `@prism/ui` Input; `apps/live/editor-extensions.ts` ជា documented copy (CJS/ESM)
+- [x] Instance admin អាចបិទ sign-up + config SMTP + បើក OAuth — E2E 2026-07-23 (cross-app §C: step-up → sign-up toggle ↔ register 403/OK · SMTP secret masked · OAuth toggle persists ប៉ុន្តែ effective=false ដោយគ្មាន creds) + browser smoke (toggle round-trip មើលឃើញពី web)
 - [x] ២ users កែ wiki ដូចគ្នា → ឃើញ realtime (live works) — verified E2E 2026-07-09 (7/7 checks)
 - [x] Publish view → បើកបានពី space ដោយគ្មាន login, private data មិនលេច — verified E2E 2026-07-10 (wiki pages; leak check passed)
-- [ ] CORS + JWT auth ត្រឹមត្រូវគ្រប់ apps
+- [x] CORS + JWT auth ត្រឹមត្រូវគ្រប់ apps — E2E 2026-07-23 (cross-app §A/§B: preflight echo 3000/3001/3002 + credentials, bogus origin blocked; `prism_rt_web`/`prism_rt_admin` split, web-aud លើ REST, non-admin refused admin-aud)។ រកឃើញ dev `.env` WEB_ORIGIN ខ្វះ 3001 → api ឥឡូវ log allowlist ពេល boot
 - [x] Docker stack ឡើងបានពេញ (mongo, redis, api, web, admin, space, live) — verified 2026-07-10, all 7 up, endpoints 200
 - [x] README update ជាមួយ apps ថ្មី + ports + env — rewritten 2026-07-22 (5 apps + packages/ structure, per-app ports/basePaths, first-run God Mode setup, env table incl. `LIVE_INTERNAL_TOKEN`/`COOKIE_DOMAIN`, docs links)
 

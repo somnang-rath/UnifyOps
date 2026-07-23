@@ -26,7 +26,10 @@ function loadDotEnv(file) {
 loadDotEnv(path.join(__dirname, '..', '.env'));
 
 const API = process.env.API_URL ?? 'http://localhost:4000/api/v1';
-const EMAIL = process.env.TEST_EMAIL ?? 'admin@test.com';
+// alice owns workspace acme AND a project in it (test-seed.ts) — the intake
+// checks need project write access, which the instance admin fixture lacks
+// (admin@test.com is in every workspace but owns/joins no project).
+const EMAIL = process.env.TEST_EMAIL ?? 'alice@test.com';
 const PASSWORD = process.env.TEST_PASSWORD ?? 'test1234';
 
 let pass = 0;

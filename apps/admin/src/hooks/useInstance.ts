@@ -5,15 +5,10 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { PublicInstance } from '@prism/types';
 
-export interface PublicInstance {
-  instanceId: string;
-  instanceName: string;
-  currentVersion: string;
-  isSetupDone: boolean;
-  adminExists: boolean;
-  config: Record<string, boolean>;
-}
+// Canonical shape lives in @prism/types (shared with web) — see ADR 0008 §1.
+export type { PublicInstance } from '@prism/types';
 
 export interface ConfigRow {
   key: string;

@@ -384,6 +384,9 @@ importers:
       '@prism/services':
         specifier: workspace:*
         version: link:../../packages/services
+      '@prism/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@prism/ui':
         specifier: workspace:*
         version: link:../../packages/ui

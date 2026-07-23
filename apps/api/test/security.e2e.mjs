@@ -52,8 +52,8 @@ function decodeJwt(token) {
 }
 
 const API = process.env.API_URL ?? 'http://localhost:4000/api/v1';
-const EMAIL = process.env.TEST_EMAIL ?? 'admin@demo.com';
-const PASSWORD = process.env.TEST_PASSWORD ?? 'admin123';
+const EMAIL = process.env.TEST_EMAIL ?? 'admin@test.com';
+const PASSWORD = process.env.TEST_PASSWORD ?? 'test1234';
 const SECRET = process.env.JWT_ACCESS_SECRET;
 
 let pass = 0;
@@ -296,10 +296,14 @@ async function main() {
     // Substring matching would flag ENABLE_EMAIL_PASSWORD_LOGIN — a boolean
     // toggle whose *name* contains "PASSWORD". Assert on the config keys and
     // their value types instead: booleans cannot be credentials.
+    // Keep this in sync with PUBLIC_CONFIG_KEYS (instance.dto.ts) — a new key
+    // failing here is the tripwire that forces a deliberate exposure decision.
     const config = res.data.config ?? {};
     for (const [key, value] of Object.entries(config)) {
       assert.ok(
-        /^(ENABLE_|GOOGLE_OAUTH_|GITHUB_OAUTH_|ASSISTANT_ENABLED)/.test(key),
+        /^(ENABLE_|GOOGLE_OAUTH_|GITHUB_OAUTH_|(ASSISTANT|TELEGRAM|UNSPLASH)_ENABLED)/.test(
+          key,
+        ),
         `unexpected key on the public instance payload: ${key}`,
       );
       assert.equal(
