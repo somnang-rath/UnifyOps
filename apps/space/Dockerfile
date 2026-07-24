@@ -4,7 +4,7 @@
 # apps/space — Next.js Public Space (:3002, basePath /spaces).
 # SSR read-only published content. Fetches the API server-side via the runtime
 # API_URL env (apps/space/src/lib/public-api.ts), so no NEXT_PUBLIC_* build args
-# are baked. space has no @prism/* workspace deps.
+# are baked. space → @prism/{ui,types} (transpiled from source at build time).
 
 ############################
 # Base — Node + pnpm
@@ -21,6 +21,9 @@ WORKDIR /repo
 FROM base AS deps
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/space/package.json apps/space/
+# space → @prism/{ui,types}; neither has further @prism/* workspace deps.
+COPY packages/types/package.json packages/types/
+COPY packages/ui/package.json packages/ui/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter space...
 
@@ -28,6 +31,8 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # Build — compile Next.js (standalone)
 ############################
 FROM deps AS build
+COPY packages/types ./packages/types
+COPY packages/ui ./packages/ui
 COPY apps/space ./apps/space
 RUN pnpm --filter space build
 
