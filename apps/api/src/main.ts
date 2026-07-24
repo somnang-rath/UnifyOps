@@ -58,7 +58,10 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    // X-CSRF-Token: the api client echoes the double-submit CSRF cookie as this
+    // header on state-changing requests (packages/services CSRF_HEADER). Without
+    // it here, the browser preflight blocks every mutating cross-origin call.
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   })
 
   app.setGlobalPrefix("api/v1")
