@@ -1,6 +1,7 @@
 import type { PublicWikiPage } from '@/lib/public-api';
 import { sanitizeContent } from '@/lib/public-api';
 import { SpaceCover } from './space-cover';
+import { WikiToc } from './wiki-toc';
 
 /**
  * Published wiki article — the pre-ADR-0012 [anchor] page markup, moved here
@@ -25,6 +26,7 @@ export function WikiArticle({ page }: { page: PublicWikiPage }) {
             Last updated {updated}
           </p>
         </header>
+        <WikiToc html={html} />
         <div
           className="prose-space"
           // Sanitized in sanitizeContent() — the single security boundary for

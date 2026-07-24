@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import sanitizeHtml from 'sanitize-html';
 import type {
   PublicAnchorPayload,
@@ -27,19 +28,21 @@ export type {
  * Returns null on 404 (unpublished or non-existent — indistinguishable) so the
  * route can render notFound(); throws on other/network errors.
  */
-export async function getPublicPayload(
-  anchor: string,
-): Promise<PublicAnchorPayload | null> {
-  const res = await fetch(
-    `${API_URL}/public/anchor/${encodeURIComponent(anchor)}`,
-    { cache: 'no-store' },
-  );
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    throw new Error(`Public API responded ${res.status}`);
-  }
-  return (await res.json()) as PublicAnchorPayload;
-}
+// Wrapped in React `cache()` so a single request that calls this from both
+// generateMetadata() and the page component hits the API only once.
+export const getPublicPayload = cache(
+  async (anchor: string): Promise<PublicAnchorPayload | null> => {
+    const res = await fetch(
+      `${API_URL}/public/anchor/${encodeURIComponent(anchor)}`,
+      { cache: 'no-store' },
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw new Error(`Public API responded ${res.status}`);
+    }
+    return (await res.json()) as PublicAnchorPayload;
+  },
+);
 
 /**
  * Sanitize editor-produced HTML before it is rendered to the public. This is
@@ -52,7 +55,7 @@ export function sanitizeContent(html: string): string {
     allowedTags: [
       'p', 'br', 'hr', 'blockquote', 'pre', 'code',
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'ul', 'ol', 'li',
+      'ul', 'ol', 'li', 'input',
       'strong', 'b', 'em', 'i', 's', 'u', 'del', 'mark', 'sub', 'sup',
       'a', 'span', 'img',
       'table', 'thead', 'tbody', 'tr', 'th', 'td',
@@ -64,6 +67,24 @@ export function sanitizeContent(html: string): string {
       code: ['class'],
       td: ['colspan', 'rowspan'],
       th: ['colspan', 'rowspan'],
+      // Heading anchors (docs TOC), callout + task-list markup.
+      h1: ['id'], h2: ['id'], h3: ['id'], h4: ['id'], h5: ['id'], h6: ['id'],
+      blockquote: ['class'],
+      ul: ['class'],
+      li: ['class'],
+      input: ['type', 'checked', 'disabled'],
+    },
+    // Class values are constrained to our own callout/task-list names so
+    // published content can't pull in arbitrary utility classes.
+    allowedClasses: {
+      blockquote: [
+        'callout', 'callout-note', 'callout-tip', 'callout-info',
+        'callout-warning', 'callout-important', 'callout-caution',
+        'callout-danger',
+      ],
+      ul: ['contains-task-list'],
+      li: ['task-list-item'],
+      input: ['task-list-item-checkbox'],
     },
     // Only safe URL schemes; blocks javascript:/data: on links.
     allowedSchemes: ['http', 'https', 'mailto'],

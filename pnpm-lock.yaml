@@ -135,6 +135,12 @@ importers:
       helmet:
         specifier: ^7.1.0
         version: 7.2.0
+      markdown-it:
+        specifier: ^14.1.0
+        version: 14.3.0
+      markdown-it-task-lists:
+        specifier: ^2.1.1
+        version: 2.1.1
       mongoose:
         specifier: ^8.7.0
         version: 8.23.1(socks@2.8.9)
@@ -199,6 +205,9 @@ importers:
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.25
+      '@types/markdown-it':
+        specifier: ^14.1.2
+        version: 14.1.2
       '@types/multer':
         specifier: ^1.4.12
         version: 1.4.13

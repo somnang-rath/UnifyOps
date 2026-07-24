@@ -5,10 +5,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The Space runs under a strict CSP with no client JS (next.config.mjs), so the
+   theme follows the visitor's OS via prefers-color-scheme — there is no toggle
+   to persist a choice, and nothing sets data-theme. Keep all dark rules in
+   @media blocks so they work without JavaScript. */
 :root {
   color-scheme: light dark;
 }
 
+html {
+  scroll-behavior: smooth;
+}
 html,
 body {
   height: 100%;
@@ -24,14 +31,14 @@ body {
   }
 }
 
-/* Read-only rendering of published wiki HTML. Kept deliberately simple — the
-   content comes from the Tiptap editor (ADR 0002 §5). */
+/* ── Published wiki content ──────────────────────────────────────────
+   Read-only rendering of wiki HTML (markdown → HTML in the public API). */
 .prose-space {
   @apply text-[15px] leading-[1.75];
 }
-.prose-space h1 { @apply text-2xl font-bold mt-8 mb-3; }
-.prose-space h2 { @apply text-xl font-bold mt-7 mb-3; }
-.prose-space h3 { @apply text-lg font-semibold mt-6 mb-2; }
+.prose-space h1 { @apply text-2xl font-bold mt-8 mb-3 scroll-mt-6; }
+.prose-space h2 { @apply text-xl font-bold mt-7 mb-3 scroll-mt-6; }
+.prose-space h3 { @apply text-lg font-semibold mt-6 mb-2 scroll-mt-6; }
 .prose-space p { @apply my-3; }
 .prose-space ul { @apply list-disc pl-6 my-3; }
 .prose-space ol { @apply list-decimal pl-6 my-3; }
@@ -47,10 +54,46 @@ body {
 .prose-space th,
 .prose-space td { @apply border border-gray-200 px-3 py-1.5 text-left; }
 
+/* Task lists (`- [ ]` / `- [x]`) — read-only checkboxes, no bullet. */
+.prose-space ul.contains-task-list { @apply list-none pl-1 my-3; }
+.prose-space .task-list-item { @apply flex items-start gap-2 my-1; }
+.prose-space .task-list-item-checkbox { @apply mt-[6px] shrink-0 accent-indigo-600; }
+
+/* GitHub-style callouts (`> [!NOTE]`, `[!TIP]`, `[!WARNING]`, …). */
+.prose-space .callout {
+  @apply not-italic border-l-4 rounded-r-md pl-4 pr-4 py-2 my-4;
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+.prose-space .callout > :first-child { @apply mt-0; }
+.prose-space .callout > :last-child { @apply mb-0; }
+.prose-space .callout-tip { border-color: #22c55e; background: #f0fdf4; }
+.prose-space .callout-warning,
+.prose-space .callout-caution { border-color: #f59e0b; background: #fffbeb; }
+.prose-space .callout-important,
+.prose-space .callout-danger { border-color: #ef4444; background: #fef2f2; }
+
+/* ── Table of contents ("On this page") ──────────────────────────── */
+.wiki-toc { @apply mb-8 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-[13px]; }
+.wiki-toc-title { @apply mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500; }
+.wiki-toc ul { @apply space-y-1; }
+.wiki-toc a { @apply text-gray-600 no-underline hover:text-indigo-600; }
+
 @media (prefers-color-scheme: dark) {
+  .prose-space a { @apply text-indigo-400 hover:text-indigo-300; }
   .prose-space blockquote { @apply border-gray-700 text-gray-400; }
   .prose-space :not(pre) > code { @apply bg-gray-800; }
   .prose-space hr,
   .prose-space th,
   .prose-space td { @apply border-gray-800; }
+
+  .prose-space .callout { border-color: #475569; background: #1e293b66; }
+  .prose-space .callout-tip { border-color: #22c55e; background: #052e1666; }
+  .prose-space .callout-warning,
+  .prose-space .callout-caution { border-color: #f59e0b; background: #45230866; }
+  .prose-space .callout-important,
+  .prose-space .callout-danger { border-color: #ef4444; background: #45151566; }
+
+  .wiki-toc { @apply border-gray-800 bg-gray-900/40; }
+  .wiki-toc a { @apply text-gray-400 hover:text-indigo-400; }
 }

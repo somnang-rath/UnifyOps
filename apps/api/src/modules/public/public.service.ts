@@ -16,6 +16,7 @@ import {
 } from '../projects/schemas/project.schema';
 import { Issue, IssueDocument } from '../issues/schemas/issue.schema';
 import { sanitizePublicHtml } from './sanitize';
+import { markdownToHtml } from './markdown';
 
 /**
  * Public issue projection (ADR 0012 §5, LOCKED) — enforced at the Mongo query
@@ -142,10 +143,12 @@ export class PublicService {
       type: 'wiki' as const,
       anchor,
       title: page.title,
-      // Sanitized here as well as in apps/space: the API must never serve
-      // script-bearing HTML to any consumer, and space must not have to trust
-      // its upstream (docs/plan/01 §3.4).
-      contentHTML: sanitizePublicHtml(page.content),
+      // Wiki content is stored as markdown (the Tiptap editor emits markdown);
+      // render it to HTML, then sanitize. Sanitized here as well as in
+      // apps/space: the API must never serve script-bearing HTML to any
+      // consumer, and space must not have to trust its upstream (docs/plan/01
+      // §3.4).
+      contentHTML: sanitizePublicHtml(markdownToHtml(page.content)),
       // The only non-content public field added by ADR 0010: a write-validated
       // https URL rendered as an <img src>, never HTML — no sanitization needed.
       coverImage: page.coverImage ?? null,

@@ -22,12 +22,23 @@ export async function generateMetadata({
   const payload = await getPublicPayload(params.anchor).catch(() => null);
   if (!payload) return { title: 'Not found · Prism Space' };
   switch (payload.type) {
-    case 'wiki':
+    case 'wiki': {
+      const images = payload.coverImage ? [payload.coverImage] : undefined;
       return {
         title: `${payload.title} · Prism Space`,
         description: `Published page: ${payload.title}`,
-        openGraph: { title: payload.title, type: 'article' },
+        openGraph: {
+          title: payload.title,
+          type: 'article',
+          images,
+        },
+        twitter: {
+          card: images ? 'summary_large_image' : 'summary',
+          title: payload.title,
+          images,
+        },
       };
+    }
     case 'view':
       return {
         title: payload.projectName

@@ -21,7 +21,7 @@ export function SpaceCover({ src }: { src: string }) {
       loading="eager"
       draggable={false}
       onError={() => setBroken(true)}
-      className="w-full aspect-[4/1] max-h-[200px] object-cover rounded-lg mb-8"
+      className="w-full aspect-[4/1] max-h-[200px] object-cover rounded-lg mb-8 bg-gray-100 dark:bg-gray-900"
     />
   );
 }
