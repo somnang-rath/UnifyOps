@@ -1,0 +1,11 @@
+{
+  "name": "prism-team",
+  "description": "The Prism → Plane conversion kit: 7 specialist agents, scaffolding skills, and repo guardrail hooks (destructive-command guard, convention nudges, roadmap briefing).",
+  "version": "0.1.0",
+  "author": {
+    "name": "Prism"
+  },
+  "agents": "./.claude/agents",
+  "skills": "./.claude/skills",
+  "hooks": "./.claude/hooks/hooks.json"
+}

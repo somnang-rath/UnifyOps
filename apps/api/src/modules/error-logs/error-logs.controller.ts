@@ -11,7 +11,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { ErrorLogsService } from './error-logs.service';
@@ -56,7 +56,7 @@ export class ErrorLogsController {
 
   @Get('export')
   async exportLogs(
-    @Query(new ZodValidationPipe(QueryErrorLogsSchema)) q: QueryErrorLogsDto,
+    @Query(new ZodQueryPipe(QueryErrorLogsSchema)) q: QueryErrorLogsDto,
     @Query('format') format: string,
     @CurrentUser() me: { email: string },
     @Res() res: Response,
@@ -94,7 +94,7 @@ export class ErrorLogsController {
 
   @Get()
   list(
-    @Query(new ZodValidationPipe(QueryErrorLogsSchema)) q: QueryErrorLogsDto,
+    @Query(new ZodQueryPipe(QueryErrorLogsSchema)) q: QueryErrorLogsDto,
     @CurrentUser() me: { email: string },
   ) {
     assertSuperAdmin(me.email);

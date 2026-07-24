@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -13,6 +14,12 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   CreateProjectDto,
   CreateProjectSchema,
+  DuplicateListDto,
+  DuplicateListSchema,
+  UpdateBoardDto,
+  UpdateBoardSchema,
+  UpdateOverviewDto,
+  UpdateOverviewSchema,
   UpdateProjectDto,
   UpdateProjectSchema,
 } from './dto/project.dto';
@@ -21,14 +28,24 @@ import {
 export class ProjectsController {
   constructor(private projects: ProjectsService) {}
 
+  /**
+   * `?workspace=<id>` switches to the strict workspace-scoped list (ADR 0006):
+   * only projects whose workspaceId matches, including ones the caller owns
+   * elsewhere. Without it, the unscoped ADR 0003 rule applies.
+   */
   @Get()
-  list(@CurrentUser() user: { id: string }) {
-    return this.projects.listForUser(user.id);
+  list(
+    @CurrentUser() user: { id: string },
+    @Query('workspace') workspace?: string,
+  ) {
+    return workspace
+      ? this.projects.listInWorkspace(user.id, workspace)
+      : this.projects.listForUser(user.id);
   }
 
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.projects.byId(id);
+  byId(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.projects.byId(user.id, id);
   }
 
   @Post()
@@ -46,6 +63,64 @@ export class ProjectsController {
     @Body(new ZodValidationPipe(UpdateProjectSchema)) dto: UpdateProjectDto,
   ) {
     return this.projects.update(user.id, id, dto);
+  }
+
+  @Patch(':id/overview')
+  updateOverview(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(UpdateOverviewSchema)) dto: UpdateOverviewDto,
+  ) {
+    return this.projects.updateOverview(user.id, id, dto);
+  }
+
+  @Patch(':id/board')
+  updateBoard(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(UpdateBoardSchema)) dto: UpdateBoardDto,
+  ) {
+    return this.projects.updateBoard(user.id, id, dto);
+  }
+
+  /** Publish to the public Space (ADR 0012 §4, owner only) → { anchor, isPublic, publishedAt }. */
+  @Post(':id/publish')
+  publish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.projects.publish(user.id, id);
+  }
+
+  /** Unpublish (anchor preserved, ADR 0012 §4, owner only) → { isPublic: false }. */
+  @Post(':id/unpublish')
+  unpublish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.projects.unpublish(user.id, id);
+  }
+
+  @Post(':id/board/lists/:listId/clear')
+  clearList(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Param('listId') listId: string,
+  ) {
+    return this.projects.clearList(user.id, id, listId);
+  }
+
+  @Post(':id/board/lists/:listId/duplicate')
+  duplicateList(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Param('listId') listId: string,
+    @Body(new ZodValidationPipe(DuplicateListSchema)) dto: DuplicateListDto,
+  ) {
+    return this.projects.duplicateList(user.id, id, listId, dto);
+  }
+
+  @Delete(':id/board/lists/:listId')
+  deleteList(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Param('listId') listId: string,
+  ) {
+    return this.projects.deleteList(user.id, id, listId);
   }
 
   @Delete(':id')

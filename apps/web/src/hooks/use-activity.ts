@@ -28,6 +28,12 @@ interface Params {
   from?: string;
   to?: string;
   limit?: number;
+  /**
+   * ADR 0011 §2: present → only rows tagged with readable projects in that
+   * workspace (project-less rows are dropped by the API). Part of the query
+   * key via `params`.
+   */
+  workspaceId?: string;
 }
 
 export const useActivity = (params: Params = {}) =>

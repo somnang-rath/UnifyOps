@@ -10,7 +10,7 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { MrsService } from './mrs.service';
 import {
   AddMRCommentDto,
@@ -27,14 +27,15 @@ export class MrsController {
 
   @Get()
   list(
-    @Query(new ZodValidationPipe(ListMRQuerySchema)) q: ListMRQuery,
+    @CurrentUser() u: { id: string },
+    @Query(new ZodQueryPipe(ListMRQuerySchema)) q: ListMRQuery,
   ) {
-    return this.mrs.list(q);
+    return this.mrs.list(u.id, q);
   }
 
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.mrs.byId(id);
+  byId(@CurrentUser() u: { id: string }, @Param('id') id: string) {
+    return this.mrs.byId(u.id, id);
   }
 
   @Post()

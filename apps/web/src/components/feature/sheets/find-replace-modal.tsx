@@ -150,7 +150,7 @@ export function FindReplaceModal({
   return (
     <div
       className={cn(
-        'fixed top-[130px] right-4 z-50 w-[340px] bg-white border border-border rounded-lg shadow-lg text-[13px]',
+        'fixed top-[130px] right-4 z-50 w-[340px] bg-bg-card border border-border rounded-lg shadow-lg text-[13px]',
         'animate-fade-in',
       )}
     >

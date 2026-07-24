@@ -1,7 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
-import { api } from './api';
+import { api, AUDIENCE } from './api';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
 import type { AuthUser } from '@/schemas/auth';
@@ -26,7 +26,7 @@ export function useLogout() {
   const router = useRouter();
   const clear = useAuthStore((s) => s.clear);
   const mutation = useMutation({
-    mutationFn: () => api.post('/auth/logout'),
+    mutationFn: () => api.post('/auth/logout', { audience: AUDIENCE }),
     onSettled: () => {
       clear();
       router.replace('/login');

@@ -85,16 +85,16 @@ export function SheetTabs({
   };
 
   return (
-    <div className="flex items-center gap-0 px-2 h-8 border-t border-[#d0d7de] bg-[#f8f9fa]">
+    <div className="flex items-center gap-0 px-2 h-8 border-t border-border bg-[var(--sh-header-bg)]">
       <button
         onClick={onAdd}
-        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-black/10 text-text-sub"
+        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-bg-hover text-text-sub"
         title="Add sheet"
       >
         <Plus className="w-4 h-4" />
       </button>
       <button
-        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-black/10 text-text-sub"
+        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-bg-hover text-text-sub"
         title="All sheets"
       >
         <Menu className="w-4 h-4" />
@@ -152,8 +152,8 @@ export function SheetTabs({
               className={cn(
                 'group relative h-full pl-3.5 pr-1 text-[13px] inline-flex items-center select-none border-l border-r',
                 active
-                  ? 'bg-white border-[#d0d7de] font-medium text-text -mb-px border-b border-b-white'
-                  : 'border-transparent text-text-sub hover:bg-black/5',
+                  ? 'bg-bg-card border-border font-medium text-text -mb-px border-b border-b-[var(--bg-card)]'
+                  : 'border-transparent text-text-sub hover:bg-bg-hover',
                 isDragging && 'opacity-50',
                 s.hidden && 'italic opacity-50',
               )}
@@ -175,7 +175,7 @@ export function SheetTabs({
               {dropOnHere && (
                 <span
                   aria-hidden
-                  className="absolute top-1 bottom-1 w-[2px] bg-[#1a73e8]"
+                  className="absolute top-1 bottom-1 w-[2px] bg-[var(--sh-accent)]"
                   style={{
                     left: dropTarget?.side === 'before' ? -1 : 'auto',
                     right: dropTarget?.side === 'after' ? -1 : 'auto',
@@ -210,7 +210,7 @@ export function SheetTabs({
                       setRenamingId(null);
                     }
                   }}
-                  className="bg-white border border-accent rounded px-1 text-[13px] outline-none max-w-[140px]"
+                  className="bg-bg-input border border-accent rounded px-1 text-[13px] outline-none max-w-[140px]"
                 />
               ) : (
                 <button
@@ -241,13 +241,13 @@ export function SheetTabs({
       <div className="flex-1" />
 
       <button
-        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-black/10 text-text-sub"
+        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-bg-hover text-text-sub"
         title="Tab list"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
       <button
-        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-black/10 text-text-sub"
+        className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-bg-hover text-text-sub"
         title="Open sheets list"
       >
         <List className="w-4 h-4" />
@@ -344,7 +344,7 @@ function TabContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-white border border-border rounded-md shadow-lg py-1 text-[13px]"
+      className="fixed z-50 bg-bg-card border border-border rounded-md shadow-lg py-1 text-[13px]"
       style={{ left, top, width: W }}
     >
       <button
@@ -393,13 +393,13 @@ function TabContextMenu({
         </button>
         {submenu && (
           <div
-            className="absolute top-0 bg-white border border-border rounded-md shadow-lg p-2 grid grid-cols-5 gap-1"
+            className="absolute top-0 bg-bg-card border border-border rounded-md shadow-lg p-2 grid grid-cols-5 gap-1"
             style={{ left: '100%' }}
           >
             <button
               onClick={() => onSetColor(null)}
               title="None"
-              className="w-5 h-5 rounded-full border border-border bg-white text-text-muted text-[10px] flex items-center justify-center hover:border-accent"
+              className="w-5 h-5 rounded-full border border-border bg-bg-card text-text-muted text-[10px] flex items-center justify-center hover:border-accent"
               aria-label="No color"
             >
               ×

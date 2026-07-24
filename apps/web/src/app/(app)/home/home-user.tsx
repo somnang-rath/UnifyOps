@@ -15,78 +15,17 @@ import {
 } from 'lucide-react';
 import type { AuthUser } from '@/schemas/auth';
 import type { DashboardIssue, DashboardOverview } from '@/schemas/dashboard';
+import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { KpiCard } from '@/components/feature/dashboard/kpi-card';
+import { Panel } from '@/components/feature/dashboard/panel';
 import { StatusPill } from '@/components/feature/issue/pills';
 import { initials, greetingTod, fmtDateShort, relTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const dayOf = (iso: string) => iso.slice(0, 10);
-
-// ── KPI Card ────────────────────────────────────────────────────────────────
-
-type Tone = 'violet' | 'red' | 'amber' | 'pink' | 'green' | 'blue';
-
-const TONE_BG: Record<Tone, string> = {
-  violet: 'bg-[rgba(139,92,246,.1)] text-violet',
-  red:    'bg-[rgba(239,68,68,.1)] text-red',
-  amber:  'bg-[rgba(245,158,11,.1)] text-amber',
-  pink:   'bg-[rgba(236,72,153,.1)] text-pink',
-  green:  'bg-[rgba(16,185,129,.1)] text-green',
-  blue:   'bg-[rgba(59,130,246,.1)] text-blue',
-};
-
-const TONE_NUM: Record<Tone, string> = {
-  violet: 'text-violet',
-  red:    'text-red',
-  amber:  'text-amber',
-  pink:   'text-pink',
-  green:  'text-green',
-  blue:   'text-blue',
-};
-
-function KpiCard({
-  label,
-  value,
-  Icon,
-  tone,
-  href,
-  danger,
-}: {
-  label: string;
-  value: number;
-  Icon: React.ComponentType<{ className?: string }>;
-  tone: Tone;
-  href?: string;
-  danger?: boolean;
-}) {
-  const body = (
-    <div
-      className={cn(
-        'group flex flex-col gap-3 p-4 bg-bg-card border rounded-xl transition-all duration-[var(--dur)]',
-        danger
-          ? 'border-[rgba(239,68,68,.45)] shadow-[0_0_0_3px_rgba(239,68,68,.07)]'
-          : 'border-border hover:-translate-y-[2px] hover:shadow-lg hover:border-accent',
-        href && 'cursor-pointer',
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', TONE_BG[tone])}>
-          <Icon className="w-[16px] h-[16px]" />
-        </div>
-        {href && (
-          <ArrowRight className="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
-        )}
-      </div>
-      <div className="leading-none">
-        <div className={cn('text-[28px] font-bold tracking-[-.03em]', TONE_NUM[tone])}>{value}</div>
-        <div className="text-[11.5px] text-text-muted mt-1">{label}</div>
-      </div>
-    </div>
-  );
-  return href ? <Link href={href}>{body}</Link> : body;
-}
 
 // ── Priority dot ─────────────────────────────────────────────────────────────
 
@@ -225,28 +164,6 @@ function ProgressRing({ pct }: { pct: number }) {
   );
 }
 
-// ── Panel ─────────────────────────────────────────────────────────────────────
-
-function Panel({
-  title,
-  subtitle,
-  action,
-  children,
-}: React.PropsWithChildren<{ title: string; subtitle?: string; action?: React.ReactNode }>) {
-  return (
-    <section className="bg-bg-card border border-border rounded-xl overflow-hidden">
-      <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
-        <div className="flex flex-col leading-tight min-w-0">
-          <h3 className="text-[14px] font-semibold truncate">{title}</h3>
-          {subtitle && <span className="text-[11px] text-text-muted">{subtitle}</span>}
-        </div>
-        {action}
-      </header>
-      <div className="flex flex-col">{children}</div>
-    </section>
-  );
-}
-
 function SkeletonRows() {
   return (
     <div className="px-4 py-3 flex flex-col gap-2">
@@ -304,6 +221,10 @@ interface Props {
 
 export function UserDashboard({ user, overview, isLoading, projectById, onQuickDone }: Props) {
   const router = useRouter();
+  // Tier W list routes go straight to the slugged URL (ADR 0011). Entity
+  // links (`/issues/<id>`) stay flat on purpose — the dashboard spans all
+  // workspaces, and the flat shim resolves each issue's own workspace.
+  const ws = useWorkspaceHref();
 
   const buckets = useMemo(() => bucketMyWork(overview?.myWork ?? []), [overview?.myWork]);
 
@@ -360,7 +281,7 @@ export function UserDashboard({ user, overview, isLoading, projectById, onQuickD
           </div>
         </div>
         <div className="relative z-10 flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push('/issues?new=1')}>
+          <Button variant="outline" size="sm" onClick={() => router.push(ws('/issues?new=1'))}>
             <Plus className="w-3.5 h-3.5" /> New task
           </Button>
           <Button variant="outline" size="sm" onClick={() => router.push('/my-work')}>

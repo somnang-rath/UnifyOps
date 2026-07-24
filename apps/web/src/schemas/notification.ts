@@ -52,4 +52,5 @@ export interface Badges {
   mywork: number;
   approvals: number;
   notifications: number;
+  chat: number;
 }

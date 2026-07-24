@@ -95,9 +95,14 @@ export class NotesPdfService implements OnModuleInit, OnModuleDestroy {
     const title = escapeHTML(note.title || 'Untitled');
     const emoji = escapeHTML(note.emoji || '📄');
     const tags = (note.tags || []).map(escapeHTML);
-    const body = (note.blocks || [])
-      .map((b) => this.renderBlock(b as NoteBlockLike))
-      .join('\n');
+    // ADR 0009 §4: once migrated, contentHTML (kept fresh by the collab
+    // snapshot path) is authoritative — blocks[] is a frozen archival copy.
+    const body =
+      note.migratedToDoc && note.contentHTML
+        ? note.contentHTML
+        : (note.blocks || [])
+            .map((b) => this.renderBlock(b as NoteBlockLike))
+            .join('\n');
 
     return `<!doctype html>
 <html>

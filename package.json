@@ -3,12 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,magenta \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev": "concurrently -n api,web,admin,space,live -c blue,magenta,cyan,yellow,green \"pnpm dev:api\" \"pnpm dev:web\" \"pnpm dev:admin\" \"pnpm dev:space\" \"pnpm dev:live\"",
     "dev:api": "pnpm --filter api start:dev",
     "dev:web": "pnpm --filter web dev",
+    "dev:admin": "pnpm --filter admin dev",
+    "dev:space": "pnpm --filter space dev",
+    "dev:live": "pnpm --filter live dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "seed": "pnpm --filter api seed"
+    "seed": "pnpm --filter api seed",
+    "test:security": "pnpm --filter api test:security",
+    "test:e2e:full": "node scripts/e2e-full.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"

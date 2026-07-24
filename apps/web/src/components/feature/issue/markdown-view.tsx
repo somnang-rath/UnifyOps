@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { remarkMentions } from '@/lib/remark-mentions';
+import { remarkCallouts } from '@/lib/remark-callouts';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -42,7 +43,7 @@ export function MarkdownView({ body, className, users = [] }: Props) {
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkMentions, remarkGfm]}
+        remarkPlugins={[remarkCallouts, remarkMentions, remarkGfm]}
         components={{
           a: ({ node: _n, href, children, ...p }) => {
             if (typeof href === 'string' && href.startsWith('#mention-')) {
@@ -101,14 +102,44 @@ export function MarkdownView({ body, className, users = [] }: Props) {
               className="text-[14px] font-semibold mt-2.5 mb-1 first:mt-0"
             />
           ),
+          h4: ({ node: _n, ...p }) => (
+            <h4
+              {...p}
+              className="text-[13px] font-semibold mt-2 mb-1 first:mt-0"
+            />
+          ),
           p: ({ node: _n, ...p }) => <p {...p} className="my-1.5 first:mt-0 last:mb-0" />,
-          ul: ({ node: _n, ...p }) => (
-            <ul {...p} className="list-disc pl-5 my-1.5" />
+          ul: ({ node: _n, className, ...p }) => (
+            <ul
+              {...p}
+              className={cn(
+                /task-list/.test(className ?? '')
+                  ? 'list-none pl-1 my-1.5'
+                  : 'list-disc pl-5 my-1.5',
+              )}
+            />
           ),
           ol: ({ node: _n, ...p }) => (
             <ol {...p} className="list-decimal pl-5 my-1.5" />
           ),
-          li: ({ node: _n, ...p }) => <li {...p} className="my-0.5" />,
+          li: ({ node: _n, className, ...p }) => (
+            <li
+              {...p}
+              className={cn(
+                'my-0.5',
+                /task-list-item/.test(className ?? '') &&
+                  'flex items-start gap-2 list-none',
+              )}
+            />
+          ),
+          input: ({ node: _n, ...p }) => (
+            <input
+              {...p}
+              disabled
+              className="mt-1 accent-accent cursor-default"
+            />
+          ),
+          del: ({ node: _n, ...p }) => <del {...p} className="opacity-70" />,
           blockquote: ({ node: _n, ...p }) => (
             <blockquote
               {...p}

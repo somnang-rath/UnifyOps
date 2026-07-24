@@ -130,7 +130,7 @@ export const FormulaBar = forwardRef<FormulaBarHandle, Props>(function FormulaBa
   }
 
   return (
-    <div className="flex items-stretch h-[26px] border-y border-[#d0d7de] bg-white">
+    <div className="flex items-stretch h-[26px] border-y border-border bg-bg-card">
       <input
         ref={nameRef}
         value={nameDraft ?? cellRef}
@@ -138,13 +138,13 @@ export const FormulaBar = forwardRef<FormulaBarHandle, Props>(function FormulaBa
         onFocus={handleNameFocus}
         onBlur={handleNameBlur}
         onKeyDown={handleNameKeyDown}
-        className="w-[68px] flex-none flex items-center justify-center text-[12px] text-center border-r border-[#d0d7de] hover:bg-bg-subtle font-mono outline-none bg-transparent px-1"
+        className="w-[68px] flex-none flex items-center justify-center text-[12px] text-center border-r border-border hover:bg-bg-subtle font-mono outline-none bg-transparent px-1"
         spellCheck={false}
         aria-label="Name Box"
       />
       <button
         onClick={handleFxClick}
-        className="w-9 flex items-center justify-center text-[13px] italic text-text-muted border-r border-[#d0d7de] select-none hover:bg-bg-subtle transition-colors"
+        className="w-9 flex items-center justify-center text-[13px] italic text-text-muted border-r border-border select-none hover:bg-bg-subtle transition-colors"
         title="Insert function (Function Wizard)"
         type="button"
       >

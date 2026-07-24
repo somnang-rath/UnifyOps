@@ -1,12 +1,22 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Issue, IssueDocument } from './schemas/issue.schema';
 import {
+  CalendarRangeQuery,
   CreateIssueDto,
+  CreateIssueSchema,
+  ImportIssuesDto,
+  ISSUE_PRIORITIES,
   ListIssueQuery,
   UpdateIssueDto,
 } from './dto/issue.dto';
+import { z } from 'zod';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   extractMentionTokens,
@@ -15,19 +25,50 @@ import {
 import { UsersService } from '../users/users.service';
 import { ActivityService } from '../activity/activity.service';
 import { AutomationsService } from '../automations/automations.service';
+import { ProjectAccessService } from '../projects/access/project-access.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 
 const oid = (v?: string | null) =>
   v ? new Types.ObjectId(v) : undefined;
+
+/** True when `userId` is one of the (possibly-undefined) stakeholder ids. */
+const isStakeholder = (
+  userId: string,
+  ids: (Types.ObjectId | undefined | null)[],
+) => ids.some((id) => id && String(id) === userId);
 
 @Injectable()
 export class IssuesService {
   constructor(
     @InjectModel(Issue.name) private model: Model<IssueDocument>,
+    private access: ProjectAccessService,
     private notifs: NotificationsService,
     private users: UsersService,
     private activity: ActivityService,
     private autos: AutomationsService,
+    private webhooks: WebhooksService,
   ) {}
+
+  /**
+   * Fan a lifecycle event out to the workspace's webhooks (docs/plan/03 §3).
+   * Fire-and-forget and best-effort: resolving the workspace or a failing
+   * receiver must never affect the issue write that triggered it.
+   */
+  private async dispatchWebhook(
+    projectId: Types.ObjectId | string | null | undefined,
+    event: string,
+    data: Record<string, unknown>,
+  ) {
+    if (!projectId) return; // personal issues have no workspace to notify
+    try {
+      const fields = await this.access.getAccessFields(projectId);
+      if (fields?.workspaceId) {
+        await this.webhooks.dispatch(fields.workspaceId, event, data);
+      }
+    } catch {
+      // swallow — webhooks are a side channel, not part of the write
+    }
+  }
 
   private logActivity(
     actorId: string,
@@ -48,7 +89,36 @@ export class IssuesService {
       .catch(() => {});
   }
 
-  async list(_userId: string, q: ListIssueQuery) {
+  /**
+   * The access-scope branch shared by {@link list} and {@link calendar}
+   * (ADR 0003/0005; workspace param per ADR 0011 §2b). Absent `workspaceId`:
+   * issues in projects the caller can read, plus their own personal
+   * (project-less) issues. Present: readable projects *in that workspace*
+   * only — personal issues belong to no workspace and are dropped, and an
+   * unknown/non-member workspace yields a filter that matches nothing.
+   */
+  private async accessScope(
+    userId: string,
+    workspaceId?: string,
+  ): Promise<FilterQuery<IssueDocument>> {
+    if (workspaceId) {
+      const projectIds = await this.access.readableProjectIdsInWorkspace(
+        userId,
+        workspaceId,
+      );
+      return { projectId: { $in: projectIds } };
+    }
+    const me = new Types.ObjectId(userId);
+    const readableProjects = await this.access.readableProjectIds(userId);
+    return {
+      $or: [
+        { projectId: { $in: readableProjects } },
+        { projectId: null, $or: [{ authorId: me }, { assigneeId: me }] },
+      ],
+    };
+  }
+
+  async list(userId: string, q: ListIssueQuery) {
     const filter: FilterQuery<IssueDocument> = {};
     if (q.projectId) filter.projectId = new Types.ObjectId(q.projectId);
     if (q.assigneeId) filter.assigneeId = new Types.ObjectId(q.assigneeId);
@@ -62,9 +132,15 @@ export class IssuesService {
         { desc: { $regex: q.q, $options: 'i' } },
       ];
 
+    // Access scope, matching byId. Combined via $and so it can't collide with
+    // the text-search $or above.
+    const scopedFilter: FilterQuery<IssueDocument> = {
+      $and: [filter, await this.accessScope(userId, q.workspaceId)],
+    };
+
     const skip = (q.page - 1) * q.limit;
     const items = await this.model
-      .find(filter)
+      .find(scopedFilter)
       .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(q.limit)
@@ -74,7 +150,7 @@ export class IssuesService {
       _id: 'open' | 'done';
       n: number;
     }>([
-      { $match: filter },
+      { $match: scopedFilter },
       {
         $group: {
           _id: {
@@ -100,19 +176,35 @@ export class IssuesService {
     };
   }
 
-  async byId(id: string) {
+  async byId(userId: string, id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
     const issue = await this.model.findById(id).lean();
     if (!issue) throw new NotFoundException();
+    // Project-linked → project read rule; personal (no project) → stakeholders.
+    const ok = issue.projectId
+      ? await this.access.canReadProjectById(userId, issue.projectId)
+      : isStakeholder(userId, [issue.authorId, issue.assigneeId]);
+    // 404 (not 403) on no-access so existence isn't leaked.
+    if (!ok) throw new NotFoundException();
     return issue;
   }
 
-  async calendar(from: string, to: string) {
+  /**
+   * Scoped exactly like {@link list} (ADR 0011 context #2 — the previous
+   * date-only filter returned every tenant's issues in the range).
+   */
+  async calendar(userId: string, q: CalendarRangeQuery) {
     return this.model
       .find({
-        dueDate: {
-          $gte: new Date(`${from}T00:00:00.000Z`),
-          $lte: new Date(`${to}T23:59:59.999Z`),
-        },
+        $and: [
+          {
+            dueDate: {
+              $gte: new Date(`${q.from}T00:00:00.000Z`),
+              $lte: new Date(`${q.to}T23:59:59.999Z`),
+            },
+          },
+          await this.accessScope(userId, q.workspaceId),
+        ],
       })
       .sort({ dueDate: 1 })
       .lean();
@@ -132,10 +224,13 @@ export class IssuesService {
   }
 
   async create(userId: string, dto: CreateIssueDto) {
+    // Creating inside a project requires membership; personal issues are free.
+    await this.access.assertProjectWritable(userId, dto.projectId ?? null);
     const issue = await this.model.create({
       ...dto,
       projectId: oid(dto.projectId ?? undefined),
       assigneeId: oid(dto.assigneeId ?? undefined),
+      parentId: oid(dto.parentId ?? undefined),
       authorId: new Types.ObjectId(userId),
       dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
     });
@@ -189,12 +284,119 @@ export class IssuesService {
       projectId: issue.projectId ? String(issue.projectId) : undefined,
     }).catch(() => {});
 
+    this.dispatchWebhook(issue.projectId, 'issue.created', {
+      issueId: String(issue._id),
+      title: issue.title,
+      status: issue.status,
+      priority: issue.priority,
+      projectId: issue.projectId ? String(issue.projectId) : undefined,
+    }).catch(() => {});
+
     return issue;
+  }
+
+  /** Same shape CreateIssueSchema accepts for dueDate — reused per row. */
+  private static readonly importDueDate = z
+    .string()
+    .datetime()
+    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/));
+
+  /**
+   * Bulk CSV import (Phase 8 workstream B). One write gate up front (same as
+   * create), then each row funnels through {@link create} so imported issues
+   * get exactly the regular-path defaults and side-effects — no forked logic.
+   *
+   * Row rules: invalid status/priority/dueDate → that row is skipped with a
+   * reason. `assigneeEmail` resolves only against members of the project's
+   * workspace; a miss silently drops the assignee (never fails the row, never
+   * reveals whether the email exists elsewhere — no cross-tenant probe).
+   */
+  async importIssues(userId: string, dto: ImportIssuesDto) {
+    await this.access.assertProjectWritable(userId, dto.projectId);
+    const fields = await this.access.getAccessFields(dto.projectId);
+    const workspaceId = fields?.workspaceId ?? null;
+
+    // email (lowercased) → workspace-member user id, or null on a miss.
+    const emailCache = new Map<string, string | null>();
+    const resolveAssignee = async (email?: string) => {
+      if (!email || !workspaceId) return undefined;
+      const key = email.toLowerCase().trim();
+      if (!emailCache.has(key)) {
+        let resolved: string | null = null;
+        const user = await this.users.findByEmail(key);
+        if (
+          user &&
+          (await this.access.isWorkspaceMember(String(user._id), workspaceId))
+        ) {
+          resolved = String(user._id);
+        }
+        emailCache.set(key, resolved);
+      }
+      return emailCache.get(key) ?? undefined;
+    };
+
+    let created = 0;
+    const skipped: { row: number; reason: string }[] = [];
+
+    for (const [i, row] of dto.rows.entries()) {
+      const rowNo = i + 1;
+      if (
+        row.priority !== undefined &&
+        !(ISSUE_PRIORITIES as readonly string[]).includes(row.priority)
+      ) {
+        skipped.push({ row: rowNo, reason: `invalid priority "${row.priority}"` });
+        continue;
+      }
+      const status = row.status?.trim();
+      if (row.status !== undefined && (!status || status.length > 40)) {
+        skipped.push({ row: rowNo, reason: `invalid status "${row.status}"` });
+        continue;
+      }
+      if (
+        row.dueDate !== undefined &&
+        !IssuesService.importDueDate.safeParse(row.dueDate).success
+      ) {
+        skipped.push({ row: rowNo, reason: `invalid dueDate "${row.dueDate}"` });
+        continue;
+      }
+
+      const assigneeId = await resolveAssignee(row.assigneeEmail);
+      // The regular create schema applies the normal defaults (type, status,
+      // labels, …) exactly as a hand-made POST /issues would get.
+      const parsed = CreateIssueSchema.safeParse({
+        projectId: dto.projectId,
+        title: row.title,
+        desc: row.description,
+        status,
+        priority: row.priority,
+        labels: row.labels,
+        dueDate: row.dueDate,
+        assigneeId,
+      });
+      if (!parsed.success) {
+        skipped.push({ row: rowNo, reason: 'invalid row' });
+        continue;
+      }
+      await this.create(userId, parsed.data);
+      created += 1;
+    }
+
+    return { created, skipped };
   }
 
   async update(actorId: string, id: string, dto: UpdateIssueDto) {
     const issue = await this.model.findById(id);
     if (!issue) throw new NotFoundException();
+    // Write requires membership of the issue's project or being a stakeholder.
+    await this.access.assertCanWrite(
+      actorId,
+      issue.projectId ?? null,
+      isStakeholder(actorId, [issue.authorId, issue.assigneeId]),
+    );
+    // Re-parenting into another project also requires write on the target.
+    if ('projectId' in dto && dto.projectId) {
+      await this.access.assertProjectWritable(actorId, dto.projectId);
+    }
 
     const prevAssignee = issue.assigneeId ? String(issue.assigneeId) : null;
     const prevStatus = issue.status;
@@ -213,6 +415,13 @@ export class IssuesService {
     if (dto.priority !== undefined) issue.priority = dto.priority;
     if (dto.labels !== undefined) issue.labels = dto.labels;
     if (dto.todos !== undefined) issue.todos = dto.todos as any;
+    if ('parentId' in dto) {
+      // Guard against a self-parent, which would make the sub-issue tree cyclic.
+      if (dto.parentId && dto.parentId === id) {
+        throw new BadRequestException('An issue cannot be its own parent');
+      }
+      issue.parentId = oid(dto.parentId ?? undefined) ?? undefined;
+    }
 
     await issue.save();
 
@@ -312,6 +521,16 @@ export class IssuesService {
   }
 
   async addComment(id: string, authorId: string, body: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const target = await this.model
+      .findById(id, { projectId: 1, authorId: 1, assigneeId: 1 })
+      .lean();
+    if (!target) throw new NotFoundException();
+    await this.access.assertCanWrite(
+      authorId,
+      target.projectId ?? null,
+      isStakeholder(authorId, [target.authorId, target.assigneeId]),
+    );
     const issue = await this.model.findByIdAndUpdate(
       id,
       {

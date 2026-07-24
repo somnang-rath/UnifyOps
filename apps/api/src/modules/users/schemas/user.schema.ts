@@ -57,7 +57,9 @@ export class User {
   @Prop({ enum: ['dark', 'light'], default: 'dark' })
   theme: 'dark' | 'light';
 
-  @Prop({ enum: ['comfy', 'compact'], default: 'comfy' })
+  // Compact is the product default (docs/plan/02-design-system.md §2.4).
+  // Existing rows keep whatever the user already chose.
+  @Prop({ enum: ['comfy', 'compact'], default: 'compact' })
   density: 'comfy' | 'compact';
 
   @Prop({ type: Object, default: {} })
@@ -83,6 +85,25 @@ export class User {
 
   @Prop({ type: Date, default: null })
   inviteTokenExpiry?: Date | null;
+
+  // OAuth provider ids (ADR 0008 §5). Uniqueness is enforced by the partial
+  // indexes below, restricted to string values: a plain unique+sparse index
+  // still indexes explicit nulls, and `default: null` would make every
+  // password-registered user collide on the second insert.
+  @Prop({ type: String, default: null })
+  googleId?: string | null;
+
+  @Prop({ type: String, default: null })
+  githubId?: string | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.index(
+  { googleId: 1 },
+  { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } },
+);
+UserSchema.index(
+  { githubId: 1 },
+  { unique: true, partialFilterExpression: { githubId: { $type: 'string' } } },
+);

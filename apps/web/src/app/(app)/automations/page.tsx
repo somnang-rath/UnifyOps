@@ -122,7 +122,7 @@ export default function AutomationsPage() {
             Create rules that trigger actions automatically
           </p>
         </div>
-        <Button variant="grad" onClick={openCreate}>
+        <Button variant="primary" onClick={openCreate}>
           <Plus className="w-3.5 h-3.5" /> New automation
         </Button>
       </div>
@@ -166,7 +166,7 @@ export default function AutomationsPage() {
               Cancel
             </Button>
             <Button
-              variant="grad"
+              variant="primary"
               onClick={handleSubmit}
               disabled={!form.name.trim() || create.isPending || update.isPending}
             >
@@ -461,7 +461,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
           Create your first rule to automate repetitive tasks
         </p>
       </div>
-      <Button variant="grad" onClick={onNew}>
+      <Button variant="primary" onClick={onNew}>
         <Plus className="w-3.5 h-3.5" /> New automation
       </Button>
     </div>

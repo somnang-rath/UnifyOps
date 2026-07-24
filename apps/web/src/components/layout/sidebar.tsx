@@ -16,22 +16,34 @@ import {
   PanelLeft,
   Search,
   Settings as SettingsIcon,
+  Sparkles,
   StickyNote,
   Trello,
   GitMerge,
+  MessageSquare,
   Users,
   Zap,
   Activity,
+  BarChart3,
+  ShieldCheck,
 } from "lucide-react"
+import { SidebarNav, SidebarSection, SidebarItem } from "@prism/ui"
 import { UnifyOpsLogo } from "@/components/icons/logo"
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher"
+import { useWorkspaceHref } from "@/hooks/use-workspaces"
 import { useAuthStore } from "@/stores/auth-store"
 import { useUIStore } from "@/stores/ui-store"
+import { useAssistantStore } from "@/stores/assistant-store"
+import { useAssistantConfig } from "@/hooks/use-assistant"
 import { useBadges } from "@/hooks/use-badges"
+import { useIsInstanceAdmin } from "@/hooks/use-instance-admin"
 import { cn } from "@/lib/utils"
+
+const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3001"
 
 const SUPER_ADMIN_EMAILS = new Set(['somnang.rath12@gmail.com', 'admin@demo.com'])
 
-type BadgeKey = 'issues' | 'mywork' | 'approvals' | 'notifications'
+type BadgeKey = 'issues' | 'mywork' | 'approvals' | 'notifications' | 'chat'
 
 interface NavItem {
   href: string
@@ -39,7 +51,16 @@ interface NavItem {
   Icon: React.ComponentType<{ className?: string }>
   adminOnly?: boolean
   superAdminOnly?: boolean
+  assistantOnly?: boolean
   badge?: BadgeKey
+  /**
+   * Lives under /[workspaceSlug] — Tier W in the ADR 0011 route census.
+   * All Tier W routes are migrated (projects: ADR 0006 · chat: Phase 9 ·
+   * analytics: Phase 7b part A · issues/calendar/timeline/wiki: part B).
+   * Per-user views (Board/My Work/Approvals/…) are Tier P and stay flat
+   * forever — nesting them would imply scoping the data doesn't have.
+   */
+  workspaceScoped?: boolean
 }
 
 const NAV: { section: string; items: NavItem[] }[] = [
@@ -48,26 +69,29 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { href: "/home", label: "Home", Icon: Home },
       { href: "/my-work", label: "My Work", Icon: CheckSquare, badge: "mywork" },
-      { href: "/projects", label: "Projects", Icon: Grid3x3 },
+      { href: "/projects", label: "Projects", Icon: Grid3x3, workspaceScoped: true },
+      { href: "/chat", label: "Chat", Icon: MessageSquare, badge: "chat", workspaceScoped: true },
     ],
   },
   {
     section: "Plan & Track",
     items: [
-      { href: "/issues", label: "Tasks", Icon: AlertCircle, badge: "issues" },
+      { href: "/issues", label: "Tasks", Icon: AlertCircle, badge: "issues", workspaceScoped: true },
       { href: "/kanban", label: "Board", Icon: Trello },
-      { href: "/calendar", label: "Calendar", Icon: Calendar },
+      { href: "/calendar", label: "Calendar", Icon: Calendar, workspaceScoped: true },
       { href: "/approvals", label: "Approvals", Icon: GitMerge, badge: "approvals" },
+      { href: "/analytics", label: "Analytics", Icon: BarChart3, workspaceScoped: true },
     ],
   },
   {
     section: "Knowledge",
     items: [
       { href: "/files", label: "Storage", Icon: FileText },
-      { href: "/wiki", label: "Wiki", Icon: BookOpen },
+      { href: "/wiki", label: "Wiki", Icon: BookOpen, workspaceScoped: true },
       { href: "/notes", label: "Notes", Icon: StickyNote },
       { href: "/tables", label: "Tables", Icon: Database },
       { href: "/reports", label: "Reports", Icon: FileBarChart2 },
+      { href: "/assistant", label: "Assistant", Icon: Sparkles, assistantOnly: true },
     ],
   },
   {
@@ -75,7 +99,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { href: "/notifications", label: "Notifications", Icon: Bell, badge: "notifications" },
       { href: "/automations", label: "Automations", Icon: Zap },
-      { href: "/timeline", label: "Timeline", Icon: Activity },
+      { href: "/timeline", label: "Timeline", Icon: Activity, workspaceScoped: true },
       { href: "/users", label: "People", Icon: Users, adminOnly: true },
       { href: "/debug", label: "Debug & Errors", Icon: Bug, superAdminOnly: true },
       { href: "/settings", label: "Settings", Icon: SettingsIcon },
@@ -83,24 +107,26 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
 ]
 
+/**
+ * Sidebar column *content* — the fixed positioning, width, and slide
+ * transitions belong to the shared AppShell in the (app) layout.
+ */
 export function Sidebar() {
   const pathname = usePathname()
+  const ws = useWorkspaceHref()
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggle = useUIStore((s) => s.toggleSidebar)
   const setPalette = useUIStore((s) => s.setPalette)
   const user = useAuthStore((s) => s.user)
   const isAdmin = user?.role === "admin"
   const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.has(user.email)
+  const isInstanceAdmin = useIsInstanceAdmin()
   const { data: badges } = useBadges()
+  const { data: assistant } = useAssistantConfig()
+  const openAssistant = useAssistantStore((s) => s.openPanel)
 
   return (
-    <aside
-      className={cn(
-        "fixed inset-y-0 left-0 z-40 flex flex-col h-screen border-r border-[color:var(--sidebar-border)]",
-        "bg-[color:var(--sidebar-bg)] backdrop-blur-xl transition-[width] duration-300 ease-[cubic-bezier(.4,0,.2,1)]",
-        collapsed ? "w-sb-collapsed" : "w-sb",
-      )}
-    >
+    <>
       <div
         className={cn(
           "flex items-center gap-2.5 px-3.5 py-4",
@@ -132,6 +158,8 @@ export function Sidebar() {
         </button>
       </div>
 
+      <WorkspaceSwitcher collapsed={collapsed} />
+
       <button
         type="button"
         onClick={() => setPalette(true)}
@@ -150,69 +178,81 @@ export function Sidebar() {
         )}
       </button>
 
-      <nav className="flex-1 overflow-y-auto px-2.5 pb-4 flex flex-col gap-0.5">
+      {assistant?.enabled && (
+        <button
+          type="button"
+          onClick={() => openAssistant()}
+          title="Ask AI"
+          className={cn(
+            "flex items-center gap-2 mx-2.5 mb-2.5 px-2.5 py-1.5 rounded-sm text-[12px] font-medium text-accent-700 dark:text-[var(--a-200)]",
+            "bg-accent-50 dark:bg-[rgba(99,102,241,.15)] border border-accent/30",
+            "transition-colors duration-[var(--dur)] hover:border-accent",
+            collapsed && "justify-center px-0 py-2",
+          )}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          {!collapsed && <span className="flex-1 text-left">Ask AI</span>}
+          {!collapsed && (
+            <kbd className="font-mono text-[11px] bg-bg-hover border border-border rounded px-1.5 py-px text-text-muted">
+              ⌘/
+            </kbd>
+          )}
+        </button>
+      )}
+
+      <SidebarNav>
         {NAV.map(({ section, items }) => {
           const visible = items.filter(
             (i) =>
               (!i.adminOnly || isAdmin) &&
-              (!i.superAdminOnly || isSuperAdmin),
+              (!i.superAdminOnly || isSuperAdmin) &&
+              (!i.assistantOnly || !!assistant?.enabled),
           )
           if (visible.length === 0) return null
           return (
-            <div key={section} className="flex flex-col gap-0.5">
-              {!collapsed && (
-                <span className="px-2.5 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-[.08em] text-text-muted">
-                  {section}
-                </span>
-              )}
+            <SidebarSection key={section} label={section} collapsed={collapsed}>
               {visible.map((item) => {
+                // Workspace-scoped items render as /[slug]/… , and must stay
+                // active on both that and the legacy flat path (which redirects).
+                const href = item.workspaceScoped ? ws(item.href) : item.href
                 const active =
-                  pathname === item.href || pathname.startsWith(item.href + "/")
-                const count = item.badge ? (badges?.[item.badge] ?? 0) : 0
+                  pathname === href ||
+                  pathname.startsWith(href + "/") ||
+                  (item.workspaceScoped &&
+                    (pathname === item.href ||
+                      pathname.startsWith(item.href + "/")))
                 return (
-                  <Link
+                  <SidebarItem
                     key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "group relative flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-[13px] font-medium text-text-sub",
-                      "transition-all duration-[var(--dur)] ease-[cubic-bezier(.4,0,.2,1)] hover:bg-bg-hover hover:text-text",
-                      active &&
-                        "bg-accent-50 text-accent-700 dark:bg-[rgba(99,102,241,.15)] dark:text-[var(--a-200)]",
-                      collapsed && "justify-center px-2",
-                    )}
-                    title={collapsed ? item.label : undefined}
-                  >
-                    {active && (
-                      <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-[2px] bg-accent" />
-                    )}
-                    <div className="relative flex-shrink-0">
-                      <item.Icon
-                        className={cn(
-                          "w-4 h-4 transition-colors duration-[var(--dur)]",
-                          active
-                            ? "text-accent dark:text-[var(--a-400)]"
-                            : "text-text-muted group-hover:text-text",
-                        )}
-                      />
-                      {collapsed && count > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-accent text-white text-[9px] font-bold px-[3px]">
-                          {count > 99 ? "99+" : count}
-                        </span>
-                      )}
-                    </div>
-                    {!collapsed && <span className="flex-1">{item.label}</span>}
-                    {!collapsed && count > 0 && (
-                      <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold px-1">
-                        {count > 99 ? "99+" : count}
-                      </span>
-                    )}
-                  </Link>
+                    as={Link}
+                    href={href}
+                    icon={<item.Icon className="w-4 h-4" />}
+                    label={item.label}
+                    active={!!active}
+                    collapsed={collapsed}
+                    badge={item.badge ? (badges?.[item.badge] ?? 0) : 0}
+                  />
                 )
               })}
-            </div>
+            </SidebarSection>
           )
         })}
-      </nav>
-    </aside>
+      </SidebarNav>
+
+      {isInstanceAdmin && (
+        <div className="px-2.5 pb-3 pt-1 border-t border-[color:var(--sidebar-border)]">
+          <SidebarItem
+            as="a"
+            href={`${ADMIN_URL}/god-mode`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="God Mode — instance admin"
+            icon={<ShieldCheck className="w-4 h-4" />}
+            label="God Mode"
+            collapsed={collapsed}
+          />
+        </div>
+      )}
+    </>
   )
 }

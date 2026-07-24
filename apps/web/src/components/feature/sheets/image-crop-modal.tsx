@@ -199,7 +199,7 @@ export function ImageCropModal({ src, onApply, onClose, squareLock }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-xl p-5 max-w-[640px] w-auto"
+        className="bg-bg-card rounded-lg shadow-xl p-5 max-w-[640px] w-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">

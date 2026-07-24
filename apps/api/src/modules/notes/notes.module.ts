@@ -8,8 +8,11 @@ import {
 import { NotesService } from './notes.service';
 import { NotesPdfService } from './notes-pdf.service';
 import { NotesController } from './notes.controller';
+import { InternalNotesController } from './internal-notes.controller';
+import { InternalTokenGuard } from '../../common/guards/internal-token.guard';
 import { UsersModule } from '../users/users.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -19,8 +22,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ]),
     UsersModule,
     NotificationsModule,
+    // Mints the scoped collab tokens handed to apps/live (ADR 0009 §5).
+    AuthModule,
   ],
-  controllers: [NotesController],
-  providers: [NotesService, NotesPdfService],
+  controllers: [NotesController, InternalNotesController],
+  providers: [NotesService, NotesPdfService, InternalTokenGuard],
 })
 export class NotesModule {}

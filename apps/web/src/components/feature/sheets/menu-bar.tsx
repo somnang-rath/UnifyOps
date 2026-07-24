@@ -51,7 +51,7 @@ export function MenuBar({ menus }: Props) {
             {m.name}
           </button>
           {open === i && (
-            <div className="absolute top-full left-0 mt-1 min-w-[240px] bg-white border border-border rounded-md shadow-lg py-1 z-40 text-[13px]">
+            <div className="absolute top-full left-0 mt-1 min-w-[240px] bg-bg-card border border-border rounded-md shadow-lg py-1 z-40 text-[13px]">
               {m.sections.map((section, si) => (
                 <div key={si}>
                   {si > 0 && (

@@ -3,10 +3,12 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronDown, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { useAuthStore } from '@/stores/auth-store';
 import { useIssues, useIssueMutations } from '@/hooks/use-issues';
 import { useProjects } from '@/hooks/use-projects';
+import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { StatusPill } from '@/components/feature/issue/pills';
 import { fmtDateShort, today as todayIso } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -41,6 +43,10 @@ const PRIO_DOT: Record<Issue['priority'], string> = {
 export default function MyWorkPage() {
   const me = useAuthStore((s) => s.user)!;
   const router = useRouter();
+  // "New task" goes to the slugged issues list (ADR 0011). Row opens
+  // (`/issues/<id>`) stay flat on purpose — My Work spans all workspaces, and
+  // the flat shim resolves each issue's own workspace.
+  const ws = useWorkspaceHref();
   const [projectId, setProjectId] = useState('');
   const [statusFilter, setStatusFilter] = useState<'open' | 'all'>('open');
   const [collapsed, setCollapsed] = useState<Set<GroupKey>>(new Set());
@@ -147,12 +153,11 @@ export default function MyWorkPage() {
               { value: 'all', label: 'All tasks' },
             ]}
           />
-          <Link
-            href="/issues?new=1"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-white rounded-sm bg-grad shadow-a transition-all duration-[var(--dur)] hover:-translate-y-px"
-          >
-            <Plus className="w-3.5 h-3.5" /> New task
-          </Link>
+          <Button asChild variant="primary">
+            <Link href={ws('/issues?new=1')}>
+              <Plus /> New task
+            </Link>
+          </Button>
         </div>
       </div>
 

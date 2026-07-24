@@ -87,7 +87,7 @@ export function CommentsPopover({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-white border border-border rounded-md shadow-xl flex flex-col text-[13px]"
+      className="fixed z-50 bg-bg-card border border-border rounded-md shadow-xl flex flex-col text-[13px]"
       style={{ left, top, width: W, maxHeight: H }}
     >
       <div className="flex items-center justify-between px-3 h-9 border-b border-border">
@@ -206,7 +206,7 @@ export function CommentsPopover({
                       onChange={(e) => setReplyDraft(e.target.value)}
                       placeholder="Write a reply…"
                       rows={2}
-                      className="flex-1 text-[12px] px-2 py-1 border border-border rounded outline-none focus:border-accent resize-none"
+                      className="flex-1 text-[12px] px-2 py-1 border border-border rounded bg-bg-input text-text outline-none focus:border-accent resize-none"
                     />
                     <button
                       onClick={() => submitReply(c._id)}
@@ -230,7 +230,7 @@ export function CommentsPopover({
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Add a comment…"
           rows={2}
-          className="flex-1 text-[12px] px-2 py-1 border border-border rounded outline-none focus:border-accent resize-none"
+          className="flex-1 text-[12px] px-2 py-1 border border-border rounded bg-bg-input text-text outline-none focus:border-accent resize-none"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();

@@ -126,7 +126,7 @@ export default function TablesPage() {
               />
             </div>
           )}
-          <Button variant="grad" onClick={() => setCreating(true)}>
+          <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="w-3.5 h-3.5" /> New spreadsheet
           </Button>
         </div>
@@ -144,7 +144,7 @@ export default function TablesPage() {
             Create your first spreadsheet to capture data with rows, columns,
             and formulas.
           </p>
-          <Button variant="grad" onClick={() => setCreating(true)}>
+          <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="w-3.5 h-3.5" /> New spreadsheet
           </Button>
         </div>

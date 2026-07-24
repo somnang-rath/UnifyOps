@@ -1,5 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ActivityService } from './activity.service';
 import { ListActivityDto, ListActivitySchema } from './dto/activity.dto';
@@ -10,11 +10,11 @@ export class ActivityController {
 
   @Get()
   list(
-    @Query(new ZodValidationPipe(ListActivitySchema)) q: ListActivityDto,
+    @Query(new ZodQueryPipe(ListActivitySchema)) q: ListActivityDto,
     @CurrentUser() me: { id: string; role: string },
   ) {
     // Non-admins can only view their own activity
     const forceUserId = me.role !== 'admin' ? me.id : undefined;
-    return this.activity.list(q, forceUserId);
+    return this.activity.list(me.id, q, forceUserId);
   }
 }

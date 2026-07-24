@@ -8,6 +8,8 @@ const nextConfig = {
   reactStrictMode: true,
   // Emit .next/standalone (server.js + minimal node_modules) for the Docker runner.
   output: 'standalone',
+  // @prism/* packages ship raw TS/CSS source — Next must transpile them.
+  transpilePackages: ['@prism/editor', '@prism/services', '@prism/types', '@prism/ui'],
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
     optimizePackageImports: ['lucide-react'],

@@ -338,6 +338,11 @@ export function PrintDocument(props: PrintDocumentProps) {
               paddingBottom: m.bottom * PX_PER_IN,
               paddingLeft: m.left * PX_PER_IN,
               background: '#fff',
+              // The printed page is always white paper regardless of the app
+              // theme, so anchor a dark default text color — otherwise cells
+              // without an explicit fg inherit the (light) dark-mode text color
+              // and become invisible on the white page.
+              color: '#000',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',

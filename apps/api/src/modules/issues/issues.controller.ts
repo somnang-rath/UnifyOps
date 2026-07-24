@@ -10,8 +10,9 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { IssuesService } from './issues.service';
+import { IssueLinksService } from './issue-links.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   CalendarRangeQuery,
   CalendarRangeSchema,
@@ -19,6 +20,10 @@ import {
   CommentSchema,
   CreateIssueDto,
   CreateIssueSchema,
+  CreateRelationDto,
+  CreateRelationSchema,
+  ImportIssuesDto,
+  ImportIssuesSchema,
   ListIssueQuery,
   ListIssueQuerySchema,
   UpdateIssueDto,
@@ -27,25 +32,30 @@ import {
 
 @Controller('issues')
 export class IssuesController {
-  constructor(private issues: IssuesService) {}
+  constructor(
+    private issues: IssuesService,
+    private links: IssueLinksService,
+  ) {}
 
   @Get()
   list(
     @CurrentUser() user: { id: string },
-    @Query(new ZodValidationPipe(ListIssueQuerySchema)) q: ListIssueQuery,
+    @Query(new ZodQueryPipe(ListIssueQuerySchema)) q: ListIssueQuery,
   ) {
     return this.issues.list(user.id, q);
   }
 
   @Get('calendar/range')
-  calendar(@Query() q: CalendarRangeQuery) {
-    const parsed = CalendarRangeSchema.parse(q);
-    return this.issues.calendar(parsed.from, parsed.to);
+  calendar(
+    @CurrentUser() user: { id: string },
+    @Query(new ZodQueryPipe(CalendarRangeSchema)) q: CalendarRangeQuery,
+  ) {
+    return this.issues.calendar(user.id, q);
   }
 
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.issues.byId(id);
+  byId(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.issues.byId(user.id, id);
   }
 
   @Post()
@@ -55,6 +65,16 @@ export class IssuesController {
     @Body() dto: CreateIssueDto,
   ) {
     return this.issues.create(user.id, dto);
+  }
+
+  /** Bulk CSV import (Phase 8 workstream B) — max 500 rows per call. */
+  @Post('import')
+  @UsePipes(new ZodValidationPipe(ImportIssuesSchema))
+  importIssues(
+    @CurrentUser() user: { id: string },
+    @Body() dto: ImportIssuesDto,
+  ) {
+    return this.issues.importIssues(user.id, dto);
   }
 
   @Patch(':id')
@@ -83,5 +103,35 @@ export class IssuesController {
     @Body() dto: CommentDto,
   ) {
     return this.issues.addComment(id, user.id, dto.body);
+  }
+
+  // ── Sub-issues ──────────────────────────────────────────────────
+  @Get(':id/children')
+  children(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.links.children(user.id, id);
+  }
+
+  // ── Relations ───────────────────────────────────────────────────
+  @Get(':id/relations')
+  relations(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.links.relations(user.id, id);
+  }
+
+  @Post(':id/relations')
+  @UsePipes(new ZodValidationPipe(CreateRelationSchema))
+  addRelation(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body() dto: CreateRelationDto,
+  ) {
+    return this.links.addRelation(user.id, id, dto.targetId, dto.type);
+  }
+
+  @Delete('relations/:relationId')
+  removeRelation(
+    @CurrentUser() user: { id: string },
+    @Param('relationId') relationId: string,
+  ) {
+    return this.links.removeRelation(user.id, relationId);
   }
 }

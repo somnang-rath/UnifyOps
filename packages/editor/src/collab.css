@@ -1,0 +1,251 @@
+/* @prism/editor — collaborative editor styles (ADR 0001 §5).
+ * Remote carets, empty-state placeholder, and wiki-flavored prose. Colors use
+ * the host app's CSS custom properties (--text, --border, --a, …) so the editor
+ * inherits the current theme/accent; it falls back gracefully if unset. */
+
+.prism-editor-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 28px;
+}
+
+.prism-editor .ProseMirror {
+  outline: none;
+  min-height: 320px;
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text, #0a0a1a);
+}
+
+.prism-editor .ProseMirror > * + * {
+  margin-top: 0.75em;
+}
+
+/* Placeholder (@tiptap/extension-placeholder) — shown on the first empty node. */
+.prism-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--text-muted, #8b8ba8);
+}
+
+/* --- Prose --- */
+.prism-editor .ProseMirror h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0.4em 0 0.3em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border, #e4e4ee);
+}
+.prism-editor .ProseMirror h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0.9em 0 0.35em;
+}
+.prism-editor .ProseMirror h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0.8em 0 0.3em;
+}
+.prism-editor .ProseMirror h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0.7em 0 0.3em;
+}
+.prism-editor .ProseMirror ul,
+.prism-editor .ProseMirror ol {
+  padding-left: 1.5em;
+}
+.prism-editor .ProseMirror ul {
+  list-style: disc;
+}
+.prism-editor .ProseMirror ol {
+  list-style: decimal;
+}
+.prism-editor .ProseMirror li {
+  margin: 0.2em 0;
+}
+.prism-editor .ProseMirror li > p {
+  margin: 0;
+}
+.prism-editor .ProseMirror a {
+  color: var(--a, #6366f1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--a, #6366f1) 30%, transparent);
+}
+.prism-editor .ProseMirror blockquote {
+  border-left: 3px solid var(--a, #6366f1);
+  background: var(--a-50, #eef2ff);
+  padding: 0.25em 0.9em;
+  margin: 0.9em 0;
+  color: var(--text-sub, #4b4b66);
+  font-style: italic;
+  border-radius: 0 6px 6px 0;
+}
+.prism-editor .ProseMirror code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.86em;
+  background: var(--bg-subtle, #fafafd);
+  color: var(--a-600, #4f46e5);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+}
+.prism-editor .ProseMirror pre {
+  background: var(--bg-subtle, #fafafd);
+  border: 1px solid var(--border, #e4e4ee);
+  border-radius: 6px;
+  padding: 0.9em;
+  margin: 0.9em 0;
+  overflow-x: auto;
+}
+.prism-editor .ProseMirror pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: 12.5px;
+}
+.prism-editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border, #e4e4ee);
+  margin: 1.5em 0;
+}
+.prism-editor .ProseMirror .mention {
+  color: var(--a, #6366f1);
+  background: var(--a-50, #eef2ff);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+  font-weight: 500;
+}
+
+/* --- New shared-schema nodes (ADR 0009 §3): task list, tables, images --- */
+.prism-editor .ProseMirror ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.prism-editor .ProseMirror ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.prism-editor .ProseMirror ul[data-type='taskList'] li > label {
+  margin-top: 0.25em;
+}
+.prism-editor .ProseMirror ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+}
+
+.prism-editor .ProseMirror table {
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  width: auto;
+  font-size: 13px;
+}
+.prism-editor .ProseMirror th,
+.prism-editor .ProseMirror td {
+  border: 1px solid var(--border, #e4e4ee);
+  padding: 5px 9px;
+  min-width: 60px;
+  text-align: left;
+  vertical-align: top;
+}
+.prism-editor .ProseMirror th {
+  background: var(--bg-subtle, #fafafd);
+  font-weight: 600;
+}
+.prism-editor .ProseMirror .selectedCell {
+  background: color-mix(in srgb, var(--a, #6366f1) 12%, transparent);
+}
+
+.prism-editor .ProseMirror img {
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--border, #e4e4ee);
+  margin: 0.4em 0;
+}
+.prism-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--a, #6366f1);
+}
+
+/* --- CollabToolbar (spec §2.3) --- */
+.prism-collab-toolbar-wrap {
+  background: var(--bg-card, #fff);
+  container-type: inline-size;
+}
+.prism-collab-toolbar-wrap.is-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.prism-collab-toolbar {
+  /* Opaque + fixed floor so the `editor=null` skeleton bar never jumps. */
+  background: var(--bg-card, #fff);
+  min-height: 39px;
+}
+
+/* Narrow widths (< 560px container): heading label collapses to "Aa", group
+ * separators hide — buys back ~40px before flex-wrap kicks in. */
+.prism-collab-hlabel-sm {
+  display: none;
+}
+@container (max-width: 559px) {
+  .prism-collab-toolbar .prism-collab-hlabel {
+    display: none;
+  }
+  .prism-collab-toolbar .prism-collab-hlabel-sm {
+    display: inline;
+  }
+  .prism-collab-toolbar .prism-rich-text-btn {
+    min-width: 0;
+  }
+  .prism-collab-toolbar > .prism-rich-sep {
+    display: none;
+  }
+}
+
+/* Popovers must clamp within the viewport. */
+.prism-collab-toolbar .prism-rich-linkpop,
+.prism-collab-toolbar .prism-rich-emojipop {
+  max-width: min(300px, calc(100vw - 24px));
+}
+
+/* Host opt-in: let the page own scrolling (notes column) instead of the
+ * editor's internal scroll area, so the sticky toolbar tracks the page. */
+.prism-collab-inline .prism-editor-scroll {
+  overflow: visible;
+  padding: 0;
+}
+.prism-collab-inline .prism-editor {
+  padding: 12px 16px;
+}
+
+/* --- Remote carets (@tiptap/extension-collaboration-cursor) --- */
+.prism-editor .collaboration-cursor__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid var(--caret-color, #6366f1);
+  border-right: 1px solid var(--caret-color, #6366f1);
+  border-color: currentColor;
+  word-break: normal;
+  pointer-events: none;
+}
+.prism-editor .collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: #fff;
+  padding: 0.15em 0.4em;
+  border-radius: 4px 4px 4px 0;
+  user-select: none;
+  pointer-events: none;
+}

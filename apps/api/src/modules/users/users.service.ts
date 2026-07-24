@@ -45,6 +45,9 @@ const USER_ID_SCOPED = [
 // activities use actorId to record who performed the action
 const ACTOR_SCOPED = ['activities'] as const;
 
+/** Prefix that marks a bearer value as a personal access token, not a JWT. */
+export const API_TOKEN_PREFIX = 'prs_';
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -418,7 +421,7 @@ export class UsersService {
   }
 
   async createApiToken(userId: string, dto: CreateApiTokenDto) {
-    const raw = `prs_${crypto.randomBytes(32).toString('hex')}`;
+    const raw = `${API_TOKEN_PREFIX}${crypto.randomBytes(32).toString('hex')}`;
     const prefix = raw.slice(0, 12);
     const tokenHash = crypto
       .createHash('sha256')
@@ -447,6 +450,30 @@ export class UsersService {
     });
     if (!doc) throw new NotFoundException();
     return { ok: true };
+  }
+
+  /**
+   * Resolve a raw personal access token to its user id, or null if unknown or
+   * expired. This is the piece that was missing: tokens could be created but
+   * nothing authenticated with them. The JwtAuthGuard calls this for `prs_`
+   * bearers (docs/plan/03-feature-parity.md §3).
+   */
+  async verifyApiToken(raw: string): Promise<{ userId: string } | null> {
+    if (!raw.startsWith(API_TOKEN_PREFIX)) return null;
+    const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
+    const token = await this.apiTokenModel
+      .findOne({ tokenHash })
+      .select('+tokenHash userId expiresAt')
+      .lean();
+    if (!token) return null;
+    if (token.expiresAt && token.expiresAt < new Date()) return null;
+
+    // Best-effort last-used stamp; a failed touch must not fail the request.
+    this.apiTokenModel
+      .updateOne({ _id: token._id }, { $set: { lastUsedAt: new Date() } })
+      .catch(() => {});
+
+    return { userId: String(token.userId) };
   }
 
   async inviteUser(

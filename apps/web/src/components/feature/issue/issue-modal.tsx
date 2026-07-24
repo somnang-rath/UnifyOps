@@ -1,13 +1,17 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import type { IssueTemplate } from '@prism/types';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
+import { Confirm } from '@/components/ui/confirm';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { TodoChecklist } from '@/components/feature/issue/todo-checklist';
 import { useIssueMutations } from '@/hooks/use-issues';
 import { useProjects } from '@/hooks/use-projects';
+import { useTemplates } from '@/hooks/use-templates';
 import { useUsers } from '@/hooks/use-users';
 import { useBoard } from '@/hooks/use-kanban';
 import {
@@ -47,28 +51,6 @@ export function IssueModal({
   const { data: board } = useBoard();
 
   const [todos, setTodos] = useState<IssueTodo[]>([]);
-  const [newTodoText, setNewTodoText] = useState('');
-  const newTodoRef = useRef<HTMLInputElement>(null);
-
-  const doneTodos = todos.filter((t) => t.done).length;
-  const progress = todos.length > 0 ? Math.round((doneTodos / todos.length) * 100) : 0;
-
-  const addTodo = () => {
-    const text = newTodoText.trim();
-    if (!text) return;
-    setTodos((prev) => [
-      ...prev,
-      { id: Math.random().toString(36).slice(2), text, done: false },
-    ]);
-    setNewTodoText('');
-    newTodoRef.current?.focus();
-  };
-
-  const toggleTodo = (id: string) =>
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
-
-  const removeTodo = (id: string) =>
-    setTodos((prev) => prev.filter((t) => t.id !== id));
 
   const form = useForm<IssueFormInput>({
     resolver: zodResolver(IssueFormSchema),
@@ -90,8 +72,28 @@ export function IssueModal({
     reset,
     watch,
     setValue,
-    formState: { errors, isSubmitting },
+    setFocus,
+    formState: { errors, isSubmitting, dirtyFields },
   } = form;
+
+  const isCreate = !(issue && issue._id);
+
+  // ── "Use template" picker (templates-csv-import spec §3) — create only.
+  // Re-queries when the Project select changes; the API needs the project's
+  // workspaceId too (member gate), derived from the loaded project list.
+  const watchedProjectId = watch('projectId') ?? '';
+  const watchedWorkspaceId =
+    projects.find((p) => p._id === watchedProjectId)?.workspaceId ?? undefined;
+  const { data: templates = [] } = useTemplates({
+    projectId: isCreate && watchedProjectId ? watchedProjectId : undefined,
+    workspaceId:
+      isCreate && watchedProjectId ? watchedWorkspaceId : undefined,
+  });
+  const [templateSel, setTemplateSel] = useState('');
+  const [pendingTemplate, setPendingTemplate] = useState<IssueTemplate | null>(
+    null,
+  );
+  const [liveMessage, setLiveMessage] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -124,8 +126,67 @@ export function IssueModal({
           },
     );
     setTodos(issue?.todos ?? []);
-    setNewTodoText('');
+    setTemplateSel('');
+    setPendingTemplate(null);
+    setLiveMessage('');
   }, [open, issue, defaultStatus, defaultProjectId, defaultAssigneeId, reset]);
+
+  // Fill defaults-owned fields only (desc, type, priority, labels, todos) via
+  // setValue — never reset(), so title/status/project/assignee/dueDate
+  // survive. Templates are a client-side pre-fill: the create payload carries
+  // no templateId.
+  const applyTemplate = (t: IssueTemplate) => {
+    const d = t.defaults ?? {};
+    setTemplateSel(t._id);
+    setValue('desc', d.desc ?? '', { shouldDirty: true });
+    if (d.type)
+      setValue('type', d.type as IssueFormInput['type'], {
+        shouldDirty: true,
+      });
+    if (d.priority)
+      setValue('priority', d.priority as IssueFormInput['priority'], {
+        shouldDirty: true,
+      });
+    setValue('labelsRaw', (d.labels ?? []).join(', '), { shouldDirty: true });
+    setTodos(
+      // Cloned with fresh ids, done: false (spec §3.2).
+      (d.todos ?? []).map((td) => ({
+        id: Math.random().toString(36).slice(2),
+        text: td.text,
+        done: false,
+      })),
+    );
+    setLiveMessage('Template applied');
+    // Focus the next thing the user must type (spec §3.3).
+    setFocus('title');
+  };
+
+  const pickTemplate = (id: string) => {
+    if (!id) return; // '' is a placeholder, not an "undo"
+    const t = templates.find((x) => x._id === id);
+    if (!t) return;
+    // Applying overwrites defaults-owned fields — confirm only when one of
+    // them is already non-empty/dirty; a clean form applies instantly.
+    const dirty =
+      !!(watch('desc') ?? '').trim() ||
+      !!(watch('labelsRaw') ?? '').trim() ||
+      todos.length > 0 ||
+      !!dirtyFields.type ||
+      !!dirtyFields.priority;
+    if (dirty) setPendingTemplate(t);
+    else applyTemplate(t);
+  };
+
+  const templateOptions = useMemo(() => {
+    // Project templates first, workspace ones suffixed (spec §3.1).
+    const project = templates.filter((t) => t.projectId !== null);
+    const ws = templates.filter((t) => t.projectId === null);
+    return [
+      { value: '', label: 'Start from a template…' },
+      ...project.map((t) => ({ value: t._id, label: t.name })),
+      ...ws.map((t) => ({ value: t._id, label: `${t.name} · workspace` })),
+    ];
+  }, [templates]);
 
   const projectOptions = useMemo(
     () => [
@@ -180,10 +241,16 @@ export function IssueModal({
         .filter(Boolean),
       todos,
     };
-    if (issue && issue._id)
-      await update.mutateAsync({ id: issue._id, body });
-    else await create.mutateAsync(body);
-    onClose();
+    try {
+      if (issue && issue._id)
+        await update.mutateAsync({ id: issue._id, body });
+      else await create.mutateAsync(body);
+      onClose();
+    } catch {
+      // The axios interceptor surfaces the error as a toast (e.g. a 403 when
+      // writing to a project you can read but aren't a member of — ADR 0005).
+      // Keep the modal open so the user can retry or pick a different project.
+    }
   });
 
   return (
@@ -198,7 +265,7 @@ export function IssueModal({
             Cancel
           </Button>
           <Button
-            variant="grad"
+            variant="primary"
             onClick={onSubmit}
             disabled={isSubmitting}
           >
@@ -208,6 +275,24 @@ export function IssueModal({
       }
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
+        {/* Polite announcements ("Template applied") for screen readers. */}
+        <span aria-live="polite" className="sr-only">
+          {liveMessage}
+        </span>
+
+        {isCreate && watchedProjectId && templates.length > 0 && (
+          <div className="flex justify-end">
+            <Select
+              inline
+              size="sm"
+              value={templateSel}
+              onValueChange={pickTemplate}
+              options={templateOptions}
+              aria-label="Start from a template"
+            />
+          </div>
+        )}
+
         <Field label="Title" required error={errors.title?.message}>
           <Input
             placeholder="Short summary"
@@ -293,70 +378,19 @@ export function IssueModal({
           </Field>
         </div>
 
-        {/* Checklist */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-[--text]">Checklist</span>
-            {todos.length > 0 && (
-              <span className="text-xs text-[--text-muted]">
-                {doneTodos}/{todos.length} &mdash; {progress}%
-              </span>
-            )}
-          </div>
-
-          {todos.length > 0 && (
-            <div className="w-full h-1.5 rounded-full bg-[--bg-subtle] overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${progress}%`, backgroundColor: 'var(--a)' }}
-              />
-            </div>
-          )}
-
-          {todos.length > 0 && (
-            <div className="flex flex-col gap-1">
-              {todos.map((todo) => (
-                <div key={todo.id} className="group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-[--bg-hover]">
-                  <input
-                    type="checkbox"
-                    checked={todo.done}
-                    onChange={() => toggleTodo(todo.id)}
-                    className="h-4 w-4 shrink-0 cursor-pointer accent-[--a]"
-                  />
-                  <span
-                    className={`flex-1 text-sm ${todo.done ? 'line-through text-[--text-muted]' : 'text-[--text]'}`}
-                  >
-                    {todo.text}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeTodo(todo.id)}
-                    className="opacity-0 group-hover:opacity-100 text-[--text-muted] hover:text-red-500 transition-opacity text-base leading-none"
-                    aria-label="Remove task"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <input
-              ref={newTodoRef}
-              type="text"
-              value={newTodoText}
-              onChange={(e) => setNewTodoText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTodo(); } }}
-              placeholder="Add a task…"
-              className="flex-1 rounded-md border border-[--border] bg-[--bg-input] px-3 py-1.5 text-sm text-[--text] placeholder:text-[--text-muted] outline-none focus:border-[--a] transition-colors"
-            />
-            <Button type="button" variant="outline" onClick={addTodo} className="shrink-0">
-              Add
-            </Button>
-          </div>
-        </div>
+        {/* Checklist (shared block — also used by the template modal) */}
+        <TodoChecklist todos={todos} onChange={setTodos} />
       </form>
+
+      <Confirm
+        open={!!pendingTemplate}
+        title="Apply template"
+        body="Replace the description, priority, labels and checklist with this template's defaults?"
+        onConfirm={() => {
+          if (pendingTemplate) applyTemplate(pendingTemplate);
+        }}
+        onClose={() => setPendingTemplate(null)}
+      />
     </Modal>
   );
 }

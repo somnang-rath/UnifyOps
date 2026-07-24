@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Check, GitMerge, Plus, Search, X } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Textarea } from '@/components/ui/input';
+import { Field, Input, InputWithIcon, Textarea } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import { Tabs } from '@/components/ui/tabs';
@@ -75,7 +75,7 @@ export default function ApprovalsPage() {
             Review and approve changes
           </p>
         </div>
-        <Button variant="grad" onClick={() => setCreating(true)}>
+        <Button variant="primary" onClick={() => setCreating(true)}>
           <Plus className="w-3.5 h-3.5" /> New approval
         </Button>
       </div>
@@ -92,15 +92,14 @@ export default function ApprovalsPage() {
         />
         <div className="flex-1" />
 
-        <div className="flex items-center gap-2 min-w-[220px] px-3 bg-bg-card border-[1.5px] border-border rounded-sm transition-[border-color,box-shadow] duration-[var(--dur)] focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(99,102,241,.12)]">
-          <Search className="w-3.5 h-3.5 text-text-muted" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search…"
-            className="flex-1 border-0 bg-transparent py-2 text-[13px] outline-none placeholder:text-text-muted"
-          />
-        </div>
+        <InputWithIcon
+          icon={<Search />}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search…"
+          aria-label="Search approvals"
+          className="w-[220px]"
+        />
 
         <Select
           inline
@@ -288,7 +287,7 @@ function CreateMRModal({
             Cancel
           </Button>
           <Button
-            variant="grad"
+            variant="primary"
             onClick={onSubmit}
             disabled={isSubmitting}
           >
@@ -420,7 +419,7 @@ function DetailMRModal({
               Decline
             </Button>
             <Button
-              variant="grad"
+              variant="primary"
               onClick={() =>
                 approve.mutate(mr._id, { onSuccess: onClose })
               }

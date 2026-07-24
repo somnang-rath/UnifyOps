@@ -166,7 +166,7 @@ export function ChartConfigModal({
           <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">
             Preview
           </p>
-          <div className="flex-1 border border-border rounded-md bg-white p-3 min-h-[300px] flex flex-col">
+          <div className="flex-1 border border-border rounded-md bg-bg-card p-3 min-h-[300px] flex flex-col">
             {draft.title && (
               <div className="text-center text-[13px] font-semibold text-text mb-1">
                 {draft.title}

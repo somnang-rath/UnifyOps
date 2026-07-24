@@ -60,7 +60,7 @@ export function FunctionWizard({ currentFormula, onInsert, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="bg-white rounded-lg shadow-xl w-[720px] max-h-[560px] flex flex-col overflow-hidden"
+        className="bg-bg-card rounded-lg shadow-xl w-[720px] max-h-[560px] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

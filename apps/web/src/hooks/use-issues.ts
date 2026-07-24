@@ -5,6 +5,7 @@ import {
   useQueryClient,
   type QueryKey,
 } from '@tanstack/react-query';
+import type { ImportResult, ImportRow } from '@prism/types';
 import { api } from '@/lib/api';
 import { toast } from '@/stores/toast-store';
 import type { Issue, IssueTodo, IssueListResponse } from '@/schemas/issue';
@@ -16,6 +17,12 @@ export interface IssueListParams {
   priority?: string;
   q?: string;
   assigneeId?: string;
+  /**
+   * ADR 0011 §2: present → only issues of readable projects in that workspace
+   * (personal `projectId: null` issues are dropped by the API); absent →
+   * today's personal cross-project list. Part of the query key via `params`.
+   */
+  workspaceId?: string;
 }
 
 interface SaveBody {
@@ -45,9 +52,15 @@ const issuesService = {
     api.delete<{ ok: true }>(`/issues/${id}`).then((r) => r.data),
   comment: (id: string, body: string) =>
     api.post<Issue>(`/issues/${id}/comments`, { body }).then((r) => r.data),
-  calendar: (from: string, to: string) =>
+  import: (projectId: string, rows: ImportRow[]) =>
     api
-      .get<Issue[]>('/issues/calendar/range', { params: { from, to } })
+      .post<ImportResult>('/issues/import', { projectId, rows })
+      .then((r) => r.data),
+  calendar: (from: string, to: string, workspaceId?: string) =>
+    api
+      .get<Issue[]>('/issues/calendar/range', {
+        params: { from, to, workspaceId },
+      })
       .then((r) => r.data),
 };
 
@@ -65,10 +78,14 @@ export const useIssue = (id: string | null) =>
     enabled: !!id,
   });
 
-export const useCalendarIssues = (from: string, to: string) =>
+export const useCalendarIssues = (
+  from: string,
+  to: string,
+  workspaceId?: string,
+) =>
   useQuery({
-    queryKey: ['calendar', from, to],
-    queryFn: () => issuesService.calendar(from, to),
+    queryKey: ['calendar', from, to, workspaceId ?? null],
+    queryFn: () => issuesService.calendar(from, to, workspaceId),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
@@ -76,6 +93,10 @@ export const useCalendarIssues = (from: string, to: string) =>
 // Does a list query's params plausibly include this newly-created issue?
 // We use this to decide whether to optimistically inject the temp issue.
 function queryMatches(params: IssueListParams, body: SaveBody): boolean {
+  // A workspace-scoped list never contains personal issues (ADR 0011 §2).
+  // Whether a project-linked issue's project is in that workspace can't be
+  // told client-side — inject optimistically; the settled invalidate corrects.
+  if (params.workspaceId && !body.projectId) return false;
   if (params.projectId && params.projectId !== (body.projectId ?? undefined))
     return false;
   if (
@@ -93,6 +114,29 @@ function queryMatches(params: IssueListParams, body: SaveBody): boolean {
     if (!hay.includes(needle)) return false;
   }
   return true;
+}
+
+/**
+ * CSV bulk import (templates-csv-import spec §1/§4): one request, all rows
+ * attempted, per-row skip — never half-crashed. The dialog owns success/error
+ * rendering (result step), so no toast here; the lists refetch on success.
+ */
+export function useIssueImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      rows,
+    }: {
+      projectId: string;
+      rows: ImportRow[];
+    }) => issuesService.import(projectId, rows),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['issues'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['calendar'] });
+    },
+  });
 }
 
 export function useIssueMutations() {

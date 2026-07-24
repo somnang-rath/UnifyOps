@@ -230,7 +230,7 @@ export function Grid({
   const selIsWholeRow = range.c1 === 0 && range.c2 === cols - 1;
   const showGridlines = sheet.gridlines !== false;
   const cellBorderClass = showGridlines
-    ? 'border-b border-r border-[#e1e3e6]'
+    ? 'border-b border-r border-[var(--sh-gridline)]'
     : 'border-b border-r border-transparent';
   const frozenRows = sheet.frozen?.rows ?? 0;
   const frozenCols = sheet.frozen?.cols ?? 0;
@@ -421,7 +421,7 @@ export function Grid({
       onKeyDown={onKeyDown}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
-      className="sh-grid-wrap flex-1 overflow-auto bg-white relative outline-none focus:outline-none select-none"
+      className="sh-grid-wrap flex-1 overflow-auto bg-[var(--sh-canvas)] text-[var(--sh-text)] relative outline-none focus:outline-none select-none"
       style={{ fontFamily: 'var(--font-khmer), "Kantumruy Pro", system-ui, sans-serif' }}
     >
       <div
@@ -443,10 +443,10 @@ export function Grid({
               <th
                 onClick={onSelectAll}
                 className={cn(
-                  'sticky top-0 left-0 z-30 border-b border-r border-[#c0c0c0] cursor-pointer select-none',
+                  'sticky top-0 left-0 z-30 border-b border-r border-[var(--sh-header-border)] cursor-pointer select-none',
                   range.r1 === 0 && range.r2 === rows - 1 && range.c1 === 0 && range.c2 === cols - 1
-                    ? 'bg-[#c8d8fb]'
-                    : 'bg-[#f8f9fa] hover:bg-[#e8f0fe]',
+                    ? 'bg-[var(--sh-header-bg-sel-strong)]'
+                    : 'bg-[var(--sh-header-bg)] hover:bg-[var(--sh-header-bg-hover)]',
                 )}
                 title="Select all (Ctrl+A)"
               />
@@ -462,11 +462,11 @@ export function Grid({
                     onColHeaderContextMenu(c, ev.clientX, ev.clientY);
                   }}
                   className={cn(
-                    'sticky top-0 z-20 bg-[#f8f9fa] border-b border-r border-[#c0c0c0]',
-                    'text-[11px] font-normal text-[#5f6368] select-none cursor-pointer p-0',
+                    'sticky top-0 z-20 bg-[var(--sh-header-bg)] border-b border-r border-[var(--sh-header-border)]',
+                    'text-[11px] font-normal text-[var(--sh-header-text)] select-none cursor-pointer p-0',
                     c >= range.c1 &&
                       c <= range.c2 &&
-                      'bg-[#e8f0fe] text-[#1a73e8]',
+                      'bg-[var(--sh-header-bg-sel)] text-[var(--sh-accent-text)]',
                   )}
                 >
                   {/* Inner relative wrapper so the resize handle has a reliable
@@ -538,7 +538,7 @@ export function Grid({
                             : [c];
                         onColResize(affectedCols, target);
                       }}
-                      className="absolute top-0 right-0 w-[5px] h-full cursor-col-resize hover:bg-[#1a73e8]/40"
+                      className="absolute top-0 right-0 w-[5px] h-full cursor-col-resize hover:bg-[color:color-mix(in_srgb,var(--sh-accent)_40%,transparent)]"
                       title="Drag to resize, double-click to auto-fit"
                     />
                   </div>
@@ -559,11 +559,11 @@ export function Grid({
                     onRowHeaderContextMenu(r, ev.clientX, ev.clientY);
                   }}
                   className={cn(
-                    'sticky left-0 z-10 bg-[#f8f9fa] border-b border-r border-[#c0c0c0]',
-                    'text-[11px] font-normal text-[#5f6368] select-none text-center cursor-pointer p-0',
+                    'sticky left-0 z-10 bg-[var(--sh-header-bg)] border-b border-r border-[var(--sh-header-border)]',
+                    'text-[11px] font-normal text-[var(--sh-header-text)] select-none text-center cursor-pointer p-0',
                     r >= range.r1 &&
                       r <= range.r2 &&
-                      'bg-[#e8f0fe] text-[#1a73e8]',
+                      'bg-[var(--sh-header-bg-sel)] text-[var(--sh-accent-text)]',
                   )}
                 >
                   {/* Inner relative wrapper — same reason as column header. */}
@@ -608,7 +608,7 @@ export function Grid({
                         ev.stopPropagation();
                         if (rowHeights[r] !== ROW_H) onRowResize([r], ROW_H);
                       }}
-                      className="absolute bottom-0 left-0 right-0 h-[5px] cursor-row-resize hover:bg-[#1a73e8]/40"
+                      className="absolute bottom-0 left-0 right-0 h-[5px] cursor-row-resize hover:bg-[color:color-mix(in_srgb,var(--sh-accent)_40%,transparent)]"
                       title="Drag to resize, double-click to reset"
                     />
                   </div>
@@ -683,14 +683,15 @@ export function Grid({
                     if (stickyRow) tdStyle.top = rowOffsets[r];
                     if (stickyCol) tdStyle.left = colOffsets[c];
                     tdStyle.zIndex = stickyRow && stickyCol ? 5 : stickyRow ? 4 : 3;
-                    if (!tdStyle.backgroundColor) tdStyle.backgroundColor = '#fff';
+                    if (!tdStyle.backgroundColor)
+                      tdStyle.backgroundColor = 'var(--sh-cell-bg)';
                   }
                   // Freeze divider: thicker border on the edge between frozen
                   // and unfrozen panes.
                   if (r === frozenRows - 1)
-                    tdStyle.borderBottom = '2px solid #1a73e8';
+                    tdStyle.borderBottom = '2px solid var(--sh-accent)';
                   if (c === frozenCols - 1)
-                    tdStyle.borderRight = '2px solid #1a73e8';
+                    tdStyle.borderRight = '2px solid var(--sh-accent)';
                   return (
                     <td
                       key={c}
@@ -719,9 +720,9 @@ export function Grid({
                         cellBorderClass,
                         'cursor-cell relative',
                         // Whole-col/row selection: tint cells in the selected band.
-                        selIsWholeCol && c >= range.c1 && c <= range.c2 && !hasContent && 'bg-[#e8f0fe]/60',
-                        selIsWholeRow && r >= range.r1 && r <= range.r2 && !hasContent && 'bg-[#e8f0fe]/60',
-                        hasContent && 'bg-white',
+                        selIsWholeCol && c >= range.c1 && c <= range.c2 && !hasContent && 'bg-[color:color-mix(in_srgb,var(--sh-header-bg-sel)_60%,transparent)]',
+                        selIsWholeRow && r >= range.r1 && r <= range.r2 && !hasContent && 'bg-[color:color-mix(in_srgb,var(--sh-header-bg-sel)_60%,transparent)]',
+                        hasContent && 'bg-[var(--sh-cell-bg)]',
                       )}
                       style={tdStyle}
                     >
@@ -803,7 +804,7 @@ export function Grid({
         {/* Range outline */}
         {!isRangeSingle && (
           <div
-            className="absolute pointer-events-none border-2 border-[#1a73e8] bg-[rgba(26,115,232,0.08)]"
+            className="absolute pointer-events-none border-2 border-[var(--sh-accent)] bg-[color:color-mix(in_srgb,var(--sh-accent)_12%,transparent)]"
             style={{ ...selStyle, zIndex: 5 }}
           />
         )}
@@ -811,7 +812,7 @@ export function Grid({
         {/* Active cell ring */}
         {!editing && (
           <div
-            className="absolute pointer-events-none border-2 border-[#1a73e8]"
+            className="absolute pointer-events-none border-2 border-[var(--sh-accent)]"
             style={{ ...activeStyle, zIndex: 6 }}
           />
         )}
@@ -819,7 +820,7 @@ export function Grid({
         {/* Fill preview during drag */}
         {fillPreviewStyle && (
           <div
-            className="absolute pointer-events-none border-2 border-dashed border-[#1a73e8] bg-[rgba(26,115,232,0.04)]"
+            className="absolute pointer-events-none border-2 border-dashed border-[var(--sh-accent)] bg-[color:color-mix(in_srgb,var(--sh-accent)_6%,transparent)]"
             style={{ ...fillPreviewStyle, zIndex: 7 }}
           />
         )}
@@ -848,7 +849,7 @@ export function Grid({
               ev.stopPropagation();
               onFillStart();
             }}
-            className="absolute w-[8px] h-[8px] bg-[#1a73e8] border border-white rounded-full cursor-crosshair"
+            className="absolute w-[8px] h-[8px] bg-[var(--sh-accent)] border border-[var(--sh-canvas)] rounded-full cursor-crosshair"
             style={{ ...fillHandleStyle, zIndex: 8 }}
             title="Drag to fill"
           />
@@ -857,13 +858,13 @@ export function Grid({
         {/* Resize ghost lines */}
         {colGhostX !== null && (
           <div
-            className="absolute top-0 w-px bg-[#1a73e8] pointer-events-none"
+            className="absolute top-0 w-px bg-[var(--sh-accent)] pointer-events-none"
             style={{ left: colGhostX, height: totalH, zIndex: 50 }}
           />
         )}
         {rowGhostY !== null && (
           <div
-            className="absolute left-0 h-px bg-[#1a73e8] pointer-events-none"
+            className="absolute left-0 h-px bg-[var(--sh-accent)] pointer-events-none"
             style={{ top: rowGhostY, width: totalW, zIndex: 50 }}
           />
         )}
@@ -875,7 +876,7 @@ export function Grid({
               colOffsets[c] != null && (
                 <div
                   key={`pbc${c}`}
-                  className="absolute top-0 pointer-events-none border-l-2 border-dashed border-[#1a73e8]"
+                  className="absolute top-0 pointer-events-none border-l-2 border-dashed border-[var(--sh-accent)]"
                   style={{ left: colOffsets[c], height: totalH, zIndex: 9 }}
                 />
               ),
@@ -886,7 +887,7 @@ export function Grid({
               rowOffsets[r] != null && (
                 <div
                   key={`pbr${r}`}
-                  className="absolute left-0 pointer-events-none border-t-2 border-dashed border-[#1a73e8]"
+                  className="absolute left-0 pointer-events-none border-t-2 border-dashed border-[var(--sh-accent)]"
                   style={{ top: rowOffsets[r], width: totalW, zIndex: 9 }}
                 />
               ),
@@ -935,7 +936,7 @@ export function Grid({
                   'absolute inline-flex items-center justify-center w-[18px] h-[18px] rounded-sm border border-[#188038]',
                   chip.active
                     ? 'bg-[#188038] text-white'
-                    : 'bg-white text-[#188038] hover:bg-[#e6f4ea]',
+                    : 'bg-[var(--sh-cell-bg)] text-[#188038] hover:bg-[#188038]/15',
                 )}
                 style={{
                   top: cellBottom - 19,
@@ -969,6 +970,7 @@ export function Grid({
               onEditChange(e.target.value);
               updateAc(e.target);
             }}
+            onSelect={(e) => updateAc(e.currentTarget)}
             onKeyDown={(e) => {
               const hasAc = acToken && filterFunctions(acToken).length > 0;
               if (hasAc && e.key === 'ArrowDown') {
@@ -1008,7 +1010,7 @@ export function Grid({
               }
             }}
             onBlur={() => { setTimeout(dismissAc, 150); onEditCommit(null); }}
-            className="absolute border-2 border-[#1a73e8] bg-white outline-none px-1 text-[12px] z-10 font-sans"
+            className="absolute border-2 border-[var(--sh-accent)] bg-[var(--sh-cell-bg)] text-[var(--sh-text)] outline-none px-1 text-[12px] z-10 font-sans"
             style={editorStyle}
             spellCheck={false}
           />
@@ -1028,8 +1030,8 @@ function CheckboxGlyph({ checked }: { checked: boolean }) {
       className={cn(
         'inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm border-2',
         checked
-          ? 'bg-[#1a73e8] border-[#1a73e8] text-white'
-          : 'bg-white border-[#80868b]',
+          ? 'bg-[var(--sh-accent)] border-[var(--sh-accent)] text-white'
+          : 'bg-[var(--sh-cell-bg)] border-[var(--sh-header-text)]',
       )}
       aria-hidden
     >
@@ -1211,7 +1213,7 @@ function renderCell(
           rel="noopener noreferrer"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          className="text-[#1a73e8] hover:underline"
+          className="text-[var(--sh-accent-text)] hover:underline"
         >
           {cell.link.text ?? text}
         </a>,

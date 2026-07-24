@@ -16,15 +16,23 @@ import { extractMentionTokens } from '../notifications/mentions.util';
 import { ActivityService } from '../activity/activity.service';
 import { UsersService } from '../users/users.service';
 import { AutomationsService } from '../automations/automations.service';
+import { ProjectAccessService } from '../projects/access/project-access.service';
 
 const oid = (v?: string | null) =>
   v ? new Types.ObjectId(v) : undefined;
+
+/** True when `userId` is one of the (possibly-undefined) stakeholder ids. */
+const isStakeholder = (
+  userId: string,
+  ids: (Types.ObjectId | undefined | null)[],
+) => ids.some((id) => id && String(id) === userId);
 
 @Injectable()
 export class MrsService {
   constructor(
     @InjectModel(MergeRequest.name)
     private model: Model<MergeRequestDocument>,
+    private access: ProjectAccessService,
     private notifs: NotificationsService,
     private activity: ActivityService,
     private users: UsersService,
@@ -50,17 +58,41 @@ export class MrsService {
       .catch(() => {});
   }
 
-  async list(q: ListMRQuery) {
-    const filter: FilterQuery<MergeRequestDocument> = {};
-    if (q.status !== 'all') filter.status = q.status;
-    if (q.projectId) filter.projectId = new Types.ObjectId(q.projectId);
-    if (q.q) filter.title = { $regex: q.q, $options: 'i' };
+  async list(userId: string, q: ListMRQuery) {
+    // Access scope (ADR 0003/0005), matching byId: MRs in a project the caller
+    // can read, plus their own personal (project-less) MRs. Everything below is
+    // intersected with this so neither the items nor the status totals leak.
+    const me = new Types.ObjectId(userId);
+    const readableProjects = await this.access.readableProjectIds(userId);
+    const scope: FilterQuery<MergeRequestDocument> = {
+      $or: [
+        { projectId: { $in: readableProjects } },
+        {
+          projectId: null,
+          $or: [{ authorId: me }, { reviewerId: me }, { decidedById: me }],
+        },
+      ],
+    };
+
+    // The per-status tab totals share every filter EXCEPT status (so each tab
+    // shows how many MRs it would contain), then the status filter is layered on
+    // only for the items/total of the active tab.
+    const totalsConds: FilterQuery<MergeRequestDocument>[] = [scope];
+    if (q.projectId)
+      totalsConds.push({ projectId: new Types.ObjectId(q.projectId) });
+    if (q.q) totalsConds.push({ title: { $regex: q.q, $options: 'i' } });
+    const totalsFilter: FilterQuery<MergeRequestDocument> = { $and: totalsConds };
+
+    const conds = [...totalsConds];
+    if (q.status !== 'all') conds.push({ status: q.status });
+    const filter: FilterQuery<MergeRequestDocument> = { $and: conds };
 
     const skip = (q.page - 1) * q.limit;
     const [items, total, counts] = await Promise.all([
       this.model.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(q.limit).lean(),
       this.model.countDocuments(filter),
       this.model.aggregate<{ _id: MRStatus; n: number }>([
+        { $match: totalsFilter },
         { $group: { _id: '$status', n: { $sum: 1 } } },
       ]),
     ]);
@@ -83,13 +115,22 @@ export class MrsService {
     };
   }
 
-  async byId(id: string) {
+  async byId(userId: string, id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
     const mr = await this.model.findById(id).lean();
     if (!mr) throw new NotFoundException();
+    // Project-linked → project read rule; personal (no project) → stakeholders.
+    const ok = mr.projectId
+      ? await this.access.canReadProjectById(userId, mr.projectId)
+      : isStakeholder(userId, [mr.authorId, mr.reviewerId, mr.decidedById]);
+    // 404 (not 403) on no-access so existence isn't leaked.
+    if (!ok) throw new NotFoundException();
     return mr;
   }
 
   async create(authorId: string, dto: CreateMRDto) {
+    // Opening an MR against a project requires membership; personal MRs are free.
+    await this.access.assertProjectWritable(authorId, dto.projectId ?? null);
     const mr = await this.model.create({
       title: dto.title,
       desc: dto.desc,
@@ -138,6 +179,12 @@ export class MrsService {
   ) {
     const mr = await this.model.findById(id);
     if (!mr) throw new NotFoundException();
+    // Deciding is a write: project member or MR stakeholder only.
+    await this.access.assertCanWrite(
+      userId,
+      mr.projectId ?? null,
+      isStakeholder(userId, [mr.authorId, mr.reviewerId, mr.decidedById]),
+    );
     if (mr.status !== 'open')
       throw new ForbiddenException('Already decided');
     if (mr.reviewerId && String(mr.reviewerId) !== userId)
@@ -196,6 +243,20 @@ export class MrsService {
   }
 
   async addComment(id: string, authorId: string, body: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const target = await this.model
+      .findById(id, { projectId: 1, authorId: 1, reviewerId: 1, decidedById: 1 })
+      .lean();
+    if (!target) throw new NotFoundException();
+    await this.access.assertCanWrite(
+      authorId,
+      target.projectId ?? null,
+      isStakeholder(authorId, [
+        target.authorId,
+        target.reviewerId,
+        target.decidedById,
+      ]),
+    );
     const mr = await this.model.findByIdAndUpdate(
       id,
       {

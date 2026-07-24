@@ -10,6 +10,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { PROJECT_COLORS, type Project } from '@/schemas/project';
 import { useProjectMutations } from '@/hooks/use-projects';
 import { useUsers } from '@/hooks/use-users';
+import { useCurrentWorkspace } from '@/hooks/use-workspaces';
 
 const randomColor = () =>
   PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)];
@@ -33,13 +34,19 @@ export function ProjectModal({
 }: Props) {
   const { create, update } = useProjectMutations();
   const { data: users = [] } = useUsers();
+  const { current: currentWorkspace, workspaces } = useCurrentWorkspace();
 
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [visibility, setVisibility] = useState<Visibility>('private');
   const [color, setColor] = useState<string>(randomColor());
+  const [workspaceId, setWorkspaceId] = useState('');
   const [membersRaw, setMembersRaw] = useState('');
-  const [errors, setErrors] = useState<{ name?: string; members?: string }>({});
+  const [errors, setErrors] = useState<{
+    name?: string;
+    members?: string;
+    workspace?: string;
+  }>({});
   const [submitting, setSubmitting] = useState(false);
   const [suggOpen, setSuggOpen] = useState(false);
   const [suggFocus, setSuggFocus] = useState(0);
@@ -69,12 +76,13 @@ export function ProjectModal({
       setDesc('');
       setVisibility('private');
       setColor(randomColor());
+      setWorkspaceId(currentWorkspace?.id ?? '');
       setMembersRaw('');
     }
     setErrors({});
     setSuggOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, project?._id]);
+  }, [open, project?._id, currentWorkspace?.id]);
 
   // Derive suggestions from the partial text after the last comma
   const partialEmail = membersRaw.split(',').pop()?.trim() ?? '';
@@ -131,6 +139,11 @@ export function ProjectModal({
     if (emails.some((s) => !EMAIL_RE.test(s)))
       next.members = 'One or more emails are invalid';
 
+    // Creating without a workspace makes an orphan only its owner can see
+    // (ADR 0006), so block it here rather than let it through silently.
+    if (!project && !workspaceId && workspaces.length > 0)
+      next.workspace = 'Pick a workspace';
+
     setErrors(next);
     if (Object.keys(next).length) return;
 
@@ -145,7 +158,11 @@ export function ProjectModal({
     setSubmitting(true);
     try {
       if (project) await update.mutateAsync({ id: project._id, body });
-      else await create.mutateAsync(body);
+      else
+        await create.mutateAsync({
+          ...body,
+          ...(workspaceId ? { workspaceId } : {}),
+        });
       onClose();
     } catch {
       // Toast surfaced by the axios interceptor; keep the modal open so the user can retry.
@@ -165,7 +182,7 @@ export function ProjectModal({
             Cancel
           </Button>
           <Button
-            variant="grad"
+            variant="primary"
             type="button"
             onClick={() => onSubmit()}
             disabled={submitting}
@@ -193,6 +210,27 @@ export function ProjectModal({
             onChange={(e) => setDesc(e.target.value)}
           />
         </Field>
+
+        {/* Create-only: the API's UpdateProjectSchema omits workspaceId, so
+            re-homing a project is the instance admin's job, not an edit. */}
+        {!project && workspaces.length > 0 && (
+          <Field
+            label="Workspace"
+            required
+            error={errors.workspace}
+            hint="(who can see this project)"
+          >
+            <Select
+              value={workspaceId}
+              onValueChange={setWorkspaceId}
+              options={workspaces.map((w) => ({
+                value: w.id,
+                label: w.name,
+              }))}
+              placeholder="Select workspace…"
+            />
+          </Field>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Visibility">

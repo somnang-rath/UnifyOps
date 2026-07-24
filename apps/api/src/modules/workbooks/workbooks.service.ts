@@ -149,7 +149,7 @@ export class WorkbooksService {
       name: wb.name,
       sheets: wb.sheets,
     });
-    const safe = String(wb.name || 'workbook').replace(/[^\w\-]+/g, '_');
+    const safe = String(wb.name || 'workbook').replace(/[^\w-]+/g, '_');
     return { buffer, filename: `${safe}.xlsx` };
   }
 

@@ -1,6 +1,6 @@
 'use client';
 import { useMutation } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, AUDIENCE } from '@/lib/api';
 import { hydratePrefs } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth-store';
 import type {
@@ -17,7 +17,9 @@ const onAuthSuccess = (r: AuthResponse) => {
 export function useLogin() {
   return useMutation({
     mutationFn: (i: LoginInput) =>
-      api.post<AuthResponse>('/auth/login', i).then((r) => r.data),
+      api
+        .post<AuthResponse>('/auth/login', { ...i, audience: AUDIENCE })
+        .then((r) => r.data),
     onSuccess: onAuthSuccess,
   });
 }

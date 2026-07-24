@@ -25,7 +25,7 @@ export function TitleBar({
   saveStatus,
 }: Props) {
   return (
-    <div className="flex items-start gap-2 px-3 pt-2 pb-1 bg-white">
+    <div className="flex items-start gap-2 px-3 pt-2 pb-1 bg-bg-card">
       {onBack && (
         <button
           onClick={onBack}
@@ -97,7 +97,7 @@ export function TitleBar({
           title={canShare ? "Share" : "Only the owner can share"}
           className={cn(
             "h-9 px-3 inline-flex items-center gap-1.5 rounded-full text-[13px] font-medium",
-            "bg-[#c2e7ff] text-[#001d35] hover:shadow-sm",
+            "bg-[var(--sh-header-bg-sel-strong)] text-[var(--sh-accent-text)] hover:shadow-sm",
             "disabled:opacity-55 disabled:cursor-not-allowed disabled:hover:shadow-none",
           )}
         >

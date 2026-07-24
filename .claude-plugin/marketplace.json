@@ -1,0 +1,13 @@
+{
+  "name": "prism",
+  "owner": {
+    "name": "Prism"
+  },
+  "plugins": [
+    {
+      "name": "prism-team",
+      "source": "./",
+      "description": "Prism → Plane conversion agents, skills, and guardrail hooks — one install, every teammate aligned."
+    }
+  ]
+}

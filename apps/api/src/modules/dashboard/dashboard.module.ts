@@ -12,6 +12,7 @@ import {
 import { DashboardController } from './dashboard.controller';
 import { BadgesController } from './badges.controller';
 import { DashboardService } from './dashboard.service';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { DashboardService } from './dashboard.service';
       { name: User.name, schema: UserSchema },
       { name: Notification.name, schema: NotificationSchema },
     ]),
+    ChatModule,
   ],
   controllers: [DashboardController, BadgesController],
   providers: [DashboardService],
