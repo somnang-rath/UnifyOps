@@ -32,6 +32,8 @@ export type { CollabToolbarProps } from './toolbar/CollabToolbar';
 export { Btn, Sep, TCtl } from './toolbar/primitives';
 export { LinkPopover } from './toolbar/LinkPopover';
 export { ImageUrlPopover } from './toolbar/ImageUrlPopover';
+export { ColorPopover } from './toolbar/ColorPopover';
+export type { ColorPopoverProps, ColorMode } from './toolbar/ColorPopover';
 export { TableBar } from './toolbar/TableBar';
 
 // React client surface.

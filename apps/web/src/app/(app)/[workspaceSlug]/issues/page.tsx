@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   useParams,
@@ -34,6 +34,8 @@ import {
   type Issue,
 } from '@/schemas/issue';
 import { fmtDateShort, relTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { BulkBar } from './_components/bulk-bar';
 import { ViewsBar } from './_components/views-bar';
 import type { SavedView } from '@/hooks/use-views';
 
@@ -96,6 +98,7 @@ export default function IssuesPage() {
   const [creating, setCreating] = useState(params.get('new') === '1');
   const [editing, setEditing] = useState<Issue | null>(null);
   const [importing, setImporting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Any manual filter change means we've drifted from the applied saved view.
   const touched =
@@ -234,16 +237,69 @@ export default function IssuesPage() {
     return entries;
   }, [groupBy, sortedItems, projectMap, userMap]);
 
+  // The rows exactly as rendered, top to bottom. Peek ordering, select-all and
+  // shift-range all mean "what the user is looking at", so they share this.
+  const flatItems = useMemo(
+    () => (grouped ? grouped.flatMap(([, items]) => items) : sortedItems),
+    [grouped, sortedItems],
+  );
+
   // Peek prev/next follow whatever sort/group the user currently sees.
   const { peekPrevId, peekNextId } = useMemo(() => {
     if (!peekId) return { peekPrevId: null, peekNextId: null };
-    const flat = grouped ? grouped.flatMap(([, items]) => items) : sortedItems;
-    const idx = flat.findIndex((i) => i._id === peekId);
+    const idx = flatItems.findIndex((i) => i._id === peekId);
     return {
-      peekPrevId: idx > 0 ? flat[idx - 1]._id : null,
-      peekNextId: idx >= 0 && idx < flat.length - 1 ? flat[idx + 1]._id : null,
+      peekPrevId: idx > 0 ? flatItems[idx - 1]._id : null,
+      peekNextId:
+        idx >= 0 && idx < flatItems.length - 1 ? flatItems[idx + 1]._id : null,
     };
-  }, [peekId, grouped, sortedItems]);
+  }, [peekId, flatItems]);
+
+  // ── Bulk selection (ADR 0011 §4: ephemeral, never in the URL) ──────────
+  const rowIndex = useMemo(
+    () => new Map(flatItems.map((i, n) => [i._id, n])),
+    [flatItems],
+  );
+  const lastToggled = useRef<string | null>(null);
+
+  // A row that filtered itself out of view must not stay selected and get
+  // silently edited — reconcile against what's actually on screen.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((id) => rowIndex.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rowIndex]);
+
+  const toggleRow = (id: string, extend: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      // Shift-click fills the span from the last toggled row, matching what
+      // every file list does — selecting twenty rows shouldn't take twenty
+      // clicks.
+      const from = extend ? lastToggled.current : null;
+      const a = from != null ? rowIndex.get(from) : undefined;
+      const b = rowIndex.get(id);
+      if (a !== undefined && b !== undefined) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const select = !prev.has(id);
+        for (let n = lo; n <= hi; n++) {
+          const rowId = flatItems[n]._id;
+          if (select) next.add(rowId);
+          else next.delete(rowId);
+        }
+      } else if (next.has(id)) next.delete(id);
+      else next.add(id);
+      lastToggled.current = id;
+      return next;
+    });
+  };
+
+  const allSelected =
+    flatItems.length > 0 && selected.size === flatItems.length;
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(flatItems.map((i) => i._id)));
 
   return (
     <>
@@ -339,26 +395,59 @@ export default function IssuesPage() {
         <div className="text-text-muted text-[13px]">Loading…</div>
       ) : !data || data.items.length === 0 ? (
         <Empty onCreate={() => setCreating(true)} />
-      ) : grouped ? (
-        <div className="flex flex-col gap-4">
-          {grouped.map(([label, items]) => (
-            <section key={label}>
-              <h2 className="flex items-baseline gap-2 mb-1.5 px-0.5 text-[12px] font-semibold uppercase tracking-wide text-text-muted">
-                {label}
-                <span className="font-normal normal-case tracking-normal opacity-70">
-                  {items.length}
-                </span>
-              </h2>
-              <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
-                {items.map((i) => renderRow(i))}
-              </div>
-            </section>
-          ))}
-        </div>
       ) : (
-        <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
-          {sortedItems.map((i) => renderRow(i))}
-        </div>
+        <>
+          <div className="flex items-center gap-2.5 mb-2 px-0.5">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              // Partial selection reads as "some", not "none" — otherwise the
+              // header claims nothing is picked while rows are highlighted.
+              ref={(el) => {
+                if (el)
+                  el.indeterminate = selected.size > 0 && !allSelected;
+              }}
+              onChange={toggleAll}
+              aria-label="Select all tasks"
+              className="h-4 w-4 shrink-0 cursor-pointer accent-[--a]"
+            />
+            <span className="text-[12px] text-text-muted">
+              {selected.size > 0
+                ? `${selected.size} of ${flatItems.length} selected`
+                : `Select all (${flatItems.length})`}
+            </span>
+          </div>
+
+          {grouped ? (
+            <div className="flex flex-col gap-4">
+              {grouped.map(([label, items]) => (
+                <section key={label}>
+                  <h2 className="flex items-baseline gap-2 mb-1.5 px-0.5 text-[12px] font-semibold uppercase tracking-wide text-text-muted">
+                    {label}
+                    <span className="font-normal normal-case tracking-normal opacity-70">
+                      {items.length}
+                    </span>
+                  </h2>
+                  <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
+                    {items.map((i) => renderRow(i))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
+              {sortedItems.map((i) => renderRow(i))}
+            </div>
+          )}
+        </>
+      )}
+
+      {selected.size > 0 && (
+        <BulkBar
+          ids={[...selected]}
+          users={users}
+          onClear={() => setSelected(new Set())}
+        />
       )}
 
       <IssueModal
@@ -395,9 +484,31 @@ export default function IssuesPage() {
     const author = i.authorId ? userMap.get(i.authorId) : undefined;
     const assignee = i.assigneeId ? userMap.get(i.assigneeId) : undefined;
     const labels = (i.labels ?? []).slice(0, 3);
+    const isSelected = selected.has(i._id);
     return (
+      // The checkbox lives outside the Link — nesting it would make every
+      // selection click also navigate.
+      <div
+        key={i._id}
+        className={cn(
+          'flex items-center border-b border-border last:border-b-0 transition-colors duration-[var(--dur)]',
+          isSelected ? 'bg-bg-hover' : 'hover:bg-bg-hover',
+        )}
+      >
+        <label className="flex items-center pl-[18px] pr-0.5 py-3.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            // onClick, not onChange: only the click event carries shiftKey,
+            // which is what drives range selection.
+            onClick={(e) => toggleRow(i._id, e.shiftKey)}
+            onChange={() => {}}
+            data-row-select={i._id}
+            aria-label={`Select ${i.title}`}
+            className="h-4 w-4 shrink-0 cursor-pointer accent-[--a]"
+          />
+        </label>
               <Link
-                key={i._id}
                 href={`${pathname}/${i._id}`}
                 // Plain left click opens the peek; modified clicks and
                 // middle-click keep the real link behavior (spec §3.1).
@@ -410,7 +521,7 @@ export default function IssuesPage() {
                   // push → browser Back closes the peek
                   router.push(`${pathname}?${next.toString()}`, { scroll: false });
                 }}
-                className="flex items-center gap-3.5 px-[18px] py-3.5 border-b border-border last:border-b-0 cursor-pointer transition-colors duration-[var(--dur)] hover:bg-bg-hover"
+                className="flex flex-1 min-w-0 items-center gap-3.5 pl-2.5 pr-[18px] py-3.5 cursor-pointer"
               >
                 <IssueTypeIcon type={i.type} />
                 <div className="flex-1 min-w-0">
@@ -451,6 +562,7 @@ export default function IssuesPage() {
                   {assignee && <Avatar name={assignee.name} src={assignee.avatar} size="sm" />}
                 </div>
               </Link>
+      </div>
     );
   }
 }

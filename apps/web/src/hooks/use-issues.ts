@@ -38,6 +38,35 @@ interface SaveBody {
   todos: IssueTodo[];
 }
 
+/**
+ * Bulk edit payload (Phase 7b). Mirrors the API's `BulkPatchSchema`: labels
+ * are add/remove, never a replacement list, so a mixed selection can't have
+ * labels silently wiped.
+ */
+export interface BulkPatch {
+  status?: string;
+  priority?: string;
+  type?: string;
+  assigneeId?: string | null;
+  dueDate?: string | null;
+  addLabels?: string[];
+  removeLabels?: string[];
+}
+
+/** Partial success is the contract — some ids can fail while the rest land. */
+interface BulkFailure {
+  id: string;
+  reason: string;
+}
+export interface BulkUpdateResult {
+  updated: number;
+  failed: BulkFailure[];
+}
+export interface BulkDeleteResult {
+  deleted: number;
+  failed: BulkFailure[];
+}
+
 const issuesService = {
   list: (params: IssueListParams = {}) =>
     api
@@ -55,6 +84,14 @@ const issuesService = {
   import: (projectId: string, rows: ImportRow[]) =>
     api
       .post<ImportResult>('/issues/import', { projectId, rows })
+      .then((r) => r.data),
+  bulkUpdate: (ids: string[], patch: BulkPatch) =>
+    api
+      .post<BulkUpdateResult>('/issues/bulk', { ids, patch })
+      .then((r) => r.data),
+  bulkRemove: (ids: string[]) =>
+    api
+      .post<BulkDeleteResult>('/issues/bulk/delete', { ids })
       .then((r) => r.data),
   calendar: (from: string, to: string, workspaceId?: string) =>
     api
@@ -137,6 +174,52 @@ export function useIssueImport() {
       qc.invalidateQueries({ queryKey: ['calendar'] });
     },
   });
+}
+
+/**
+ * Bulk edit / delete for the issues list (Phase 7b). No optimistic patching:
+ * the API decides per issue, so guessing which rows moved would be a lie half
+ * the time — invalidate and let the refetch show what actually happened.
+ *
+ * The toast tells the truth about partial success rather than claiming a
+ * clean sweep the server didn't make.
+ */
+export function useIssueBulk() {
+  const qc = useQueryClient();
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['issues'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['calendar'] });
+  };
+  const report = (verb: string) => (n: number, failed: BulkFailure[]) => {
+    if (n === 0) {
+      toast(`Nothing ${verb} — ${failed[0]?.reason ?? 'no access'}`, 'error');
+      return;
+    }
+    if (failed.length > 0) {
+      toast(`${n} ${verb}, ${failed.length} skipped`, 'success');
+      return;
+    }
+    toast(`${n} ${n === 1 ? 'item' : 'items'} ${verb}`, 'success');
+  };
+
+  return {
+    update: useMutation({
+      mutationFn: ({ ids, patch }: { ids: string[]; patch: BulkPatch }) =>
+        issuesService.bulkUpdate(ids, patch),
+      onSuccess: (r) => {
+        report('updated')(r.updated, r.failed);
+        refresh();
+      },
+    }),
+    remove: useMutation({
+      mutationFn: (ids: string[]) => issuesService.bulkRemove(ids),
+      onSuccess: (r) => {
+        report('deleted')(r.deleted, r.failed);
+        refresh();
+      },
+    }),
+  };
 }
 
 export function useIssueMutations() {

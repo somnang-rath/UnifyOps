@@ -25,6 +25,7 @@ import {
   Save,
   Sparkles,
   Star,
+  StretchHorizontal,
   Trash2,
   X,
   Zap,
@@ -85,6 +86,24 @@ const LIVE_URL = process.env.NEXT_PUBLIC_LIVE_URL ?? ""
 const EDITOR_PLACEHOLDER =
   "Start writing — use the toolbar for tasks, tables, images…"
 
+/**
+ * Content measure. The gutters are whatever is left over, so this is really a
+ * "how much side margin do you want" control — the reason it's a user setting
+ * and not a constant is that the right answer differs per screen and per note
+ * (prose vs. wide tables). Persisted in localStorage, no server round-trip.
+ */
+const WIDTHS = [
+  { key: "narrow", label: "Narrow", hint: "680px", cls: "max-w-[680px]" },
+  { key: "normal", label: "Normal", hint: "880px", cls: "max-w-[880px]" },
+  { key: "wide", label: "Wide", hint: "1140px", cls: "max-w-[1140px]" },
+  { key: "full", label: "Full width", hint: "no limit", cls: "max-w-none" },
+] as const
+
+type WidthKey = (typeof WIDTHS)[number]["key"]
+
+/** Wide by default: the old fixed 760px left far too much dead gutter. */
+const DEFAULT_WIDTH: WidthKey = "wide"
+
 const emptyDraft = (folderId: string | null = null): Draft => ({
   title: "",
   emoji: "📄",
@@ -104,6 +123,17 @@ interface CollabUi {
   tokenFailed: boolean
   /** Token still loading (before the first mint resolves). */
   connecting: boolean
+  /**
+   * The token minted fine but the live server never answered the socket —
+   * apps/live is down, or NEXT_PUBLIC_LIVE_URL points somewhere it isn't.
+   * Distinct from `tokenFailed` (auth) and `disconnected` (dropped mid-session).
+   */
+  unreachable: boolean
+  /**
+   * The live server answered but refused the socket — an expired or revoked
+   * collab token, not a reachability problem. Retrying re-mints the token.
+   */
+  rejected: boolean
 }
 
 const initialCollabUi = (): CollabUi => ({
@@ -113,6 +143,8 @@ const initialCollabUi = (): CollabUi => ({
   canWrite: null,
   tokenFailed: false,
   connecting: true,
+  unreachable: false,
+  rejected: false,
 })
 
 /**
@@ -139,17 +171,23 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [headerCompact, setHeaderCompact] = useState(false)
+  const [width, setWidth] = useState<WidthKey>(DEFAULT_WIDTH)
+  const [widthOpen, setWidthOpen] = useState(false)
   const [treeOpen, setTreeOpen] = useState(false)
   const [folderPrompt, setFolderPrompt] = useState<{
     parentId: string | null
   } | null>(null)
   const [collabUi, setCollabUi] = useState<CollabUi>(initialCollabUi)
   const [words, setWords] = useState(0)
+  // The Tiptap instance, lifted out of the editor pane so the toolbar can live
+  // in the action bar at the top of the pane instead of above the text.
+  const [editor, setEditor] = useState<Editor | null>(null)
   const retryRef = useRef<() => void>(() => {})
   const skipNextLoadRef = useRef(false)
   const persistRef = useRef(false)
   const emojiBtnRef = useRef<HTMLDivElement>(null)
   const tplBtnRef = useRef<HTMLDivElement>(null)
+  const widthBtnRef = useRef<HTMLDivElement>(null)
 
   const { data: activeNote, error: activeNoteError } = useNote(activeId)
 
@@ -160,6 +198,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     setLastCollabId(activeId)
     setCollabUi(initialCollabUi())
     setWords(0)
+    setEditor(null)
   }
 
   const patchCollabUi = useCallback((patch: Partial<CollabUi>) => {
@@ -250,7 +289,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
 
   // Close popovers on outside click. Skip while a portal Modal is open.
   useEffect(() => {
-    if (!emojiOpen && !tplOpen) return
+    if (!emojiOpen && !tplOpen && !widthOpen) return
     const onDoc = (e: MouseEvent) => {
       if (document.querySelector(".animate-modal-in")) return
       const t = e.target as HTMLElement
@@ -258,10 +297,12 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
         setEmojiOpen(false)
       if (tplOpen && tplBtnRef.current && !tplBtnRef.current.contains(t))
         setTplOpen(false)
+      if (widthOpen && widthBtnRef.current && !widthBtnRef.current.contains(t))
+        setWidthOpen(false)
     }
     document.addEventListener("mousedown", onDoc)
     return () => document.removeEventListener("mousedown", onDoc)
-  }, [emojiOpen, tplOpen])
+  }, [emojiOpen, tplOpen, widthOpen])
 
   // Keyboard shortcuts: Ctrl+S (save details), Ctrl+Shift+N, Esc (exit fullscreen)
   useEffect(() => {
@@ -285,11 +326,13 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, draft, isFullscreen])
 
-  // Load header-compact preference from localStorage after mount
+  // Load layout preferences from localStorage after mount (unavailable in SSR).
   useEffect(() => {
     try {
       const saved = localStorage.getItem("notes-header-compact")
       if (saved !== null) setHeaderCompact(saved === "true")
+      const w = localStorage.getItem("notes-editor-width")
+      if (w && WIDTHS.some((o) => o.key === w)) setWidth(w as WidthKey)
     } catch {}
   }, [])
 
@@ -427,6 +470,15 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
     try { localStorage.setItem("notes-header-compact", String(next)) } catch {}
   }
 
+  const pickWidth = (key: WidthKey) => {
+    setWidth(key)
+    setWidthOpen(false)
+    try { localStorage.setItem("notes-editor-width", key) } catch {}
+  }
+
+  const widthCls =
+    (WIDTHS.find((o) => o.key === width) ?? WIDTHS[2]).cls
+
   const folderPath = useMemo(() => {
     const map = new Map(folders.map((f) => [f._id, f]))
     const walk = (id: string | null): string[] => {
@@ -464,13 +516,17 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
   // Footer dot + text (§1.4), mirroring the sync pill.
   const footer = collabUi.tokenFailed
     ? { dot: "bg-red", text: "Disconnected" }
-    : collabUi.connecting || collabUi.status === "connecting"
-      ? { dot: "bg-text-muted", text: "Connecting…" }
-      : collabUi.status === "disconnected"
-        ? { dot: "bg-amber", text: "Offline — edits stored locally" }
-        : collabUi.saveState === "saving"
-          ? { dot: "bg-amber", text: "Syncing…" }
-          : { dot: "bg-green", text: "Synced" }
+    : collabUi.rejected
+      ? { dot: "bg-red", text: "Access to this note was refused" }
+      : collabUi.unreachable
+      ? { dot: "bg-red", text: "Collaboration server unreachable" }
+      : collabUi.connecting || collabUi.status === "connecting"
+        ? { dot: "bg-text-muted", text: "Connecting…" }
+        : collabUi.status === "disconnected"
+          ? { dot: "bg-amber", text: "Offline — edits stored locally" }
+          : collabUi.saveState === "saving"
+            ? { dot: "bg-amber", text: "Syncing…" }
+            : { dot: "bg-green", text: "Synced" }
 
   return (
     <div
@@ -483,15 +539,20 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
       )}
     >
       <main className="h-full bg-bg-card border border-border rounded-lg flex flex-col overflow-hidden relative">
-        {/* Action bar */}
-        <div className="flex-shrink-0 flex items-center gap-1 px-4 py-2.5 border-b border-border bg-[color:color-mix(in_srgb,var(--bg-card)_92%,transparent)] backdrop-blur relative z-10">
+        {/* Action bar — document actions *and* the formatting toolbar, which
+            used to sit above the text. The toolbar is always exactly one line
+            (it collapses its own tail into a "More" popover), so the only
+            question here is whether it shares this row: from xl up it does,
+            below that it takes a full-width line of its own rather than being
+            squeezed to nothing by the document actions. */}
+        <div className="flex-shrink-0 flex flex-wrap items-center gap-1 px-3 py-2 border-b border-border bg-[color:color-mix(in_srgb,var(--bg-card)_92%,transparent)] backdrop-blur relative z-10">
           {/* Browse notes */}
           <button
             type="button"
             title="Browse notes"
             onClick={() => setTreeOpen((v) => !v)}
             className={cn(
-              "w-8 h-8 rounded-sm flex items-center justify-center transition-all duration-[var(--dur)]",
+              "order-1 w-8 h-8 rounded-sm flex items-center justify-center transition-all duration-[var(--dur)]",
               treeOpen
                 ? "bg-accent-50 text-accent shadow-xs"
                 : "text-text-muted hover:bg-bg-hover hover:text-text",
@@ -500,136 +561,190 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
             <ListTree className="w-3.5 h-3.5" />
           </button>
 
-          <div className="flex-1" />
-
-          {/* Presence + sync pill (§1.3/§1.4) — before the buttons so they stay
-              visible at narrow widths. */}
-          {activeId && (
-            <>
-              <PresenceStack users={collabUi.presence} />
-              <SyncPill
-                connecting={collabUi.connecting}
-                status={collabUi.status}
-                tokenFailed={collabUi.tokenFailed}
-                onRetry={() => retryRef.current()}
+          {/* Formatting toolbar (spec §2.3). Read-only notes get no toolbar —
+              the lock banner in the card explains why. */}
+          {activeId && collabUi.canWrite !== false && (
+            <div className="order-3 w-full min-w-0 mt-1 pt-1.5 border-t border-border xl:order-2 xl:w-auto xl:flex-1 xl:mt-0 xl:pt-0 xl:border-t-0 xl:pl-1">
+              <CollabToolbar
+                editor={editor}
+                onUpload={uploadEditorFile}
+                variant="bar"
               />
-            </>
+            </div>
           )}
 
-          <div ref={tplBtnRef} className="relative">
-            <ActionButton
-              title="Templates"
-              onClick={() => setTplOpen((v) => !v)}
-            >
-              <Zap className="w-3.5 h-3.5" />
-            </ActionButton>
-            {tplOpen && (
-              <div className="absolute right-0 top-full mt-1 w-[280px] bg-bg-card border border-border rounded-md shadow-lg overflow-hidden animate-slide-up z-20">
-                <div className="px-3 py-1.5 text-[10.5px] uppercase tracking-[.06em] font-bold text-text-muted border-b border-border">
-                  Templates
-                </div>
-                {TEMPLATES.map((t) => {
-                  const Icon = TEMPLATE_ICONS[t.key] || Sparkles
-                  return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => {
-                        setTplOpen(false)
-                        createNote(draft.folderId ?? null, t.key)
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-bg-hover"
-                    >
-                      <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
-                      <div className="flex-1 min-w-0 leading-tight">
-                        <strong className="block text-[12.5px]">
-                          {t.title}
-                        </strong>
-                        <span className="block text-[11px] text-text-muted">
-                          {t.caption}
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+          {/* Document actions. On the shared row a left border keeps them from
+              reading as a continuation of the formatting controls. */}
+          <div className="order-2 ml-auto flex flex-wrap items-center justify-end gap-1 xl:order-3 xl:border-l xl:border-border xl:pl-2">
+            {/* Presence + sync pill (§1.3/§1.4) — before the buttons so they stay
+                visible at narrow widths. */}
+            {activeId && (
+              <>
+                <PresenceStack users={collabUi.presence} />
+                <SyncPill
+                  connecting={collabUi.connecting}
+                  status={collabUi.status}
+                  tokenFailed={collabUi.tokenFailed}
+                  unreachable={collabUi.unreachable}
+                  rejected={collabUi.rejected}
+                  onRetry={() => retryRef.current()}
+                />
+              </>
             )}
-          </div>
 
-          <ActionButton
-            title={draft.pinned ? "Unpin" : "Pin"}
-            onClick={togglePin}
-            disabled={!activeId || readOnly}
-            active={draft.pinned}
-          >
-            <Star className={cn("w-3.5 h-3.5", draft.pinned && "fill-amber")} />
-          </ActionButton>
-          <ActionButton
-            title="Move to folder"
-            onClick={() => setMoveOpen(true)}
-            disabled={!activeId || readOnly}
-          >
-            <FolderIcon className="w-3.5 h-3.5" />
-          </ActionButton>
-          <ActionButton
-            title="Delete note"
-            onClick={() => setConfirmDelete(true)}
-            disabled={!activeId || readOnly}
-            danger
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </ActionButton>
-          <ActionButton
-            title="Export as PDF"
-            onClick={exportPdf}
-            disabled={!activeId}
-          >
-            <Download className="w-3.5 h-3.5" />
-          </ActionButton>
-          <span className="w-px h-5 bg-border mx-1" />
-          <button
-            type="button"
-            title={headerCompact ? "Show full header" : "Compact header"}
-            onClick={toggleHeaderCompact}
-            className={cn(
-              "w-8 h-8 rounded-sm flex items-center justify-center text-[11px] font-bold transition-colors",
-              headerCompact
-                ? "bg-accent-50 text-accent"
-                : "text-text-muted hover:bg-bg-hover hover:text-text",
-            )}
-          >
-            S
-          </button>
-          <span className="w-px h-5 bg-border mx-1" />
-          <ActionButton
-            title="New folder"
-            onClick={() => setFolderPrompt({ parentId: null })}
-          >
-            <FolderPlus className="w-3.5 h-3.5" />
-          </ActionButton>
-          <ActionButton title="New note" onClick={() => createNote(null)}>
-            <FilePlus className="w-3.5 h-3.5" />
-          </ActionButton>
-          <ActionButton
-            title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
-            onClick={() => setIsFullscreen((v) => !v)}
-            active={isFullscreen}
-          >
-            {isFullscreen ? (
-              <Minimize2 className="w-3.5 h-3.5" />
-            ) : (
-              <Maximize2 className="w-3.5 h-3.5" />
-            )}
-          </ActionButton>
-          <ActionButton
-            title={readOnly ? "Read-only" : "Save details"}
-            onClick={manualSave}
-            disabled={!activeId || !dirty || readOnly}
-            primary
-          >
-            <Save className="w-3.5 h-3.5" />
-          </ActionButton>
-        </div>
+            <div ref={tplBtnRef} className="relative">
+              <ActionButton
+                title="Templates"
+                onClick={() => setTplOpen((v) => !v)}
+              >
+                <Zap className="w-3.5 h-3.5" />
+              </ActionButton>
+              {tplOpen && (
+                <div className="absolute right-0 top-full mt-1 w-[280px] bg-bg-card border border-border rounded-md shadow-lg overflow-hidden animate-slide-up z-20">
+                  <div className="px-3 py-1.5 text-[10.5px] uppercase tracking-[.06em] font-bold text-text-muted border-b border-border">
+                    Templates
+                  </div>
+                  {TEMPLATES.map((t) => {
+                    const Icon = TEMPLATE_ICONS[t.key] || Sparkles
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => {
+                          setTplOpen(false)
+                          createNote(draft.folderId ?? null, t.key)
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-bg-hover"
+                      >
+                        <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
+                        <div className="flex-1 min-w-0 leading-tight">
+                          <strong className="block text-[12.5px]">
+                            {t.title}
+                          </strong>
+                          <span className="block text-[11px] text-text-muted">
+                            {t.caption}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <ActionButton
+              title={draft.pinned ? "Unpin" : "Pin"}
+              onClick={togglePin}
+              disabled={!activeId || readOnly}
+              active={draft.pinned}
+            >
+              <Star className={cn("w-3.5 h-3.5", draft.pinned && "fill-amber")} />
+            </ActionButton>
+            <ActionButton
+              title="Move to folder"
+              onClick={() => setMoveOpen(true)}
+              disabled={!activeId || readOnly}
+            >
+              <FolderIcon className="w-3.5 h-3.5" />
+            </ActionButton>
+            <ActionButton
+              title="Delete note"
+              onClick={() => setConfirmDelete(true)}
+              disabled={!activeId || readOnly}
+              danger
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </ActionButton>
+            <ActionButton
+              title="Export as PDF"
+              onClick={exportPdf}
+              disabled={!activeId}
+            >
+              <Download className="w-3.5 h-3.5" />
+            </ActionButton>
+            <span className="w-px h-5 bg-border mx-1" />
+            <button
+              type="button"
+              title={headerCompact ? "Show full header" : "Compact header"}
+              onClick={toggleHeaderCompact}
+              className={cn(
+                "w-8 h-8 rounded-sm flex items-center justify-center text-[11px] font-bold transition-colors",
+                headerCompact
+                  ? "bg-accent-50 text-accent"
+                  : "text-text-muted hover:bg-bg-hover hover:text-text",
+              )}
+            >
+              S
+            </button>
+
+            {/* Content width — how much gutter is left on either side. */}
+            <div ref={widthBtnRef} className="relative">
+              <ActionButton
+                title="Content width"
+                onClick={() => setWidthOpen((v) => !v)}
+                active={widthOpen}
+              >
+                <StretchHorizontal className="w-3.5 h-3.5" />
+              </ActionButton>
+              {widthOpen && (
+                <div className="absolute right-0 top-full mt-1 w-[200px] bg-bg-card border border-border rounded-md shadow-lg overflow-hidden animate-slide-up z-20">
+                  <div className="px-3 py-1.5 text-[10.5px] uppercase tracking-[.06em] font-bold text-text-muted border-b border-border">
+                    Content width
+                  </div>
+                  {WIDTHS.map((o) => (
+                    <button
+                      key={o.key}
+                      type="button"
+                      onClick={() => pickWidth(o.key)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-bg-hover",
+                        width === o.key && "text-accent",
+                      )}
+                    >
+                      <span className="flex-1">{o.label}</span>
+                      <span className="text-[11px] text-text-muted">
+                        {o.hint}
+                      </span>
+                      {width === o.key && (
+                        <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <span className="w-px h-5 bg-border mx-1" />
+            <ActionButton
+              title="New folder"
+              onClick={() => setFolderPrompt({ parentId: null })}
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+            </ActionButton>
+            <ActionButton title="New note" onClick={() => createNote(null)}>
+              <FilePlus className="w-3.5 h-3.5" />
+            </ActionButton>
+            <ActionButton
+              title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+              onClick={() => setIsFullscreen((v) => !v)}
+              active={isFullscreen}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-3.5 h-3.5" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5" />
+              )}
+            </ActionButton>
+            <ActionButton
+              title={readOnly ? "Read-only" : "Save details"}
+              onClick={manualSave}
+              disabled={!activeId || !dirty || readOnly}
+              primary
+            >
+              <Save className="w-3.5 h-3.5" />
+            </ActionButton>
+          </div>{/* action group */}
+        </div>{/* action bar */}
 
         <div className="flex-1 relative overflow-hidden">
           {treeOpen && (
@@ -668,7 +783,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
             </Button>
           </div>
         ) : (
-          <div className="max-w-[760px] mx-auto py-6 px-6">
+          <div className={cn("mx-auto py-6 px-4 sm:px-6", widthCls)}>
             <fieldset
               disabled={readOnly}
               className="contents disabled:opacity-100"
@@ -824,6 +939,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
                 readOnlyNotice={readOnlyNotice}
                 onUi={patchCollabUi}
                 onWords={setWords}
+                onEditor={setEditor}
                 retryRef={retryRef}
               />
             ) : (
@@ -939,6 +1055,7 @@ function NoteEditorPane({
   readOnlyNotice,
   onUi,
   onWords,
+  onEditor,
   retryRef,
 }: {
   note: Note
@@ -946,6 +1063,8 @@ function NoteEditorPane({
   readOnlyNotice: React.ReactNode
   onUi: (patch: Partial<CollabUi>) => void
   onWords: (n: number) => void
+  /** Publishes the Tiptap instance to the host's action-bar toolbar. */
+  onEditor: (editor: Editor | null) => void
   retryRef: React.MutableRefObject<() => void>
 }) {
   const collab = useNoteCollab(note._id)
@@ -958,8 +1077,17 @@ function NoteEditorPane({
   }, [collab.token])
   const token = collab.token ?? heldToken
 
+  // The editor's own socket-level reconnect, published by renderChrome below.
+  const socketReconnectRef = useRef<() => void>(() => {})
+
+  // One Retry button, two possible faults: re-mint the token AND re-open the
+  // socket, since the user can't tell which layer failed.
   useEffect(() => {
-    retryRef.current = collab.refresh
+    const refresh = collab.refresh
+    retryRef.current = () => {
+      refresh()
+      socketReconnectRef.current()
+    }
   }, [collab.refresh, retryRef])
 
   // Lift token-derived state into the host chrome.
@@ -971,10 +1099,22 @@ function NoteEditorPane({
     })
   }, [collab.token, collab.canWrite, collab.error, heldToken, token, onUi])
 
+  // Hand the editor to the host on ready, and take it back on unmount so the
+  // toolbar can never act on a destroyed instance after a note switch.
+  const onEditorRef = useRef(onEditor)
+  onEditorRef.current = onEditor
+  useEffect(
+    () => () => {
+      onEditorRef.current(null)
+    },
+    [],
+  )
+
   // Word count / read time from the live doc, throttled ~500ms (§4).
   const wordsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleReady = useCallback(
     (editor: Editor) => {
+      onEditorRef.current(editor)
       const compute = () => {
         if (editor.isDestroyed) return
         const doc = editor.state.doc
@@ -1040,16 +1180,46 @@ function NoteEditorPane({
         onSaveStateChange={(saveState) => onUi({ saveState })}
         onReady={handleReady}
         className="prism-collab-inline"
-        renderChrome={({ editor }) => (
+        renderChrome={({ unreachable, rejected, reconnect }) => (
           <>
+            <CollabChromeSync
+              unreachable={unreachable}
+              rejected={rejected}
+              reconnect={reconnect}
+              onUi={onUi}
+              reconnectRef={socketReconnectRef}
+            />
+            {(unreachable || rejected) && (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg border-b border-border bg-[color:color-mix(in_srgb,var(--red)_8%,transparent)] text-[12px] text-text-sub">
+                <CloudOff className="w-3.5 h-3.5 flex-shrink-0 text-red" />
+                <span className="flex-1">
+                  {rejected ? (
+                    <>
+                      The collaboration server refused this session — your access
+                      may have changed, or the editing token expired. Your edits
+                      are kept locally.
+                    </>
+                  ) : (
+                    <>
+                      Can&apos;t reach the collaboration server — your edits are
+                      kept locally and will sync once it&apos;s back.
+                    </>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={reconnect}
+                  className="underline underline-offset-2 font-semibold text-red"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             {!canWrite && (
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg border-b border-border bg-bg-subtle text-[12px] text-text-sub">
                 <Lock className="w-3.5 h-3.5 flex-shrink-0" />
                 <span>{readOnlyNotice}</span>
               </div>
-            )}
-            {canWrite && (
-              <CollabToolbar editor={editor} onUpload={uploadEditorFile} />
             )}
           </>
         )}
@@ -1058,14 +1228,46 @@ function NoteEditorPane({
   )
 }
 
-/** Connecting state (§3.1): disabled toolbar skeleton + text skeleton. */
+/**
+ * Effect-only bridge: `renderChrome` runs during the editor's render, so the
+ * socket-level state it hands us has to be lifted from a child component rather
+ * than set inline. Renders nothing.
+ */
+function CollabChromeSync({
+  unreachable,
+  rejected,
+  reconnect,
+  onUi,
+  reconnectRef,
+}: {
+  unreachable: boolean
+  rejected: boolean
+  reconnect: () => void
+  onUi: (patch: Partial<CollabUi>) => void
+  reconnectRef: React.MutableRefObject<() => void>
+}) {
+  useEffect(() => {
+    onUi({ unreachable, rejected })
+  }, [unreachable, rejected, onUi])
+
+  useEffect(() => {
+    reconnectRef.current = reconnect
+  }, [reconnect, reconnectRef])
+
+  return null
+}
+
+/**
+ * Connecting state (§3.1). The toolbar lives in the action bar now, where it
+ * renders its own disabled skeleton while `editor` is null — so this pane only
+ * has to stand in for the text.
+ */
 function ConnectingPane() {
   return (
     <div
       aria-busy="true"
       className="border border-border rounded-lg bg-bg-card"
     >
-      <CollabToolbar editor={null} sticky={false} />
       <div className="px-4 py-4">
         <SkeletonText lines={6} />
       </div>
@@ -1115,11 +1317,15 @@ function SyncPill({
   connecting,
   status,
   tokenFailed,
+  unreachable,
+  rejected,
   onRetry,
 }: {
   connecting: boolean
   status: ConnectionStatus
   tokenFailed: boolean
+  unreachable: boolean
+  rejected: boolean
   onRetry: () => void
 }) {
   let pill: React.ReactNode = null
@@ -1127,6 +1333,40 @@ function SyncPill({
     pill = (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[color:color-mix(in_srgb,var(--red)_12%,transparent)] text-red">
         Can&apos;t connect
+        <button
+          type="button"
+          onClick={onRetry}
+          className="underline underline-offset-2 font-semibold"
+        >
+          Retry
+        </button>
+      </span>
+    )
+  } else if (rejected) {
+    pill = (
+      <span
+        title="The live server answered but refused this session — the collab token expired or your access to the note changed. Retry re-mints it."
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[color:color-mix(in_srgb,var(--red)_12%,transparent)] text-red"
+      >
+        <Lock className="w-3 h-3" />
+        Access refused
+        <button
+          type="button"
+          onClick={onRetry}
+          className="underline underline-offset-2 font-semibold"
+        >
+          Retry
+        </button>
+      </span>
+    )
+  } else if (unreachable) {
+    pill = (
+      <span
+        title="The live collaboration server (apps/live, :3100) is not responding. Start it with `pnpm dev:live`."
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[color:color-mix(in_srgb,var(--red)_12%,transparent)] text-red"
+      >
+        <CloudOff className="w-3 h-3" />
+        Server unreachable
         <button
           type="button"
           onClick={onRetry}

@@ -18,6 +18,7 @@ export function Btn({
   active,
   anchor,
   pressed,
+  disabled,
   onClick,
   children,
 }: React.PropsWithChildren<{
@@ -25,6 +26,8 @@ export function Btn({
   active?: boolean;
   anchor?: boolean;
   pressed?: boolean;
+  /** Greys the button out — used for undo/redo and list indent/outdent. */
+  disabled?: boolean;
   onClick: () => void;
 }>) {
   return (
@@ -33,6 +36,7 @@ export function Btn({
       title={title}
       data-rte-anchor={anchor ? '' : undefined}
       aria-pressed={pressed !== undefined ? pressed : undefined}
+      disabled={disabled}
       onClick={onClick}
       className={cx('prism-rich-btn', active && 'is-active')}
     >

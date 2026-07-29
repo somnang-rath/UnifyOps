@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useIssues } from '@/hooks/use-issues';
+import { useLayoutParam } from '@/hooks/use-layout-param';
 import { useUsers } from '@/hooks/use-users';
 import { cn } from '@/lib/utils';
 import { ListView } from './_components/list-view';
@@ -22,6 +23,14 @@ import { TimelineView } from './_components/timeline-view';
 import type { ViewProps } from './_components/shared';
 
 type ViewId = 'list' | 'board' | 'calendar' | 'table' | 'timeline';
+
+const VIEW_IDS = [
+  'list',
+  'board',
+  'calendar',
+  'table',
+  'timeline',
+] as const satisfies readonly ViewId[];
 
 const VIEWS: { id: ViewId; label: string; Icon: typeof List }[] = [
   { id: 'list', label: 'List', Icon: List },
@@ -50,14 +59,9 @@ export default function WorkItemsPage() {
   });
   const { data: users = [] } = useUsers();
 
-  const [view, setViewRaw] = useState<ViewId>(() => {
-    if (typeof window === 'undefined') return 'list';
-    return (localStorage.getItem('wi-view') as ViewId) ?? 'list';
-  });
-  const setView = (v: ViewId) => {
-    setViewRaw(v);
-    localStorage.setItem('wi-view', v);
-  };
+  // ADR 0011 §4: the layout lives in `?layout=`, so a board a teammate is
+  // looking at is a link they can send. `wi-view` stays the remembered default.
+  const [view, setView] = useLayoutParam(VIEW_IDS, 'list', 'wi-view');
 
   const issues = issuesResp?.items ?? [];
   const userMap = useMemo(() => new Map(users.map((u) => [u._id, u])), [users]);
@@ -73,6 +77,9 @@ export default function WorkItemsPage() {
             <button
               key={id}
               onClick={() => setView(id)}
+              // The text label is hidden below `sm`, so name the control.
+              aria-label={`${label} layout`}
+              aria-pressed={view === id}
               className={cn(
                 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[4px] text-[12.5px] font-medium transition-all',
                 view === id
@@ -101,7 +108,7 @@ export default function WorkItemsPage() {
       {isLoading ? (
         <p className="text-[13px] text-text-muted py-8 text-center">Loading…</p>
       ) : (
-        RENDER[view](viewProps)
+        <div data-layout={view}>{RENDER[view](viewProps)}</div>
       )}
     </div>
   );

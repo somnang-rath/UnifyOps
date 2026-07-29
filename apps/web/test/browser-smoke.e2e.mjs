@@ -11,6 +11,10 @@
  *   1. Web login (alice) -> authenticated shell renders (sidebar, /home).
  *      1b. Flat /issues shim redirects to /<workspaceSlug>/issues, query intact
  *          (Phase 7b route consolidation, ADR 0011).
+ *      1c. `?layout=` drives a Tier W list route's layout and round-trips
+ *          through the URL; junk values fall back (ADR 0011 §4).
+ *      1d. Bulk edit bar appears on selection, counts correctly, and keeps the
+ *          selection out of the URL (ADR 0011 §4).
  *   2. Admin God Mode login (instance admin) -> /god-mode/general renders.
  *   3. Admin auth settings: flip "Allow new sign-ups" OFF, verify it persists
  *      across reload, verify the web register page is invitation-only in a
@@ -131,6 +135,53 @@ async function run() {
     // apps/web/src/app/(app)/[workspaceSlug]/issues/page.tsx heading.
     await expectVisible(web.locator('h1:has-text("Tasks")'), 'Tasks heading on slugged issues page');
     if (web.url().includes('/login')) throw new Error('bounced to /login');
+  });
+
+  // ── 1c. Phase 7b: `?layout=` on a Tier W list route (ADR 0011 §4) ──────────
+  // The param the ADR reserved, now live: a pasted link opens in the layout it
+  // names, and switching layouts rewrites the URL rather than hiding the
+  // choice in localStorage.
+  const slug = new URL(web.url()).pathname.split('/')[1];
+
+  await check('web: ?layout= selects the projects layout, and switching rewrites the URL', async () => {
+    // networkidle: the layout only settles once the client component has
+    // hydrated and read the param.
+    await web.goto(`${WEB}/${slug}/projects?layout=list`, { waitUntil: 'networkidle' });
+    await expectVisible(web.locator('[data-layout="list"]'), 'list layout from the URL');
+    await web.click('button[aria-label="Grid layout"]');
+    await web.waitForURL(/[?&]layout=grid/, { timeout: TIMEOUT });
+    await expectVisible(web.locator('[data-layout="grid"]'), 'grid layout after switching');
+  });
+
+  await check('web: an unknown ?layout= falls back instead of rendering nothing', async () => {
+    await web.goto(`${WEB}/${slug}/projects?layout=nonsense`, { waitUntil: 'networkidle' });
+    await expectVisible(web.locator('[data-layout]'), 'a layout still rendered');
+  });
+
+  // ── 1d. Phase 7b: bulk operations (ADR 0011 §4 — no URL surface) ───────────
+  await check('web: selecting rows reveals the bulk edit bar, and clearing hides it', async () => {
+    await web.goto(`${WEB}/${slug}/issues`, { waitUntil: 'networkidle' });
+    const row = web.locator('input[data-row-select]').first();
+    await row.waitFor({ state: 'visible', timeout: TIMEOUT });
+    await row.click();
+
+    const bar = web.locator('[role="region"][aria-label="Bulk actions"]');
+    await expectVisible(bar, 'bulk edit bar after selecting one row');
+    await expectVisible(bar.locator('text=1 selected'), '"1 selected" count');
+    // Selection is ephemeral state, never a param (ADR 0011 §4).
+    if (web.url().includes('selected') || web.url().includes('ids='))
+      throw new Error('selection leaked into the URL');
+
+    await web.click('button[aria-label="Clear selection"]');
+    await bar.waitFor({ state: 'hidden', timeout: TIMEOUT });
+  });
+
+  await check('web: select-all picks up every visible row', async () => {
+    await web.click('input[aria-label="Select all tasks"]');
+    const rows = await web.locator('input[data-row-select]').count();
+    const bar = web.locator('[role="region"][aria-label="Bulk actions"]');
+    await expectVisible(bar.locator(`text=${rows} selected`), `"${rows} selected" count`);
+    await web.click('button[aria-label="Clear selection"]');
   });
 
   // ── 2. Admin God Mode login (instance admin) ───────────────────────────────

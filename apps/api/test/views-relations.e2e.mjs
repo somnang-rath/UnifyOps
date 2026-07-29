@@ -388,6 +388,109 @@ async function main() {
     assert.equal(res.status, 404, `expected 404 for stranger, got ${res.status}`);
   });
 
+  // ── Bulk operations (Phase 7b; ADR 0011 §4 — body-only selection) ─
+  let bulkA, bulkB;
+  await check('bulk setup: two personal issues', async () => {
+    const a = await req('POST', '/issues', {
+      title: 'Bulk A',
+      priority: 'low',
+      labels: ['keep'],
+    });
+    const b = await req('POST', '/issues', { title: 'Bulk B', priority: 'low' });
+    assert.equal(a.status, 201, JSON.stringify(a.data));
+    assert.equal(b.status, 201, JSON.stringify(b.data));
+    bulkA = a.data._id;
+    bulkB = b.data._id;
+  });
+
+  await check('POST /issues/bulk applies one patch to every id', async () => {
+    const res = await req('POST', '/issues/bulk', {
+      ids: [bulkA, bulkB],
+      patch: { status: 'review', priority: 'high' },
+    });
+    assert.equal(res.status, 201, `got ${res.status}: ${JSON.stringify(res.data)}`);
+    assert.equal(res.data.updated, 2, JSON.stringify(res.data));
+    assert.equal(res.data.failed.length, 0, JSON.stringify(res.data.failed));
+    for (const id of [bulkA, bulkB]) {
+      const got = await req('GET', `/issues/${id}`);
+      assert.equal(got.data.status, 'review', `status not applied to ${id}`);
+      assert.equal(got.data.priority, 'high', `priority not applied to ${id}`);
+    }
+  });
+
+  await check('bulk labels add/remove are relative to each issue', async () => {
+    const res = await req('POST', '/issues/bulk', {
+      ids: [bulkA, bulkB],
+      patch: { addLabels: ['triage'], removeLabels: ['gone'] },
+    });
+    assert.equal(res.data.updated, 2, JSON.stringify(res.data));
+    const a = await req('GET', `/issues/${bulkA}`);
+    const b = await req('GET', `/issues/${bulkB}`);
+    // A had 'keep' before the call — adding must merge, never replace.
+    assert.deepEqual([...a.data.labels].sort(), ['keep', 'triage']);
+    assert.deepEqual(b.data.labels, ['triage']);
+  });
+
+  await check('duplicate ids are collapsed, not applied twice', async () => {
+    const res = await req('POST', '/issues/bulk', {
+      ids: [bulkA, bulkA, bulkA],
+      patch: { type: 'bug' },
+    });
+    assert.equal(res.data.updated, 1, `de-dupe failed: ${JSON.stringify(res.data)}`);
+  });
+
+  await check('an unwritable id fails alone — the batch is partial, not 403', async () => {
+    const res = await dave('POST', '/issues/bulk', {
+      ids: [bulkA, bulkB],
+      patch: { status: 'done' },
+    });
+    assert.equal(res.status, 201, `expected a 2xx partial result, got ${res.status}`);
+    assert.equal(res.data.updated, 0, JSON.stringify(res.data));
+    assert.equal(res.data.failed.length, 2, JSON.stringify(res.data.failed));
+    // And the write really did not happen.
+    const got = await req('GET', `/issues/${bulkA}`);
+    assert.equal(got.data.status, 'review', 'a stranger moved someone else’s issue');
+  });
+
+  await check('bulk rejects an empty selection and an empty patch', async () => {
+    const noIds = await req('POST', '/issues/bulk', {
+      ids: [],
+      patch: { status: 'todo' },
+    });
+    assert.equal(noIds.status, 400, `expected 400, got ${noIds.status}`);
+    const noPatch = await req('POST', '/issues/bulk', {
+      ids: [bulkA],
+      patch: {},
+    });
+    assert.equal(noPatch.status, 400, `expected 400, got ${noPatch.status}`);
+  });
+
+  await check('bulk caps the selection at 100 ids', async () => {
+    const res = await req('POST', '/issues/bulk', {
+      ids: Array.from({ length: 101 }, () => bulkA),
+      patch: { status: 'todo' },
+    });
+    assert.equal(res.status, 400, `expected 400, got ${res.status}`);
+  });
+
+  await check('bulk delete removes only what the caller may remove', async () => {
+    const stranger = await dave('POST', '/issues/bulk/delete', { ids: [bulkA] });
+    assert.equal(stranger.data.deleted, 0, JSON.stringify(stranger.data));
+    assert.equal(stranger.data.failed.length, 1, JSON.stringify(stranger.data));
+    assert.equal(
+      (await req('GET', `/issues/${bulkA}`)).status,
+      200,
+      'a stranger deleted someone else’s issue',
+    );
+
+    const mine = await req('POST', '/issues/bulk/delete', {
+      ids: [bulkA, bulkB],
+    });
+    assert.equal(mine.data.deleted, 2, JSON.stringify(mine.data));
+    assert.equal((await req('GET', `/issues/${bulkA}`)).status, 404);
+    assert.equal((await req('GET', `/issues/${bulkB}`)).status, 404);
+  });
+
   // ── Cleanup ──────────────────────────────────────────────────────
   await req('DELETE', `/views/${viewId}`);
   await req('DELETE', `/issues/${childA}`);

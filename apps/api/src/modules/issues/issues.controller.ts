@@ -14,6 +14,10 @@ import { IssueLinksService } from './issue-links.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
+  BulkDeleteIssuesDto,
+  BulkDeleteIssuesSchema,
+  BulkUpdateIssuesDto,
+  BulkUpdateIssuesSchema,
   CalendarRangeQuery,
   CalendarRangeSchema,
   CommentDto,
@@ -75,6 +79,33 @@ export class IssuesController {
     @Body() dto: ImportIssuesDto,
   ) {
     return this.issues.importIssues(user.id, dto);
+  }
+
+  /**
+   * Bulk edit from the issues list (Phase 7b; ADR 0011 §4 — the selection is
+   * body-only, never a URL param). Declared before the `:id` routes so the
+   * literal `bulk` segment can never be read as an id.
+   *
+   * Partial success by design: `{ updated, failed[] }`, 200 even when some
+   * ids were unwritable.
+   */
+  @Post('bulk')
+  @UsePipes(new ZodValidationPipe(BulkUpdateIssuesSchema))
+  bulkUpdate(
+    @CurrentUser() user: { id: string },
+    @Body() dto: BulkUpdateIssuesDto,
+  ) {
+    return this.issues.bulkUpdate(user.id, dto);
+  }
+
+  /** POST, not DELETE — a body of ids is the payload (`{ deleted, failed[] }`). */
+  @Post('bulk/delete')
+  @UsePipes(new ZodValidationPipe(BulkDeleteIssuesSchema))
+  bulkRemove(
+    @CurrentUser() user: { id: string; role: string },
+    @Body() dto: BulkDeleteIssuesDto,
+  ) {
+    return this.issues.bulkRemove(user.id, user.role, dto.ids);
   }
 
   @Patch(':id')

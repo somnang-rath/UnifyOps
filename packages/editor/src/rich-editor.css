@@ -65,6 +65,14 @@
   background: color-mix(in srgb, var(--a, #6366f1) 15%, transparent);
   color: var(--a, #6366f1);
 }
+.prism-rich-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.prism-rich-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-sub, #4b4b66);
+}
 
 .prism-rich-text-btn {
   display: inline-flex;
@@ -125,6 +133,88 @@
 .prism-rich-menu-item.is-h2 { font-size: 17px; font-weight: 700; }
 .prism-rich-menu-item.is-h3 { font-size: 15px; font-weight: 600; }
 .prism-rich-menu-item.is-h4 { font-size: 14px; font-weight: 600; }
+.prism-rich-menu-item.is-h5 { font-size: 13px; font-weight: 600; }
+.prism-rich-menu-item.is-h6 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* --- alignment menu --- */
+.prism-rich-alignmenu {
+  min-width: 130px;
+}
+
+/* --- color / highlight swatch popover --- */
+.prism-rich-colorpop {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 50;
+  width: 188px;
+  padding: 8px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e4e4ee);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+.prism-rich-color-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #8a8aa3);
+  margin-bottom: 6px;
+}
+.prism-rich-color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+.prism-rich-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.prism-rich-swatch:hover {
+  background: var(--bg-hover, #f1f1f7);
+}
+.prism-rich-swatch.is-active {
+  box-shadow: inset 0 0 0 2px var(--a, #6366f1);
+}
+.prism-rich-swatch-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  /* Keeps a pale highlight chip visible against a white popover. */
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  color: var(--text, #0a0a1a);
+}
+/* The "no color" cell reads as a struck-through swatch. */
+.prism-rich-swatch-dot.is-none {
+  position: relative;
+  color: var(--text-muted, #8a8aa3);
+  overflow: hidden;
+}
+.prism-rich-swatch-dot.is-none::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom right,
+    transparent calc(50% - 0.5px),
+    var(--red, #e5484d) calc(50% - 0.5px),
+    var(--red, #e5484d) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+}
 
 /* --- link popover --- */
 .prism-rich-linkpop {

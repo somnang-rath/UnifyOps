@@ -25,6 +25,19 @@ export interface EditorChromeContext {
   presence: PresenceUser[];
   /** The Tiptap editor instance, or null before it is ready. */
   editor: Editor | null;
+  /**
+   * The live server never answered (see `CollaborativeDocState.unreachable`).
+   * Hosts should show a real error + `reconnect` rather than a spinner.
+   */
+  unreachable: boolean;
+  /**
+   * The server answered but refused the connection (see
+   * `CollaborativeDocState.rejected`) — an access/token fault, not a reachability
+   * one. Hosts should say so and re-mint rather than blame the network.
+   */
+  rejected: boolean;
+  /** Force a new connection attempt. */
+  reconnect: () => void;
 }
 
 export interface CollaborativeEditorProps {
@@ -68,11 +81,12 @@ export function CollaborativeEditor(props: CollaborativeEditorProps): React.Reac
     onSaveStateChange,
   } = props;
 
-  const { doc, provider, status, saveState } = useCollaborativeDoc({
-    documentName,
-    wsUrl,
-    token,
-  });
+  const { doc, provider, status, saveState, unreachable, rejected, reconnect } =
+    useCollaborativeDoc({
+      documentName,
+      wsUrl,
+      token,
+    });
 
   // Surface status/save transitions to the host.
   const onStatusRef = React.useRef(onStatusChange);
@@ -97,6 +111,9 @@ export function CollaborativeEditor(props: CollaborativeEditorProps): React.Reac
           saveState,
           presence: [],
           editor: null,
+          unreachable,
+          rejected,
+          reconnect,
         })}
         <div className="prism-editor-scroll" aria-busy="true" />
       </div>
@@ -104,7 +121,19 @@ export function CollaborativeEditor(props: CollaborativeEditorProps): React.Reac
   }
 
   // Remount on document switch so the editor + seed guard reset cleanly.
-  return <CollabSurface key={documentName} doc={doc} provider={provider} status={status} saveState={saveState} {...props} />;
+  return (
+    <CollabSurface
+      key={documentName}
+      doc={doc}
+      provider={provider}
+      status={status}
+      saveState={saveState}
+      unreachable={unreachable}
+      rejected={rejected}
+      reconnect={reconnect}
+      {...props}
+    />
+  );
 }
 
 interface SurfaceProps extends CollaborativeEditorProps {
@@ -112,6 +141,9 @@ interface SurfaceProps extends CollaborativeEditorProps {
   provider: HocuspocusProvider;
   status: ConnectionStatus;
   saveState: SaveState;
+  unreachable: boolean;
+  rejected: boolean;
+  reconnect: () => void;
 }
 
 function CollabSurface(props: SurfaceProps): React.ReactElement {
@@ -120,6 +152,9 @@ function CollabSurface(props: SurfaceProps): React.ReactElement {
     provider,
     status,
     saveState,
+    unreachable,
+    rejected,
+    reconnect,
     currentUser,
     initialHTML,
     editable = true,
@@ -232,7 +267,15 @@ function CollabSurface(props: SurfaceProps): React.ReactElement {
 
   return (
     <div className={className}>
-      {renderChrome?.({ status, saveState, presence, editor })}
+      {renderChrome?.({
+        status,
+        saveState,
+        presence,
+        editor,
+        unreachable,
+        rejected,
+        reconnect,
+      })}
       <div className="prism-editor-scroll">
         <EditorContent editor={editor} className="prism-editor" />
       </div>

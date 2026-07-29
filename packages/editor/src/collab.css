@@ -57,6 +57,84 @@
   font-weight: 600;
   margin: 0.7em 0 0.3em;
 }
+.prism-editor .ProseMirror h5 {
+  font-size: 13.5px;
+  font-weight: 600;
+  margin: 0.7em 0 0.3em;
+}
+.prism-editor .ProseMirror h6 {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-sub, #4b4b66);
+  margin: 0.7em 0 0.3em;
+}
+
+/* --- rich formatting marks (full-option toolbar) --- */
+.prism-editor .ProseMirror u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prism-editor .ProseMirror mark {
+  /* Highlight is multicolor: the inline background comes from the mark's own
+   * style attribute, so only the shape/contrast is set here. */
+  border-radius: 3px;
+  padding: 0.1em 0.15em;
+  color: #0a0a1a;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.prism-editor .ProseMirror sub,
+.prism-editor .ProseMirror sup {
+  font-size: 0.75em;
+  line-height: 0;
+}
+.prism-editor .ProseMirror sup {
+  vertical-align: super;
+}
+.prism-editor .ProseMirror sub {
+  vertical-align: sub;
+}
+
+/* --- durable formatting (data-* twins) ---
+ * Inline `style` is dropped from server-rendered snapshots (see the note in
+ * extensions.ts), so alignment and colors also travel as data attributes.
+ * In the live editor the inline style already applies and these rules are
+ * belt-and-braces; they are what makes STORED html render correctly. Any other
+ * surface that renders this HTML (previews, space) needs the same rules. */
+.prism-editor .ProseMirror [data-text-align='center'] {
+  text-align: center;
+}
+.prism-editor .ProseMirror [data-text-align='right'] {
+  text-align: right;
+}
+.prism-editor .ProseMirror [data-text-align='justify'] {
+  text-align: justify;
+}
+
+/* CSS cannot turn an arbitrary attribute value into a color, so the swatch
+ * palettes in toolbar/ColorPopover.tsx are mirrored here. Keep the two in sync
+ * — a swatch with no rule still works live, but loses its color once stored. */
+.prism-editor .ProseMirror span[data-color='#6b7280'] { color: #6b7280; }
+.prism-editor .ProseMirror span[data-color='#92400e'] { color: #92400e; }
+.prism-editor .ProseMirror span[data-color='#dc2626'] { color: #dc2626; }
+.prism-editor .ProseMirror span[data-color='#ea580c'] { color: #ea580c; }
+.prism-editor .ProseMirror span[data-color='#ca8a04'] { color: #ca8a04; }
+.prism-editor .ProseMirror span[data-color='#16a34a'] { color: #16a34a; }
+.prism-editor .ProseMirror span[data-color='#2563eb'] { color: #2563eb; }
+.prism-editor .ProseMirror span[data-color='#7c3aed'] { color: #7c3aed; }
+.prism-editor .ProseMirror span[data-color='#db2777'] { color: #db2777; }
+
+.prism-editor .ProseMirror mark[data-color='#e5e7eb'] { background-color: #e5e7eb; }
+.prism-editor .ProseMirror mark[data-color='#e7d7c9'] { background-color: #e7d7c9; }
+.prism-editor .ProseMirror mark[data-color='#fecaca'] { background-color: #fecaca; }
+.prism-editor .ProseMirror mark[data-color='#fed7aa'] { background-color: #fed7aa; }
+.prism-editor .ProseMirror mark[data-color='#fef08a'] { background-color: #fef08a; }
+.prism-editor .ProseMirror mark[data-color='#bbf7d0'] { background-color: #bbf7d0; }
+.prism-editor .ProseMirror mark[data-color='#bfdbfe'] { background-color: #bfdbfe; }
+.prism-editor .ProseMirror mark[data-color='#ddd6fe'] { background-color: #ddd6fe; }
+.prism-editor .ProseMirror mark[data-color='#fbcfe8'] { background-color: #fbcfe8; }
 .prism-editor .ProseMirror ul,
 .prism-editor .ProseMirror ol {
   padding-left: 1.5em;
@@ -175,37 +253,105 @@
 /* --- CollabToolbar (spec §2.3) --- */
 .prism-collab-toolbar-wrap {
   background: var(--bg-card, #fff);
-  container-type: inline-size;
+  min-width: 0;
 }
 .prism-collab-toolbar-wrap.is-sticky {
   position: sticky;
   top: 0;
   z-index: 20;
 }
+/* Exactly one row, always: the component measures this box and moves the
+ * groups that don't fit into the "More" popover, so there is nothing left to
+ * wrap. `overflow` stays visible or the popovers would be clipped. */
 .prism-collab-toolbar {
   /* Opaque + fixed floor so the `editor=null` skeleton bar never jumps. */
   background: var(--bg-card, #fff);
   min-height: 39px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+/* Groups are the unit the overflow logic measures and hides. */
+.prism-collab-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+/* Hairline between groups, drawn instead of <Sep/> elements so that hiding a
+ * group can never strand a separator at either end of the row. */
+.prism-collab-group + .prism-collab-group {
+  margin-left: 5px;
+  padding-left: 5px;
+  border-left: 1px solid var(--border, #e4e4ee);
+}
+.prism-collab-more {
+  flex: 0 0 auto;
+  margin-left: auto;
+  align-items: center;
+}
+/* The overflowed groups, laid out as a compact wrapped panel. Popovers opened
+ * from inside it (colour, align, image URL) are absolutely positioned against
+ * their own .prism-rich-rel, so this must not clip. */
+.prism-collab-morepop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: min(272px, calc(100vw - 24px));
+  padding: 6px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e4e4ee);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  overflow: visible;
+}
+/* Inside the popover the groups stack freely, so the row divider would land in
+ * arbitrary places — spacing alone reads better. */
+.prism-collab-morepop .prism-collab-group + .prism-collab-group {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+/* The overflow menu is itself right-aligned near the edge of the toolbar, so a
+ * left-anchored child popover would hang off the viewport. Flip them to the
+ * right edge — there is always room that way. */
+.prism-collab-morepop .prism-rich-menu,
+.prism-collab-morepop .prism-rich-colorpop,
+.prism-collab-morepop .prism-rich-linkpop,
+.prism-collab-morepop .prism-rich-imagepop {
+  left: auto;
+  right: 0;
 }
 
-/* Narrow widths (< 560px container): heading label collapses to "Aa", group
- * separators hide — buys back ~40px before flex-wrap kicks in. */
-.prism-collab-hlabel-sm {
-  display: none;
+/* `variant="bar"` — the host header owns the chrome (border, background,
+ * padding, stickiness), so the toolbar contributes none of its own. */
+.prism-collab-toolbar-wrap.is-bar {
+  background: transparent;
+  min-width: 0;
 }
-@container (max-width: 559px) {
-  .prism-collab-toolbar .prism-collab-hlabel {
-    display: none;
-  }
-  .prism-collab-toolbar .prism-collab-hlabel-sm {
-    display: inline;
-  }
-  .prism-collab-toolbar .prism-rich-text-btn {
-    min-width: 0;
-  }
-  .prism-collab-toolbar > .prism-rich-sep {
-    display: none;
-  }
+.prism-collab-toolbar-wrap.is-bar .prism-collab-toolbar {
+  background: transparent;
+  border-bottom: 0;
+  border-radius: 0;
+  padding: 0;
+  min-height: 32px;
+}
+
+/* The heading control is the one variable-width item; cap it so a long label
+ * ("Normal text") can't push three icon groups into the overflow on its own. */
+.prism-collab-toolbar .prism-rich-text-btn {
+  min-width: 0;
+  max-width: 124px;
+}
+.prism-collab-hlabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Popovers must clamp within the viewport. */
@@ -222,6 +368,11 @@
 }
 .prism-collab-inline .prism-editor {
   padding: 12px 16px;
+}
+/* The host column decides the measure (notes has a user-set width option), so
+ * the built-in 760px cap must not silently win at wider settings. */
+.prism-collab-inline .prism-editor .ProseMirror {
+  max-width: none;
 }
 
 /* --- Remote carets (@tiptap/extension-collaboration-cursor) --- */

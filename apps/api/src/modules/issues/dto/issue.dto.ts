@@ -82,6 +82,46 @@ export const ImportIssuesSchema = z.object({
 });
 export type ImportIssuesDto = z.infer<typeof ImportIssuesSchema>;
 
+/**
+ * Bulk edit from the issues list (Phase 7b). The selection travels in the
+ * body, never the URL — selection is ephemeral UI state (ADR 0011 §4).
+ *
+ * Labels are add/remove rather than a replacement list: a single `labels`
+ * array applied across a mixed selection would silently wipe labels the user
+ * never looked at.
+ */
+export const BulkPatchSchema = z
+  .object({
+    status: z.string().min(1).max(40).optional(),
+    priority: z.enum(ISSUE_PRIORITIES).optional(),
+    type: z.enum(ISSUE_TYPES).optional(),
+    assigneeId: objectId.nullable().optional(),
+    dueDate: z
+      .string()
+      .datetime()
+      .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+      .nullable()
+      .optional(),
+    addLabels: z.array(z.string().min(1).max(40)).max(20).optional(),
+    removeLabels: z.array(z.string().min(1).max(40)).max(20).optional(),
+  })
+  .refine((p) => Object.keys(p).length > 0, {
+    message: 'patch must set at least one field',
+  });
+export type BulkPatchDto = z.infer<typeof BulkPatchSchema>;
+
+/** Same 100-id ceiling on both bulk routes — one screen's worth of selection. */
+const bulkIds = z.array(objectId).min(1).max(100);
+
+export const BulkUpdateIssuesSchema = z.object({
+  ids: bulkIds,
+  patch: BulkPatchSchema,
+});
+export type BulkUpdateIssuesDto = z.infer<typeof BulkUpdateIssuesSchema>;
+
+export const BulkDeleteIssuesSchema = z.object({ ids: bulkIds });
+export type BulkDeleteIssuesDto = z.infer<typeof BulkDeleteIssuesSchema>;
+
 export const CommentSchema = z.object({
   body: z.string().min(1).max(50_000),
 });

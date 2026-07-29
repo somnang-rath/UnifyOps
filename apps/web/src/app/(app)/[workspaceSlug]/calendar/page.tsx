@@ -6,6 +6,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { useCalendarIssues, useIssueMutations } from '@/hooks/use-issues';
+import { useLayoutParam } from '@/hooks/use-layout-param';
 import { useUsers } from '@/hooks/use-users';
 import { useWorkspaceBySlug } from '@/hooks/use-workspaces';
 import { useAuthStore } from '@/stores/auth-store';
@@ -28,6 +29,8 @@ const TYPE_META: Record<Issue['type'], { color: string; label: string }> = {
   docs: { color: '#3b82f6', label: 'Docs' },
 };
 
+const CAL_VIEWS = ['month', 'week'] as const;
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const todayIso = () => isoDay(new Date());
 
@@ -40,10 +43,12 @@ export default function CalendarPage() {
   const { data: users = [] } = useUsers();
   const issueMut = useIssueMutations();
 
-  const [view, setView] = useState<'month' | 'week'>(() =>
-    typeof window !== 'undefined'
-      ? ((localStorage.getItem('prism_cal_view') as 'month' | 'week') ?? 'month')
-      : 'month',
+  // ADR 0011 §4 — `?layout=month|week`, remembered in `prism_cal_view`. The
+  // type/assignee filters stay local: only the layout was reserved a param.
+  const [view, setView] = useLayoutParam(
+    CAL_VIEWS,
+    'month',
+    'prism_cal_view',
   );
   const [anchor, setAnchor] = useState(() => new Date());
   const [typeFilter, setTypeFilter] = useState<string>(() =>
@@ -65,7 +70,6 @@ export default function CalendarPage() {
 
   const dragId = useRef<string | null>(null);
 
-  useEffect(() => { localStorage.setItem('prism_cal_view', view); }, [view]);
   useEffect(() => { localStorage.setItem('prism_cal_type', typeFilter); }, [typeFilter]);
   useEffect(() => { localStorage.setItem('prism_cal_assignee', assignee); }, [assignee]);
 

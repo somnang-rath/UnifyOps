@@ -25,7 +25,7 @@ export function Topbar() {
   const logout = useLogout();
 
   return (
-    <div className="h-full flex items-center gap-3 px-5">
+    <div className="h-full flex items-center gap-3 px-5 ">
         <div className="flex-1 max-w-[560px] mx-auto w-full">
           <button
             type="button"

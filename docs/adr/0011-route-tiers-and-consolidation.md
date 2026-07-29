@@ -234,8 +234,20 @@ route. Referenced, not restated; revisit there if renames become common.
 
 ## Out of scope / follow-ups
 
-1. **Bulk operations** on the migrated issues page (§4; no URL surface).
-2. **`?layout=` implementation** — the param is reserved here, built later.
+1. ~~**Bulk operations** on the migrated issues page (§4; no URL surface).~~
+   **Built 2026-07-28.** `POST /issues/bulk` + `POST /issues/bulk/delete`, ≤100
+   ids, selection body-only as reserved. Each id funnels through the existing
+   `update`/`remove` so authorization is per issue and the side-effects
+   (notifications, activity, automations, webhooks) are identical to editing
+   one by one; the response is `{ updated|deleted, failed[] }` — an unwritable
+   id fails alone rather than 403-ing the batch.
+2. ~~**`?layout=` implementation** — the param is reserved here, built later.~~
+   **Built 2026-07-28** on the Tier W list routes that have a layout switcher
+   (`projects`, `projects/[id]/work-items`, `calendar`) via
+   `apps/web/src/hooks/use-layout-param.ts`. Precedence is URL > localStorage >
+   fallback; the URL is written only once the user picks a layout, so bare
+   routes stay bare while still honouring the remembered choice. Routes without
+   a switcher keep the param reserved and unused.
 3. **Per-project slugs** — still not routable; ADR 0006 follow-up 2's
    `Project.namespace` caveat stands (not unique, not indexed, read by
    nothing).

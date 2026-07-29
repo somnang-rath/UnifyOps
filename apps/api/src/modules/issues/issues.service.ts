@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Issue, IssueDocument } from './schemas/issue.schema';
 import {
+  BulkUpdateIssuesDto,
   CalendarRangeQuery,
   CreateIssueDto,
   CreateIssueSchema,
@@ -508,6 +509,75 @@ export class IssuesService {
     }
 
     return issue;
+  }
+
+  /**
+   * Why one id fails, in terms safe to hand back. Mirrors what the
+   * single-issue routes already reveal (`update` 404s a missing issue and
+   * 403s an unwritable one), so a batch leaks nothing a loop of PATCHes
+   * wouldn't have.
+   */
+  private static bulkReason(e: unknown): string {
+    if (e instanceof NotFoundException) return 'not found';
+    if (e instanceof ForbiddenException) return 'no access';
+    if (e instanceof BadRequestException) return 'invalid change';
+    return 'failed';
+  }
+
+  /**
+   * Bulk edit (Phase 7b; ADR 0011 §4). Every id funnels through
+   * {@link update}, exactly as {@link importIssues} funnels through
+   * {@link create} — so notifications, activity, automations and webhooks
+   * fire identically to editing each issue by hand, and per-issue
+   * authorization is enforced per issue rather than once for the batch.
+   *
+   * Partial success is the contract: one unwritable id reports itself in
+   * `failed` and the rest still land. The caller decides what to say.
+   */
+  async bulkUpdate(actorId: string, dto: BulkUpdateIssuesDto) {
+    const { addLabels, removeLabels, ...common } = dto.patch;
+    const touchesLabels = addLabels !== undefined || removeLabels !== undefined;
+
+    let updated = 0;
+    const failed: { id: string; reason: string }[] = [];
+
+    // De-duped: the same id twice must not double-fire its notifications.
+    for (const id of [...new Set(dto.ids)]) {
+      try {
+        const patch: UpdateIssueDto = { ...common };
+        if (touchesLabels) {
+          // Read-modify-write per issue — add/remove are relative to whatever
+          // that issue already carries, not to the selection as a whole.
+          const current = await this.model.findById(id, { labels: 1 }).lean();
+          if (!current) throw new NotFoundException();
+          const next = new Set(current.labels ?? []);
+          for (const l of removeLabels ?? []) next.delete(l);
+          for (const l of addLabels ?? []) next.add(l);
+          patch.labels = [...next];
+        }
+        await this.update(actorId, id, patch);
+        updated += 1;
+      } catch (e) {
+        failed.push({ id, reason: IssuesService.bulkReason(e) });
+      }
+    }
+
+    return { updated, failed };
+  }
+
+  /** Bulk delete, funnelled through {@link remove} — same owner-or-admin rule. */
+  async bulkRemove(actorId: string, actorRole: string, ids: string[]) {
+    let deleted = 0;
+    const failed: { id: string; reason: string }[] = [];
+    for (const id of [...new Set(ids)]) {
+      try {
+        await this.remove(actorId, actorRole, id);
+        deleted += 1;
+      } catch (e) {
+        failed.push({ id, reason: IssuesService.bulkReason(e) });
+      }
+    }
+    return { deleted, failed };
   }
 
   async remove(actorId: string, actorRole: string, id: string) {

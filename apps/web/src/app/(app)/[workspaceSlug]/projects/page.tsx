@@ -30,6 +30,7 @@ import {
   useCurrentWorkspace,
   useWorkspaceHref,
 } from '@/hooks/use-workspaces';
+import { useLayoutParam } from '@/hooks/use-layout-param';
 import { useUsers } from '@/hooks/use-users';
 import { useAuthStore } from '@/stores/auth-store';
 import { initials } from '@/lib/format';
@@ -39,6 +40,8 @@ import { ProjectModal } from '@/components/feature/project/project-modal';
 
 type SortKey = 'updated' | 'name' | 'issues';
 type ViewMode = 'grid' | 'list';
+
+const VIEW_MODES = ['grid', 'list'] as const satisfies readonly ViewMode[];
 
 const VIS_ICO = { private: Lock, internal: Home, public: Globe } as const;
 const VIS_CLS = {
@@ -66,14 +69,8 @@ export default function ProjectsPage() {
 
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<SortKey>('updated');
-  const [view, setViewRaw] = useState<ViewMode>(() => {
-    if (typeof window === 'undefined') return 'grid';
-    return (localStorage.getItem('projects-view') as ViewMode) ?? 'grid';
-  });
-  const setView = (v: ViewMode) => {
-    setViewRaw(v);
-    localStorage.setItem('projects-view', v);
-  };
+  // ADR 0011 §4 — `?layout=grid|list`, remembered in `projects-view`.
+  const [view, setView] = useLayoutParam(VIEW_MODES, 'grid', 'projects-view');
   const [editing, setEditing] = useState<Project | null>(null);
   const [creating, setCreating] = useState(wantNew);
   const [deleting, setDeleting] = useState<Project | null>(null);
@@ -142,15 +139,18 @@ export default function ProjectsPage() {
         />
 
         <div className="inline-flex p-1 bg-bg-subtle border border-border rounded-sm">
+          {/* Icon-only, so the label has to come from aria-label. */}
           <SegBtn
             active={view === 'grid'}
             onClick={() => setView('grid')}
+            aria-label="Grid layout"
           >
             <LayoutGrid className="w-3.5 h-3.5" />
           </SegBtn>
           <SegBtn
             active={view === 'list'}
             onClick={() => setView('list')}
+            aria-label="List layout"
           >
             <Layers className="w-3.5 h-3.5" />
           </SegBtn>
@@ -167,6 +167,7 @@ export default function ProjectsPage() {
         )
       ) : (
         <div
+          data-layout={view}
           className={cn(
             'grid gap-4',
             view === 'grid'
@@ -354,11 +355,18 @@ function SegBtn({
   active,
   children,
   onClick,
-}: React.PropsWithChildren<{ active: boolean; onClick: () => void }>) {
+  'aria-label': ariaLabel,
+}: React.PropsWithChildren<{
+  active: boolean;
+  onClick: () => void;
+  'aria-label'?: string;
+}>) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={ariaLabel}
+      aria-pressed={active}
       className={cn(
         'p-1.5 rounded-[4px] text-text-muted transition-all duration-[var(--dur)]',
         'hover:text-text',
