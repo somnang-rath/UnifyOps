@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import { AxiosError } from "axios"
 import {
   Eye,
@@ -62,6 +62,7 @@ export default function WikiPageRoute() {
   // is absent, so fall back to the current workspace selection.
   const routeSlug =
     useParams<{ workspaceSlug?: string }>()?.workspaceSlug ?? null
+  const searchParams = useSearchParams()
   const { data: slugWorkspace } = useWorkspaceBySlug(routeSlug)
   const { current: currentWorkspace } = useCurrentWorkspace()
   const workspace = routeSlug ? slugWorkspace : currentWorkspace
@@ -92,14 +93,30 @@ export default function WikiPageRoute() {
   // Restore the last project + open page on mount so switching to another page
   // and coming back keeps your place. (localStorage is unavailable during SSR,
   // so read it in an effect rather than a lazy initializer.)
+  //
+  // `?project=` / `?page=` win over the restored values, matching the URL >
+  // localStorage > fallback precedence `use-layout-param` established for
+  // `?layout=` (ADR 0011 §4). That is what makes a page a shareable link and
+  // what lets the project Pages tab open one directly instead of re-hosting
+  // this editor.
   useEffect(() => {
+    const urlProject = searchParams.get("project")
+    const urlPage = searchParams.get("page")
     try {
-      const p = localStorage.getItem("wiki-project")
-      const a = localStorage.getItem("wiki-active")
+      const p = urlProject ?? localStorage.getItem("wiki-project")
+      const a = urlPage ?? localStorage.getItem("wiki-active")
       if (p) setProjectId(p)
-      if (a) setActiveId(a)
-    } catch {}
+      // A URL that names a project but no page must NOT restore the stored
+      // page — that page belongs to whatever project was open last.
+      if (a && !(urlProject && !urlPage)) setActiveId(a)
+    } catch {
+      if (urlProject) setProjectId(urlProject)
+      if (urlPage) setActiveId(urlPage)
+    }
     setHydrated(true)
+    // Mount-only: later edits to the URL come from this page's own navigation,
+    // and re-running would fight the user's current selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Auto-select the first project once restore has run and nothing valid is

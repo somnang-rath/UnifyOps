@@ -123,6 +123,14 @@ export class IssuesService {
     const filter: FilterQuery<IssueDocument> = {};
     if (q.projectId) filter.projectId = new Types.ObjectId(q.projectId);
     if (q.assigneeId) filter.assigneeId = new Types.ObjectId(q.assigneeId);
+    // `none` = the unscheduled backlog. Matches both null and absent, so items
+    // written before `cycleId` existed on the schema still show up.
+    if (q.cycleId)
+      filter.cycleId =
+        q.cycleId === 'none' ? null : new Types.ObjectId(q.cycleId);
+    if (q.moduleId)
+      filter.moduleId =
+        q.moduleId === 'none' ? null : new Types.ObjectId(q.moduleId);
     if (q.type) filter.type = q.type;
     if (q.priority) filter.priority = q.priority;
     if (q.status === 'open') filter.status = { $ne: 'done' };

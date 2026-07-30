@@ -20,6 +20,7 @@
     "test:notes-collab": "node test/notes-collab-api.e2e.mjs",
     "test:cross-app": "node test/cross-app.e2e.mjs",
     "test:publish-space": "node test/publish-space.e2e.mjs",
+    "test:cycles-modules": "node test/cycles-modules.e2e.mjs",
     "test:e2e:all": "node test/security.e2e.mjs && node test/views-relations.e2e.mjs && node test/integrations.e2e.mjs"
   },
   "dependencies": {

@@ -18,6 +18,13 @@ export interface IssueListParams {
   q?: string;
   assigneeId?: string;
   /**
+   * A cycle id, or the literal `'none'` for the unscheduled backlog — the
+   * cycle planner needs "not in any sprint yet", which no id can express.
+   */
+  cycleId?: string;
+  /** As `cycleId`, for feature modules. */
+  moduleId?: string;
+  /**
    * ADR 0011 §2: present → only issues of readable projects in that workspace
    * (personal `projectId: null` issues are dropped by the API); absent →
    * today's personal cross-project list. Part of the query key via `params`.

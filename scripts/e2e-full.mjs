@@ -33,6 +33,7 @@ const SUITES = [
   { script: 'test:oauth' },
   { script: 'test:cross-app' },
   { script: 'test:publish-space' },
+  { script: 'test:cycles-modules' },
 ];
 
 const COOLDOWN_MS = process.env.E2E_COOLDOWN_MS

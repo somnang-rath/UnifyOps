@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:browser-smoke": "node test/browser-smoke.e2e.mjs"
+    "test:browser-smoke": "node test/browser-smoke.e2e.mjs",
+    "test:project-tabs": "node test/project-tabs.browser.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

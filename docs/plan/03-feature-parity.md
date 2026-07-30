@@ -16,8 +16,8 @@
 | Attachments | 🟡 `files` module | ភ្ជាប់ចូល issue |
 | Activity feed | 🟡 `activity` module | បង្ហាញក្នុង peek |
 | Estimates | 🟡 `estimates` module | UI + burn-down |
-| Cycles (sprints) | ✅ `cycles` | + progress chart |
-| Modules (epics) | ✅ `modules` | + progress |
+| Cycles (sprints) | ✅ `cycles` module + project tab (ADR 0014) — derived status, one-at-a-time overlap guard, progress rollup | burn-down chart (rollup already returns `byStatus`) |
+| Modules (epics) | ✅ `modules` module + project tab (ADR 0014) — stored status, lead, parallel by design | member picker (API stores `memberIds`; modal exposes lead only) |
 | **Intake / Inbox** (issue triage) | ❌ | module `intake` + public intake form (space) |
 | Time tracking / worklog | ❌ | `worklog` schema + UI (បន្ទាប់) |
 | Bulk operations | ❌ | multi-select + bulk edit bar |
@@ -28,7 +28,7 @@
 | Feature | Prism ឥឡូវ | ការងារ |
 | ------- | ---------- | ------ |
 | List · Kanban · Calendar · Gantt/Timeline · Spreadsheet | ✅ ទាំង 5 មាន route | ធ្វើឲ្យស៊ីគ្នាក្រោម filter/group bar តែមួយ |
-| **Saved views** (project + workspace) | 🔴 **`views` module មាន `dto/` + `schemas/` តែ គ្មាន controller/service/module** — មិនទាន់ដំណើរការ | បំពេញ module + web UI |
+| **Saved views** (project + workspace) | ✅ `views` module ពេញ + `ViewsBar` លើ /issues + project Views tab (ADR 0014) + `?view=<id>` deep link | — |
 | Filters · Group by · Sort · Display options | 🟡 | បង្រួបបង្រួម `FilterBar`/`GroupByBar` |
 | Workspace-level views | ❌ | ក្រោយ project views |
 

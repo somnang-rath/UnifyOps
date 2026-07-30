@@ -60,6 +60,7 @@ interface ViewScope {
 const viewsService = {
   list: (scope: ViewScope) =>
     api.get<SavedView[]>('/views', { params: scope }).then((r) => r.data),
+  byId: (id: string) => api.get<SavedView>(`/views/${id}`).then((r) => r.data),
   create: (b: SaveViewBody) =>
     api.post<SavedView>('/views', b).then((r) => r.data),
   update: (id: string, b: Partial<SaveViewBody>) =>
@@ -80,6 +81,19 @@ export const useViews = (scope: ViewScope) =>
     queryKey: ['views', scope],
     queryFn: () => viewsService.list(scope),
     enabled: !!(scope.projectId || scope.workspaceId),
+  });
+
+/**
+ * One saved view by id — what `?view=<id>` deep links resolve against. Kept
+ * separate from `useViews` because a link can name a view that isn't in any
+ * list the page happens to have loaded (someone else's shared project view).
+ */
+export const useView = (id: string | null) =>
+  useQuery({
+    queryKey: ['views', 'byId', id],
+    queryFn: () => viewsService.byId(id!),
+    enabled: !!id,
+    retry: false,
   });
 
 export function useViewMutations(scope: ViewScope) {

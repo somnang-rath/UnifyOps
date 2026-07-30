@@ -37,7 +37,7 @@ import { fmtDateShort, relTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { BulkBar } from './_components/bulk-bar';
 import { ViewsBar } from './_components/views-bar';
-import type { SavedView } from '@/hooks/use-views';
+import { useView, type SavedView } from '@/hooks/use-views';
 
 type Tab = 'open' | 'closed' | 'all';
 const TYPE_OPTS = [
@@ -131,6 +131,24 @@ export default function IssuesPage() {
   useEffect(() => {
     if (params.get('new') === '1') setCreating(true);
   }, [params]);
+
+  // `?view=<id>` deep link (the project Views page links here). Fetched by id
+  // rather than looked up in ViewsBar's lists: a link can name a view that no
+  // list on this page has loaded.
+  const linkedViewId = params.get('view');
+  const { data: linkedView } = useView(linkedViewId);
+  // Apply once per id. Without the guard the effect would re-fire on every
+  // render caused by a *manual* filter change and yank the user's edits back
+  // to the saved definition.
+  const appliedViewRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkedView || appliedViewRef.current === linkedView._id) return;
+    appliedViewRef.current = linkedView._id;
+    applyView(linkedView);
+    // applyView is a stable set of setState calls; re-running on its identity
+    // would defeat the guard's purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedView]);
 
   const { data, isLoading } = useIssues({
     status: tab,

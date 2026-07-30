@@ -51,6 +51,14 @@ export const ListIssueQuerySchema = z.object({
    */
   workspaceId: objectId.optional(),
   assigneeId: objectId.optional(),
+  /**
+   * Scope to one cycle, or to the unscheduled backlog with the literal
+   * `none` — the cycle planner needs "what isn't in a sprint yet" and that
+   * cannot be expressed as an id.
+   */
+  cycleId: objectId.or(z.literal('none')).optional(),
+  /** As `cycleId`, for feature modules. */
+  moduleId: objectId.or(z.literal('none')).optional(),
   status: z.enum(['open', 'closed', 'all']).default('all'),
   type: z.enum(ISSUE_TYPES).optional(),
   priority: z.enum(ISSUE_PRIORITIES).optional(),

@@ -27,6 +27,14 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
   publish views/projects → space (ADR 0012, `test:publish-space` 16/16) ·
   templates + CSV import (`test:templates-import` 14/14) · browser E2E 10/10
 - **Phase 9 — Team chat + Telegram bridge** ✅ (ADR 0007, `docs/telegram-bridge-setup.md`)
+- **Phase 10 — Project tabs** ✅ (ADR 0014) — closed 2026-07-29. The four
+  `ComingSoon` placeholders on `/[workspaceSlug]/projects/[id]/` are now real:
+  `cycles` + `modules` are **brand-new API modules** (the dirs were empty and had
+  never been committed, despite `03-feature-parity.md` claiming ✅) ·
+  `views` got its UI + a `?view=<id>` deep link · `pages` is a project-scoped
+  index over the existing `wiki` module, opening its editor via `?project=&page=`.
+  Cycle status is derived from dates, module status is stored; membership is a
+  pointer on the issue (`cycleId`/`moduleId`), never an array on the container.
 
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
 
@@ -51,16 +59,20 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
 
 ## E2E testing
 
-- `pnpm test:e2e:full` — canonical run: all 9 API suites (166 checks) via
+- `pnpm test:e2e:full` — canonical run: all 10 API suites (196 checks) via
   `scripts/e2e-full.mjs`, against a running dev stack + the E2E fixture. The runner handles
   the 5/min login throttle (65s cool-downs, override `E2E_COOLDOWN_MS`) and boots a
   disposable API on :4012 for the notes-collab suite.
-- Single suite: `pnpm --filter api test:security|phase7|phase8|oauth|analytics|notes-collab|cross-app|publish-space|templates-import`
+- Single suite: `pnpm --filter api test:security|phase7|phase8|oauth|analytics|notes-collab|cross-app|publish-space|templates-import|cycles-modules`
   — plain-fetch `.mjs` scripts in `apps/api/test/`, no framework. Manual back-to-back runs
   hit the login throttle (429s) — space them ~65s, or just use the runner.
   `test:notes-collab` needs its own API instance (the runner provides :4012).
 - `pnpm --filter web test:browser-smoke` — Playwright smoke (12 checks) across web/admin/space;
   needs the full dev stack up.
+- `pnpm --filter web test:project-tabs` — Playwright, 19 checks over the four project
+  tabs (cycles/modules/views/pages). It warms each route before asserting: `next dev`
+  compiles routes lazily, and without that the first check to touch a cold route times
+  out — which one that is moves between runs. `TAB_TIMEOUT_MS` overrides the 45s budget.
 
 ## Conversion principle
 

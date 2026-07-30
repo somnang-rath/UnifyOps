@@ -77,10 +77,31 @@ export class Issue {
 
   @Prop({ type: Types.ObjectId, ref: 'Issue' })
   parentId?: Types.ObjectId;
+
+  /**
+   * The cycle (sprint) this item is scheduled into, or null. Membership lives
+   * here rather than as an array on the Cycle so assignment is one atomic
+   * write and a cycle can hold unbounded items — see `Cycle`'s class comment.
+   * An item belongs to at most one cycle: it can only be worked in one sprint.
+   */
+  @Prop({ type: Types.ObjectId, ref: 'Cycle', default: null, index: true })
+  cycleId?: Types.ObjectId | null;
+
+  /**
+   * The feature module this item belongs to, or null. Same pointer-on-the-item
+   * design as `cycleId`, and deliberately independent of it: cycle answers
+   * *when* the work happens, module answers *what feature it builds*, so an
+   * item is normally in one of each at the same time.
+   */
+  @Prop({ type: Types.ObjectId, ref: 'ProjectModule', default: null, index: true })
+  moduleId?: Types.ObjectId | null;
 }
 
 export const IssueSchema = SchemaFactory.createForClass(Issue);
 IssueSchema.index({ projectId: 1, status: 1 });
+// Drive the per-cycle / per-module progress rollups (group by status within one).
+IssueSchema.index({ cycleId: 1, status: 1 });
+IssueSchema.index({ moduleId: 1, status: 1 });
 IssueSchema.index({ assigneeId: 1, status: 1 });
 IssueSchema.index({ authorId: 1, updatedAt: -1 });
 IssueSchema.index({ dueDate: 1 }, { sparse: true });
