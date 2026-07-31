@@ -12,8 +12,8 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
 - **Phase 4 — Auth providers + polish** — done except OAuth credentials
   - [ ] OAuth Google/GitHub — code-complete (ADR 0008); blocked on real credentials only
   - [x] Docker: admin, space, live services
-  - [x] E2E tests across all apps — `pnpm test:e2e:full` (7 suites, 118 checks) +
-        `pnpm --filter web test:browser-smoke` (7 checks), both green 2026-07-23
+  - [x] E2E tests across all apps — green 2026-07-23 at 7 suites / 118 checks; the suite
+        has grown since, so read the current numbers under "E2E testing" below, not here
 - **Phase 5 — Security core** ✅ (`docs/plan/01-security-model.md`)
 - **Phase 6 — Design system** ✅ (`docs/plan/02-design-system.md`) — closed 2026-07-23:
   shared `AppShell` (web+admin) + Tier 3 (`CommandPalette` ⌘K · `FilterBar` · `SidebarNav`)
@@ -36,10 +36,30 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
   Cycle status is derived from dates, module status is stored; membership is a
   pointer on the issue (`cycleId`/`moduleId`), never an array on the container.
 
+- **Tier 0 debt** ✅ (`docs/plan/06-differentiators.md` §1) — closed 2026-07-31. Four items
+  found by a repo scan, none of them a "feature": `/search` returned issue titles from
+  every workspace to any caller (§1.1) · unindexed `$regex` per keystroke (§1.3) ·
+  the empty `estimates/` dir (§1.2) · and `automations`, which turned out to be a **write**
+  leak, not the P2 schema tidy-up it was filed as — `fire()` ran every enabled rule in the
+  instance and `POST /automations/fire` let any logged-in user drive them (§1.4).
+
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
 
-Known deferred work: projects/roadmap publishing (no `views` module yet); notes collab
-(`blocks[]` model); admin Workspaces page (needs an instance-workspaces endpoint).
+Known deferred work (verified against the code 2026-07-31 — the previous three entries
+here had all shipped and were removed):
+
+- `apps/live` has no `maxPayload` / connection limit (`01-security-model.md` §3.3)
+- `apps/web` + `apps/admin` send no CSP header; only `api` (helmet) and `space` do (§3.5)
+- `X-Robots-Tag` is instance-wide (`SPACE_INDEXING`), not per publish setting (§3.4)
+- `Automation.condition` is stored but `fire()` never reads it — every rule runs on every
+  event of its trigger. Must be fixed before any rule-builder UI (`06-differentiators.md` §4c)
+- OAuth Google/GitHub — code-complete (ADR 0008), blocked on real credentials only
+
+**Ticking a box here requires reading the code, not the last commit message.** Three
+separate times a doc claimed something that did not exist — `cycles`/`modules` (Phase 10),
+`estimates` (2026-07-31), and this deferred list. `pnpm --filter api lint` now runs
+`scripts/check-module-inventory.mjs`, which catches an empty module dir or an unwired
+`*.module.ts` — but nothing automated can catch a wrong checkbox.
 
 ## Environment
 
@@ -59,7 +79,8 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
 
 ## E2E testing
 
-- `pnpm test:e2e:full` — canonical run: all 10 API suites (196 checks) via
+- `pnpm test:e2e:full` — canonical run: all 10 API suites (**206** checks as of 2026-07-31:
+  security 18→21 for the `/search` scope, phase7 31→38 for automation tenancy) via
   `scripts/e2e-full.mjs`, against a running dev stack + the E2E fixture. The runner handles
   the 5/min login throttle (65s cool-downs, override `E2E_COOLDOWN_MS`) and boots a
   disposable API on :4012 for the notes-collab suite.

@@ -7,7 +7,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"src/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" && node ../../scripts/check-module-inventory.mjs",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts",
     "seed:test-data": "ts-node -r tsconfig-paths/register src/seed/seed-test-data.ts",

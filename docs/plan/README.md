@@ -14,6 +14,7 @@ UI/UX ថ្មី (តូច ជាប់ ស្អាត professional), និ
 | 03 | [Feature parity](03-feature-parity.md) | គម្លាតធៀបនឹង plane.so + អ្វីត្រូវសង់ |
 | 04 | [Structure](04-structure.md) | រចនាសម្ព័ន្ធ repo គោលដៅ + packages split |
 | 05 | [Cover image picker](05-cover-image-picker.md) | UX spec សម្រាប់ ADR 0010 — Unsplash picker + cover render (web/space) |
+| 06 | [Differentiators](06-differentiators.md) | ហេតុអ្វីគេជ្រើស Prism ជំនួស Plane/Linear/Jira — moat (AI write-tools · ភាសាខ្មែរ + Telegram) + បំណុល Tier 0 ត្រូវដោះមុន |
 
 Roadmap (Phase 5–8) នៅក្នុង `PLANE-CONVERSION-PLAN.md` §8 — **ជា source of truth តែមួយ**
 សម្រាប់ progress (SessionStart hook អាន checkbox ពីទីនោះ)។

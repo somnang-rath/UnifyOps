@@ -285,6 +285,14 @@ export function SpaceCover({ src }: { src: string }) {
 
 ## 8. States checklist + Definition of done
 
+> **ស្ថានភាព (2026-07-31)** — feature **ship រួច** (ADR 0010: `unsplash` module,
+> owner-only gate, dev key configured)។ បញ្ជីខាងក្រោមមិនមែនការងារនៅសល់ទេ — វាជា
+> **manual QA pass** ដែលមិនដែលកត់ត្រាថាបានធ្វើ។ គូសមិនបានដោយអាន code —
+> "ឃើញពិត", "Network tab", "keyboard-only", "render 4:1" ត្រូវការមនុស្សបើក browser។
+>
+> ទុក `[ ]` ដោយចេតនា។ គូសវាដោយមិនបានធ្វើ គឺជាកំហុសដដែលដែល audit 2026-07-31
+> កំពុងជួសជុល។ បើនរណាដើរតាមបញ្ជីនេះ សូមកត់កាលបរិច្ឆេទទុក។
+
 - [ ] Picker: initial(default query) · loading skeleton · loaded · appending ·
       no-results · 502 inline (no toast) · not-configured gate — ទាំង 7 ឃើញពិត
 - [ ] Trigger visibility: instance boolean off ⇒ Add/Change បាត់ទាំងអស់ ប៉ុន្តែ Remove នៅ

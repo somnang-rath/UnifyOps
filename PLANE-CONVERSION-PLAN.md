@@ -330,6 +330,14 @@ MONGODB_URI=mongodb://localhost:27017/prism
 - [x] **Verified**: 41 API/WS + 8 browser (Phase A) · 13 mock-relay + 8 HTTP + 13 formatter (Phase B). Caught & fixed a real `{channelId,clientId}` sparse-index collision (→ partial index + self-healing migration)
 - [ ] Deferred (v1 out of scope): threads · search · presence · multi-replica · media upload to Telegram · per-workspace bot · real bot E2E (needs external token — see setup doc)
 
+### Tier 0 — សងបំណុល ✅ (`docs/plan/06-differentiators.md` §1) — បិទ 2026-07-31
+រកឃើញដោយ repo scan ក្រោយ Phase 10។ គ្មានមួយណាជា feature ទេ — ជាបំណុលដែលនឹងធ្វើឲ្យ Tier 1 ខូច។
+- [x] **§1.1 `/search` លេច issue ឆ្លង workspace (P0)** — branch issues គ្មាន authz filter សោះ; អ្នកប្រើណាក៏បានទទួល title + desc នៃ issue គ្រប់ workspace ក្នុង instance។ ច្បាប់ scope ផ្លាស់ទៅ `ProjectAccessService.projectItemScope()` ជា canonical តែមួយ (issues + search ចែករំលែក); `?workspaceId=` narrowing-only (ADR 0011 §2b); projects ប្ដូរមក `readableProjectIds`; escape regex metacharacters (`q=.*` ធ្លាប់ជា wildcard + ReDoS)។ `test:security` 18→**21**
+- [x] **§1.3 `$regex` គ្មាន index (P1)** — collection scan ពេញរាល់ការវាយអក្សរលើ ៣ collection។ ប្ដូរជា `$text` មុន + regex fallback *ខាងក្នុង access scope*; `ProjectSchema` បន្ថែម text index (`IssueSchema` មានរួច តែ search មិនដែលប្រើ)
+- [x] **§1.2 `modules/estimates/` ជា dir ទទេ (P1)** — `dto/` + `schemas/` ទទេ, គ្មាន `.ts`, គ្មានក្នុង `app.module.ts`, ខណៈ `03-feature-parity.md` អះអាង 🟡។ ករណីទី ២ បន្ទាប់ពី `cycles`/`modules` (Phase 10)។ **លុប** (Issue គ្មាន field `estimate` សោះ) + doc កែជា ❌ + guard ថ្មី `scripts/check-module-inventory.mjs` ក្នុង `pnpm --filter api lint`
+- [x] **§1.4 `automations` ឆ្លង tenant (ចាត់ជា P2 — តាមពិត P0)** — ជា **write** leak មិនមែន read។ `fire()` ដំណើរការ *គ្រប់* ច្បាប់ enabled ក្នុង instance ដូច្នេះច្បាប់ក្នុង workspace A កែ status/assignee/label នៃ issue ក្នុង workspace B; `POST /automations/fire` បើកចំហឲ្យ user ណាក៏បាន drive វាដោយ payload តាមចិត្ត (+ webhook ចេញក្រៅ); `actionNotify` role target ជា instance-wide ដូច្នេះ title នៃ issue ទៅដល់អ្នកមិនមានសិទ្ធិ។ ដោះ: `workspaceId` required + compound index, workspace ដកចេញ**ពី event មិនមែនពីច្បាប់**, លុប route `fire`, CRUD តាមសមាជិកភាព (សរសេរ = អ្នកបង្កើត ឬ ម្ចាស់ workspace), recipient ត្រងតាមសមាជិក, `runDueSoonSweep()` បញ្ចូន `projectId`។ `test:phase7` 31→**38**
+- [ ] `Automation.condition` រក្សាទុក តែ `fire()` មិនដែលអានទេ — គ្រប់ច្បាប់ដំណើរការលើគ្រប់ event នៃ trigger។ ត្រូវដោះមុន rule-builder UI (§4c)
+
 ---
 
 ## 9. Docker (គោលដៅ)

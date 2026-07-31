@@ -15,7 +15,7 @@
 | Comments + reactions | 🟡 wiki មាន; issue? | បញ្ជាក់ + reactions |
 | Attachments | 🟡 `files` module | ភ្ជាប់ចូល issue |
 | Activity feed | 🟡 `activity` module | បង្ហាញក្នុង peek |
-| Estimates | 🟡 `estimates` module | UI + burn-down |
+| Estimates | ❌ (គ្មានសោះ — `Issue` គ្មាន field `estimate`; dir ទទេត្រូវលុប 2026-07-31, មើល `06-differentiators.md` §1.2) | schema field + UI + burn-down |
 | Cycles (sprints) | ✅ `cycles` module + project tab (ADR 0014) — derived status, one-at-a-time overlap guard, progress rollup | burn-down chart (rollup already returns `byStatus`) |
 | Modules (epics) | ✅ `modules` module + project tab (ADR 0014) — stored status, lead, parallel by design | member picker (API stores `memberIds`; modal exposes lead only) |
 | **Intake / Inbox** (issue triage) | ❌ | module `intake` + public intake form (space) |
