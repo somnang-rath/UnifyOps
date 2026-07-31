@@ -3,6 +3,22 @@ import { HydratedDocument, Types } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class Automation {
+  /**
+   * The tenant this rule belongs to (ADR 0003). An automation is a *team* rule,
+   * not a personal preference: it mutates issues and notifies people, so the
+   * workspace — not the creator — is what bounds its blast radius. `required`,
+   * because a rule with no workspace can match no event and would sit in the
+   * collection firing on nothing.
+   */
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'Workspace',
+    required: true,
+    index: true,
+  })
+  workspaceId: Types.ObjectId;
+
+  /** Who created it. Audit + a write gate alongside the workspace owner — never the read scope. */
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   ownerId: Types.ObjectId;
 
@@ -29,6 +45,10 @@ export class Automation {
 }
 export type AutomationDocument = HydratedDocument<Automation>;
 export const AutomationSchema = SchemaFactory.createForClass(Automation);
+
+// The exact shape of the engine's lookup in `AutomationsService.fire` — it runs
+// once per issue/MR event, so it must not scan the collection.
+AutomationSchema.index({ workspaceId: 1, trigger: 1, enabled: 1 });
 
 @Schema({ timestamps: true })
 export class AutomationLog {

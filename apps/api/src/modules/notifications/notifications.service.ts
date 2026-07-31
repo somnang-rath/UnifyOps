@@ -48,9 +48,16 @@ export class NotificationsService {
     await this.email.send({ to: user.email, ...tpl });
   }
 
-  async runDueSoonSweep(
-    now: Date = new Date(),
-  ): Promise<{ sent: number; dueIssues: Array<{ id: string; title: string }> }> {
+  /**
+   * `dueIssues` carries `projectId` because the caller feeds it to the
+   * automation engine, which resolves an event's workspace from its project
+   * (ADR 0003). Without it every scheduled `issue.due_soon` would resolve to no
+   * tenant and fire nothing.
+   */
+  async runDueSoonSweep(now: Date = new Date()): Promise<{
+    sent: number;
+    dueIssues: Array<{ id: string; title: string; projectId: string | null }>;
+  }> {
     const start = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
     );
@@ -62,11 +69,15 @@ export class NotificationsService {
         assigneeId: { $ne: null },
         status: { $ne: 'done' },
       })
-      .select('title assigneeId')
+      .select('title assigneeId projectId')
       .lean();
 
     let sent = 0;
-    const dueIssues: Array<{ id: string; title: string }> = [];
+    const dueIssues: Array<{
+      id: string;
+      title: string;
+      projectId: string | null;
+    }> = [];
     for (const i of issues) {
       if (!i.assigneeId) continue;
       const r = await this.push({
@@ -78,7 +89,11 @@ export class NotificationsService {
         entityRef: { kind: 'issue', id: String(i._id) },
       });
       if (r) sent++;
-      dueIssues.push({ id: String(i._id), title: i.title });
+      dueIssues.push({
+        id: String(i._id),
+        title: i.title,
+        projectId: i.projectId ? String(i.projectId) : null,
+      });
     }
     return { sent, dueIssues };
   }

@@ -6,27 +6,42 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UsePipes,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  ZodQueryPipe,
+  ZodValidationPipe,
+} from '../../common/pipes/zod-validation.pipe';
 import { AutomationsService } from './automations.service';
 import {
-  FireDto,
-  FireSchema,
+  ListAutomationsQuery,
+  ListAutomationsQuerySchema,
   SaveAutomationDto,
   SaveAutomationSchema,
   UpdateAutomationDto,
   UpdateAutomationSchema,
 } from './dto/automation.dto';
 
+/**
+ * Rule CRUD only. The engine (`AutomationsService.fire`) is service-to-service
+ * and deliberately has no route: the `POST /automations/fire` that used to sit
+ * here took an arbitrary trigger + payload from any authenticated user, which
+ * meant anyone could drive every matching rule in the instance — re-assigning
+ * issues they could not read and firing outbound webhooks under our name.
+ */
 @Controller('automations')
 export class AutomationsController {
   constructor(private autos: AutomationsService) {}
 
   @Get()
-  list(@CurrentUser() u: { id: string }) {
-    return this.autos.list(u.id);
+  list(
+    @CurrentUser() u: { id: string },
+    @Query(new ZodQueryPipe(ListAutomationsQuerySchema))
+    q: ListAutomationsQuery,
+  ) {
+    return this.autos.list(u.id, q.workspaceId);
   }
 
   @Get(':id')
@@ -56,12 +71,5 @@ export class AutomationsController {
   @Delete(':id')
   remove(@CurrentUser() u: { id: string }, @Param('id') id: string) {
     return this.autos.remove(u.id, id);
-  }
-
-  @Post('fire')
-  @UsePipes(new ZodValidationPipe(FireSchema))
-  async fire(@Body() dto: FireDto) {
-    await this.autos.fire(dto.trigger, dto.payload);
-    return { ok: true };
   }
 }

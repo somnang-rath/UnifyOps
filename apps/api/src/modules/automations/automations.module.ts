@@ -11,6 +11,7 @@ import { AutomationsService } from './automations.service';
 import { AutomationsController } from './automations.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
+import { ProjectAccessModule } from '../projects/access/project-access.module';
 
 @Module({
   imports: [
@@ -21,6 +22,9 @@ import { UsersModule } from '../users/users.module';
     ]),
     forwardRef(() => NotificationsModule),
     UsersModule,
+    // Resolves an event's workspace and gates rule CRUD (ADR 0003). A leaf —
+    // Project + Workspace models only — so no cycle with projects/issues.
+    ProjectAccessModule,
   ],
   controllers: [AutomationsController],
   providers: [AutomationsService],

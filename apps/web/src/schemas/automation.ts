@@ -1,5 +1,8 @@
 export interface Automation {
   _id: string;
+  /** The tenant the rule belongs to and the only one its events can come from. */
+  workspaceId: string;
+  /** Who created it — the read scope is the workspace, not this. */
   ownerId: string;
   name: string;
   trigger: string;

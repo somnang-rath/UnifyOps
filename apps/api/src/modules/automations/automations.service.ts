@@ -19,6 +19,7 @@ import {
 } from './dto/automation.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { ProjectAccessService } from '../projects/access/project-access.service';
 
 @Injectable()
 export class AutomationsService {
@@ -33,35 +34,50 @@ export class AutomationsService {
     private issueModel: Model<IssueDocument>,
     private notifs: NotificationsService,
     private users: UsersService,
+    private access: ProjectAccessService,
   ) {}
 
   /* ─── CRUD ─────────────────────────────────────────────── */
 
-  list(ownerId: string) {
+  /**
+   * Rules in the workspaces the caller belongs to. `workspaceId` narrows
+   * (ADR 0011 §2b); a workspace the caller is not in is a 404, not an empty
+   * list, so ids can't be probed for existence.
+   */
+  async list(userId: string, workspaceId?: string) {
+    if (workspaceId) {
+      await this.access.assertWorkspaceMember(userId, workspaceId);
+      return this.autoModel
+        .find({ workspaceId: new Types.ObjectId(workspaceId) })
+        .sort({ updatedAt: -1 })
+        .lean();
+    }
+    const mine = await this.access.myWorkspaceIds(userId);
     return this.autoModel
-      .find({ ownerId: new Types.ObjectId(ownerId) })
+      .find({ workspaceId: { $in: mine } })
       .sort({ updatedAt: -1 })
       .lean();
   }
 
-  byId(ownerId: string, id: string) {
-    return this.autoModel
-      .findOne({ _id: id, ownerId: new Types.ObjectId(ownerId) })
-      .lean();
+  async byId(userId: string, id: string) {
+    const rule = await this.autoModel.findById(id).lean();
+    if (!rule) throw new NotFoundException();
+    await this.access.assertWorkspaceMember(userId, rule.workspaceId);
+    return rule;
   }
 
-  create(ownerId: string, dto: SaveAutomationDto) {
+  async create(userId: string, dto: SaveAutomationDto) {
+    await this.access.assertWorkspaceMember(userId, dto.workspaceId);
     return this.autoModel.create({
       ...dto,
-      ownerId: new Types.ObjectId(ownerId),
+      workspaceId: new Types.ObjectId(dto.workspaceId),
+      ownerId: new Types.ObjectId(userId),
       timesFired: 0,
     });
   }
 
-  async update(ownerId: string, id: string, dto: UpdateAutomationDto) {
-    const a = await this.autoModel.findById(id);
-    if (!a) throw new NotFoundException();
-    if (String(a.ownerId) !== ownerId) throw new ForbiddenException();
+  async update(userId: string, id: string, dto: UpdateAutomationDto) {
+    const a = await this.assertWritable(userId, id);
     if (dto.name !== undefined) a.name = dto.name;
     if (dto.trigger !== undefined) a.trigger = dto.trigger;
     if (dto.condition !== undefined) a.condition = dto.condition;
@@ -70,23 +86,57 @@ export class AutomationsService {
     return a.save();
   }
 
-  async remove(ownerId: string, id: string) {
-    const a = await this.autoModel.findById(id);
-    if (!a) throw new NotFoundException();
-    if (String(a.ownerId) !== ownerId) throw new ForbiddenException();
+  async remove(userId: string, id: string) {
+    const a = await this.assertWritable(userId, id);
     await a.deleteOne();
     return { ok: true };
+  }
+
+  /**
+   * Read is workspace membership; write is narrower — the creator, or the
+   * workspace owner. Keeping the owner in the gate means a rule doesn't become
+   * unmanageable when the person who wrote it leaves, without letting any
+   * member silently retarget a rule the whole team depends on.
+   *
+   * 404 first (non-member), 403 second (member, not entitled): a non-member
+   * must not be able to tell an existing rule from a made-up id.
+   */
+  private async assertWritable(userId: string, id: string) {
+    const a = await this.autoModel.findById(id);
+    if (!a) throw new NotFoundException();
+    await this.access.assertWorkspaceMember(userId, a.workspaceId);
+    if (String(a.ownerId) === userId) return a;
+    if (await this.access.isWorkspaceOwner(userId, a.workspaceId)) return a;
+    throw new ForbiddenException();
   }
 
   /* ─── Engine ────────────────────────────────────────────── */
 
   /**
-   * Called by other services (issues, MRs, kanban) when an event occurs.
-   * Finds all enabled automation rules matching the trigger and runs them.
+   * Called by other services (issues, MRs, projects, the scheduler) when an
+   * event occurs. Runs the enabled rules **of that event's workspace** —
+   * previously it ran every enabled rule in the instance, so a rule written in
+   * one workspace re-assigned issues and notified people in another.
+   *
+   * The workspace is derived from the event, never from the rule: see
+   * {@link workspaceOf}. An event with no workspace (a personal, project-less
+   * issue) matches nothing — no workspace rule owns it. Fail closed.
+   *
+   * There is no HTTP route into this method by design; it is service-to-service
+   * only. The `POST /automations/fire` endpoint that used to expose it let any
+   * authenticated user run every matching rule against an arbitrary payload.
    */
   async fire(trigger: string, payload: Record<string, unknown>): Promise<void> {
+    const workspaceId = await this.workspaceOf(payload);
+    if (!workspaceId) {
+      this.logger.debug(
+        `Automation ${trigger}: no workspace resolved from the payload — skipped`,
+      );
+      return;
+    }
+
     const rules = await this.autoModel
-      .find({ trigger, enabled: true })
+      .find({ workspaceId, trigger, enabled: true })
       .lean();
 
     for (const r of rules) {
@@ -94,7 +144,7 @@ export class AutomationsService {
       let errorMsg: string | undefined;
 
       try {
-        await this.runAction(r.action, { ...payload, trigger });
+        await this.runAction(r.action, { ...payload, trigger }, workspaceId);
         await this.autoModel.updateOne(
           { _id: r._id },
           { $set: { lastFired: new Date() }, $inc: { timesFired: 1 } },
@@ -115,17 +165,46 @@ export class AutomationsService {
     }
   }
 
+  /**
+   * The workspace an event happened in. `projectId` is preferred and resolved
+   * against the database — the project's own `workspaceId` is the authority, so
+   * a caller cannot widen the blast radius by labelling a payload. The explicit
+   * `payload.workspaceId` is only the fallback for events that carry no project.
+   * Null means "no tenant" and stops the rule lookup entirely.
+   */
+  private async workspaceOf(
+    payload: Record<string, unknown>,
+  ): Promise<Types.ObjectId | null> {
+    const projectId = payload.projectId ? String(payload.projectId) : '';
+    if (projectId) {
+      const project = await this.access.getAccessFields(projectId);
+      return project?.workspaceId
+        ? new Types.ObjectId(String(project.workspaceId))
+        : null;
+    }
+    const explicit = payload.workspaceId ? String(payload.workspaceId) : '';
+    return Types.ObjectId.isValid(explicit) ? new Types.ObjectId(explicit) : null;
+  }
+
   /* ─── Action handlers ───────────────────────────────────── */
 
+  /**
+   * `workspaceId` is the event's, resolved once in {@link fire}. The three
+   * issue-mutating actions don't re-check it: the rule was selected *because*
+   * it lives in the same workspace as the issue in the payload, so the target
+   * is in-tenant by construction. `notify` does need it — its recipient lookup
+   * is by role or email and would otherwise reach across the instance.
+   */
   private async runAction(
     action: Record<string, unknown>,
     payload: Record<string, unknown>,
+    workspaceId: Types.ObjectId,
   ): Promise<void> {
     const type = String(action.type ?? '').trim();
 
     switch (type) {
       case 'notify':
-        await this.actionNotify(action, payload);
+        await this.actionNotify(action, payload, workspaceId);
         break;
       case 'set_status':
         await this.actionSetStatus(action, payload);
@@ -148,10 +227,17 @@ export class AutomationsService {
    * Sends an in-app notification (+ email if user prefs allow).
    * action.target: email address OR role name OR empty (→ author + assignee)
    * action.value:  notification title override (optional)
+   *
+   * Every recipient is filtered down to the event's workspace before the push.
+   * A role target resolves against *all* users in the instance holding that
+   * role, so without the filter a rule in one workspace mailed the issue title
+   * to every "dev" on the server — the same title leak §1.1 closed on /search,
+   * arriving by notification instead.
    */
   private async actionNotify(
     action: Record<string, unknown>,
     payload: Record<string, unknown>,
+    workspaceId: Types.ObjectId,
   ): Promise<void> {
     const target = String(action.target ?? '').trim();
     const titleOverride = String(action.value ?? '').trim();
@@ -181,8 +267,14 @@ export class AutomationsService {
       recipientIds = roleUsers.map((u) => u.id);
     }
 
-    // De-duplicate
+    // De-duplicate, then drop anyone outside the event's workspace.
     recipientIds = Array.from(new Set(recipientIds)).filter(Boolean);
+    if (recipientIds.length === 0) return;
+
+    const inWorkspace = new Set(
+      (await this.access.workspaceMemberIds(workspaceId)).map(String),
+    );
+    recipientIds = recipientIds.filter((id) => inWorkspace.has(id));
     if (recipientIds.length === 0) return;
 
     await this.notifs.pushMany(recipientIds, {

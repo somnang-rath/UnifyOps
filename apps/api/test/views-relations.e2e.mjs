@@ -388,6 +388,132 @@ async function main() {
     assert.equal(res.status, 404, `expected 404 for stranger, got ${res.status}`);
   });
 
+  // ── Automations are workspace rules, not personal ones ───────────
+  // Regression (06-differentiators.md §1.4): `Automation` had no workspaceId
+  // and the engine matched *every* enabled rule in the instance, so a rule
+  // written in acme re-labelled, re-assigned and re-statused issues in beta and
+  // notified people who could not read them. Lives here, not in the security
+  // suite, because it reuses this suite's two-tenant fixture (alice ↔ acme,
+  // dave ↔ beta) and its already-spent logins.
+  const probeLabel = `au-probe-${Date.now()}`;
+  let ruleId;
+  let acmeProjectId;
+  let betaProjectId;
+
+  await check('an automation is created into a workspace', async () => {
+    acmeProjectId = [...acmeProjectIds][0];
+    // Dave owns `Data Pipeline` in beta — a project alice's rule must never reach.
+    const daveProjects = await dave('GET', '/projects');
+    betaProjectId = String(
+      (daveProjects.data ?? []).find((p) => p.name === 'Data Pipeline')?._id ??
+        (daveProjects.data ?? [])[0]?._id ??
+        '',
+    );
+    assert.ok(betaProjectId, 'dave has no readable project to write a beta issue into');
+
+    const res = await alice('POST', '/automations', {
+      workspaceId: acmeId,
+      name: 'E2E probe',
+      trigger: 'issue.created',
+      action: { type: 'add_label', value: probeLabel },
+    });
+    assert.equal(res.status, 201, `got ${res.status}: ${JSON.stringify(res.data)}`);
+    assert.equal(String(res.data.workspaceId), String(acmeId), 'workspaceId not stored');
+    ruleId = res.data._id;
+  });
+
+  await check('creating a rule in a foreign workspace is a 404', async () => {
+    const res = await dave('POST', '/automations', {
+      workspaceId: acmeId,
+      name: 'dave should not be able to write this',
+      trigger: 'issue.created',
+      action: { type: 'add_label', value: 'nope' },
+    });
+    assert.equal(res.status, 404, `expected 404, got ${res.status}`);
+  });
+
+  await check('a rule without a workspaceId is rejected', async () => {
+    const res = await alice('POST', '/automations', {
+      name: 'homeless',
+      trigger: 'issue.created',
+      action: { type: 'add_label', value: 'nope' },
+    });
+    assert.equal(res.status, 400, `expected 400, got ${res.status}`);
+  });
+
+  await check('a non-member can neither list, read, edit nor delete the rule', async () => {
+    const list = await dave('GET', '/automations');
+    assert.equal(list.status, 200);
+    assert.ok(
+      !(list.data ?? []).some((a) => String(a._id) === String(ruleId)),
+      'a foreign workspace’s rule appeared in the list',
+    );
+    for (const [method, body] of [
+      ['GET', undefined],
+      ['PATCH', { enabled: false }],
+      ['DELETE', undefined],
+    ]) {
+      const res = await dave(method, `/automations/${ruleId}`, body);
+      assert.equal(res.status, 404, `${method} /automations/:id gave ${res.status}, expected 404`);
+    }
+  });
+
+  await check('the engine has no HTTP route', async () => {
+    // `POST /automations/fire` used to run every matching rule in the instance
+    // against a caller-supplied payload — arbitrary issue mutation plus an
+    // outbound webhook, from any logged-in account.
+    const res = await alice('POST', '/automations/fire', {
+      trigger: 'issue.created',
+      payload: { issueId: acmeDatedIssueId, projectId: acmeProjectId },
+    });
+    assert.equal(res.status, 404, `expected 404, got ${res.status}`);
+  });
+
+  await check('the rule fires on its own workspace, never on another', async () => {
+    // fire() is deliberately not awaited by the issue create path, so poll.
+    const labelled = async (issueId, who) => {
+      for (let i = 0; i < 20; i += 1) {
+        const got = await who('GET', `/issues/${issueId}`);
+        if ((got.data?.labels ?? []).includes(probeLabel)) return true;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return false;
+    };
+
+    const foreign = await dave('POST', '/issues', {
+      title: 'beta issue — acme rules must not touch this',
+      projectId: betaProjectId,
+    });
+    assert.equal(foreign.status, 201, JSON.stringify(foreign.data));
+
+    const own = await alice('POST', '/issues', {
+      title: 'acme issue — the rule should label this',
+      projectId: acmeProjectId,
+    });
+    assert.equal(own.status, 201, JSON.stringify(own.data));
+
+    assert.ok(
+      await labelled(own.data._id, alice),
+      'the rule did not fire inside its own workspace',
+    );
+    // Checked second and without polling: by now the acme rule has demonstrably
+    // run to completion, so a cross-tenant fire would already have landed.
+    const foreignGot = await dave('GET', `/issues/${foreign.data._id}`);
+    assert.ok(
+      !(foreignGot.data?.labels ?? []).includes(probeLabel),
+      'an acme rule mutated a beta issue',
+    );
+
+    await alice('DELETE', `/issues/${own.data._id}`);
+    await dave('DELETE', `/issues/${foreign.data._id}`);
+  });
+
+  await check('the creator can delete the rule', async () => {
+    const res = await alice('DELETE', `/automations/${ruleId}`);
+    assert.equal(res.status, 200, `got ${res.status}`);
+    assert.equal((await alice('GET', `/automations/${ruleId}`)).status, 404);
+  });
+
   // ── Bulk operations (Phase 7b; ADR 0011 §4 — body-only selection) ─
   let bulkA, bulkB;
   await check('bulk setup: two personal issues', async () => {

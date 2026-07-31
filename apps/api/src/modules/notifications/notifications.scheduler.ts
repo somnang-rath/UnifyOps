@@ -21,9 +21,12 @@ export class NotificationsScheduler {
         this.logger.log(`Due-soon sweep: sent ${sent} notification(s)`);
       }
       for (const issue of dueIssues) {
+        // projectId is what lets the engine resolve the workspace; a personal
+        // issue has none and correctly matches no workspace rule.
         this.autos.fire('issue.due_soon', {
           issueId: issue.id,
           issueTitle: issue.title,
+          projectId: issue.projectId ?? undefined,
         }).catch(() => {});
       }
     } catch (err) {
