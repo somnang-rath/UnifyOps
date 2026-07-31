@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { Project, ProjectDocument } from '../schemas/project.schema';
 import {
   Workspace,
@@ -69,6 +69,40 @@ export class ProjectAccessService {
     if (!(await this.isWorkspaceMember(userId, workspaceId))) {
       throw new NotFoundException();
     }
+  }
+
+  /**
+   * Workspace ownership — strictly narrower than {@link isWorkspaceMember}. The
+   * escape hatch for team-owned records (automation rules) so they don't become
+   * unmanageable when the person who created them leaves.
+   */
+  async isWorkspaceOwner(
+    userId: string,
+    workspaceId: Types.ObjectId | string | null | undefined,
+  ): Promise<boolean> {
+    if (!workspaceId || !Types.ObjectId.isValid(String(workspaceId)))
+      return false;
+    const owned = await this.workspaceModel.exists({
+      _id: workspaceId,
+      ownerId: new Types.ObjectId(userId),
+    });
+    return Boolean(owned);
+  }
+
+  /**
+   * Everyone in a workspace — owner included. Used to keep a fan-out (an
+   * automation notifying "everyone with role X") inside the tenant instead of
+   * hitting every user in the instance who happens to share that role.
+   */
+  async workspaceMemberIds(
+    workspaceId: Types.ObjectId | string | null | undefined,
+  ): Promise<Types.ObjectId[]> {
+    if (!workspaceId || !Types.ObjectId.isValid(String(workspaceId))) return [];
+    const ws = await this.workspaceModel
+      .findById(workspaceId, { ownerId: 1, members: 1 })
+      .lean();
+    if (!ws) return [];
+    return [ws.ownerId, ...(ws.members ?? [])];
   }
 
   /** The id set of every workspace the user owns or belongs to. */
@@ -180,6 +214,46 @@ export class ProjectAccessService {
       )
       .lean();
     return projects.map((p) => p._id);
+  }
+
+  /**
+   * THE read filter for any collection whose items link to a project through a
+   * `projectId` field (ADR 0003/0005; workspace param per ADR 0011 §2b). Every
+   * list/search endpoint over such a collection composes this into its query —
+   * `issues`, `search`, and anything added later — so the rule lives in one
+   * place instead of being re-derived per module.
+   *
+   * Absent `workspaceId`: items in projects the caller can read, plus their own
+   * personal (project-less) items when `personalMatch` says which of those are
+   * theirs (e.g. `{ $or: [{ authorId: me }, { assigneeId: me }] }`). Omit
+   * `personalMatch` for a collection with no personal tier — project-less items
+   * are then excluded entirely.
+   *
+   * Present `workspaceId`: readable projects *in that workspace* only. Personal
+   * items belong to no workspace and are dropped, and an unknown or non-member
+   * workspace yields `{ $in: [] }` — a filter that matches nothing rather than
+   * one that leaks. Compose with `$and`, never by spreading, so the returned
+   * `$or` cannot collide with the caller's own `$or`.
+   */
+  async projectItemScope<T>(
+    userId: string,
+    workspaceId?: string | null,
+    personalMatch?: FilterQuery<T>,
+  ): Promise<FilterQuery<T>> {
+    if (workspaceId) {
+      const projectIds = await this.readableProjectIdsInWorkspace(
+        userId,
+        workspaceId,
+      );
+      return { projectId: { $in: projectIds } } as FilterQuery<T>;
+    }
+    const readableProjects = await this.readableProjectIds(userId);
+    return {
+      $or: [
+        { projectId: { $in: readableProjects } },
+        ...(personalMatch ? [{ projectId: null, ...personalMatch }] : []),
+      ],
+    } as FilterQuery<T>;
   }
 
   // ── Write gate (ADR 0005: members + stakeholders) ──────────────────

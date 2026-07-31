@@ -91,32 +91,19 @@ export class IssuesService {
   }
 
   /**
-   * The access-scope branch shared by {@link list} and {@link calendar}
-   * (ADR 0003/0005; workspace param per ADR 0011 §2b). Absent `workspaceId`:
-   * issues in projects the caller can read, plus their own personal
-   * (project-less) issues. Present: readable projects *in that workspace*
-   * only — personal issues belong to no workspace and are dropped, and an
-   * unknown/non-member workspace yields a filter that matches nothing.
+   * The access-scope branch shared by {@link list} and {@link calendar}. Thin
+   * wrapper over `ProjectAccessService.projectItemScope` (ADR 0003/0005;
+   * workspace param per ADR 0011 §2b) — it only supplies what "personal issue"
+   * means here: one with no project that the caller authored or is assigned.
    */
   private async accessScope(
     userId: string,
     workspaceId?: string,
   ): Promise<FilterQuery<IssueDocument>> {
-    if (workspaceId) {
-      const projectIds = await this.access.readableProjectIdsInWorkspace(
-        userId,
-        workspaceId,
-      );
-      return { projectId: { $in: projectIds } };
-    }
     const me = new Types.ObjectId(userId);
-    const readableProjects = await this.access.readableProjectIds(userId);
-    return {
-      $or: [
-        { projectId: { $in: readableProjects } },
-        { projectId: null, $or: [{ authorId: me }, { assigneeId: me }] },
-      ],
-    };
+    return this.access.projectItemScope<IssueDocument>(userId, workspaceId, {
+      $or: [{ authorId: me }, { assigneeId: me }],
+    });
   }
 
   async list(userId: string, q: ListIssueQuery) {

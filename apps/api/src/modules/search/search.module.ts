@@ -5,6 +5,7 @@ import { SearchService } from './search.service';
 import { Issue, IssueSchema } from '../issues/schemas/issue.schema';
 import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 import { Note, NoteSchema } from '../notes/schemas/note.schema';
+import { ProjectAccessModule } from '../projects/access/project-access.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { Note, NoteSchema } from '../notes/schemas/note.schema';
       { name: Project.name, schema: ProjectSchema },
       { name: Note.name, schema: NoteSchema },
     ]),
+    ProjectAccessModule,
   ],
   controllers: [SearchController],
   providers: [SearchService],

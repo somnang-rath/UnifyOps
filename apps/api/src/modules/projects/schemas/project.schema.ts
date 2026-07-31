@@ -160,3 +160,8 @@ ProjectSchema.index(
   { anchor: 1 },
   { unique: true, partialFilterExpression: { anchor: { $type: 'string' } } },
 );
+
+// Backs `$text` in SearchService — mirrors IssueSchema's. Mongo allows exactly
+// one text index per collection, so any new searchable field goes in here
+// rather than into a second index.
+ProjectSchema.index({ name: 'text', desc: 'text' });

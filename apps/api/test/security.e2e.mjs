@@ -273,6 +273,58 @@ async function main() {
     assert.ok(res.status >= 400, `revoked token still refreshed: ${res.status}`);
   });
 
+  // ── S11: /search obeys the workspace boundary ────────────────────
+  // Regression: the issues branch of /search carried no access filter at all,
+  // so any authenticated user got issue titles + descriptions from every
+  // workspace in the instance. Boundary #2 (architecture.rules.md, ADR 0003–6):
+  // every READ path is workspace-scoped, search included.
+  //
+  // Written as a property rather than a fixture count so it holds for whatever
+  // TEST_EMAIL is: an id search hands back must be one /issues/:id also hands
+  // back, since that route applies the canonical rule and 404s otherwise.
+  await check('S11 /search never returns an issue the caller cannot read', async () => {
+    // "Seeded" appears in the desc of every seeded issue across all 3
+    // workspaces — the widest net the fixture allows.
+    const res = await web.req('GET', '/search?q=Seeded&limit=50', {
+      token: webToken,
+    });
+    assert.equal(res.status, 200, `search returned ${res.status}`);
+    const issues = res.data?.issues ?? [];
+    for (const issue of issues) {
+      const one = await web.req('GET', `/issues/${issue._id}`, {
+        token: webToken,
+      });
+      assert.equal(
+        one.status,
+        200,
+        `search leaked issue ${issue._id} ("${issue.title}") — /issues/:id says ${one.status}`,
+      );
+    }
+  });
+
+  await check('S11 an unknown workspaceId narrows to nothing, never to everything', async () => {
+    const nowhere = '0'.repeat(24); // valid ObjectId, no such workspace
+    const res = await web.req(
+      `GET`,
+      `/search?q=Seeded&workspaceId=${nowhere}&limit=50`,
+      { token: webToken },
+    );
+    assert.equal(res.status, 200, `search returned ${res.status}`);
+    assert.deepEqual(res.data?.issues ?? [], [], 'issues leaked past the workspace filter');
+    assert.deepEqual(res.data?.projects ?? [], [], 'projects leaked past the workspace filter');
+  });
+
+  await check('S11 regex metacharacters in q are matched literally', async () => {
+    // Unescaped, `.*` matched every document — a wildcard the caller was never
+    // meant to have, and a ReDoS surface on longer patterns.
+    const res = await web.req('GET', '/search?q=.*&limit=50', {
+      token: webToken,
+    });
+    assert.equal(res.status, 200, `search returned ${res.status}`);
+    assert.deepEqual(res.data?.issues ?? [], [], '`.*` was treated as a wildcard');
+    assert.deepEqual(res.data?.notes ?? [], [], '`.*` was treated as a wildcard');
+  });
+
   // ── S7: login throttling ─────────────────────────────────────────
   await check('S7 repeated bad logins are throttled (429)', async () => {
     const attacker = makeClient();
