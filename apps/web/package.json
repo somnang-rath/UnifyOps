@@ -11,7 +11,8 @@
     "test:browser-smoke": "node test/browser-smoke.e2e.mjs",
     "test:csp": "node test/csp.browser.mjs",
     "test:cover": "node test/cover-picker.browser.mjs",
-    "test:project-tabs": "node test/project-tabs.browser.mjs"
+    "test:project-tabs": "node test/project-tabs.browser.mjs",
+    "test:intake": "node test/intake.browser.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
