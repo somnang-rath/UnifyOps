@@ -276,7 +276,17 @@ async function main() {
 
   let acmeId;
   let acmeProjectIds = new Set();
+  // A project alice may WRITE to, which is a strictly smaller set than the one
+  // above: writing needs project membership, while reading an `internal`
+  // project only needs workspace membership. Picking [0] of the readable list
+  // for a write is a 403 waiting to happen — and it happened, because the
+  // seeded projects share an `updatedAt` and the sort tie-break is unstable.
+  let acmeWritableProjectId;
   await check('alice resolves acme and her readable acme projects', async () => {
+    const me = await alice('GET', '/auth/me');
+    assert.equal(me.status, 200, 'alice /auth/me failed');
+    const aliceId = String(me.data.id ?? me.data._id);
+
     const ws = await alice('GET', '/workspaces');
     const acme = (ws.data ?? []).find?.((w) => w.slug === 'acme');
     assert.ok(acme, `acme not in alice's workspaces: ${JSON.stringify(ws.data)?.slice(0, 200)}`);
@@ -287,6 +297,28 @@ async function main() {
       (projects.data ?? []).map((p) => String(p._id ?? p.id)),
     );
     assert.ok(acmeProjectIds.size > 0, 'alice has no readable acme projects');
+
+    const writable = (projects.data ?? []).find(
+      (p) =>
+        String(p.ownerId) === aliceId ||
+        (p.members ?? []).some((m) => String(m) === aliceId),
+    );
+    assert.ok(
+      writable,
+      'alice owns/joins no acme project — fixture drift? (she owns "Website Redesign")',
+    );
+    acmeWritableProjectId = String(writable._id ?? writable.id);
+
+    // The list must not offer what the detail route hides: a private project
+    // alice is not on used to appear here (fixed 2026-08-06 in
+    // ProjectsService.listInWorkspace).
+    for (const id of acmeProjectIds) {
+      assert.equal(
+        (await alice('GET', `/projects/${id}`)).status,
+        200,
+        `workspace list offered project ${id} that GET /projects/:id refuses`,
+      );
+    }
   });
 
   await check('GET /issues?workspaceId=<acme> (alice) → only acme-project issues', async () => {
@@ -401,7 +433,8 @@ async function main() {
   let betaProjectId;
 
   await check('an automation is created into a workspace', async () => {
-    acmeProjectId = [...acmeProjectIds][0];
+    // Writable, not merely readable — every check below creates an issue in it.
+    acmeProjectId = acmeWritableProjectId;
     // Dave owns `Data Pipeline` in beta — a project alice's rule must never reach.
     const daveProjects = await dave('GET', '/projects');
     betaProjectId = String(

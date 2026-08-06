@@ -105,16 +105,40 @@ export class ProjectsService {
   }
 
   /**
-   * Strict workspace isolation (ADR 0006): a project is listed if and only if its
-   * `workspaceId` matches — including ones the caller owns but that live in
-   * another workspace. Deliberately NOT {@link listForUser}'s rule, whose owner/
-   * member branches are workspace-independent by design (ADR 0003). Used by the
-   * workspace-scoped project list so the view means exactly what it says.
+   * The workspace-scoped project list: both isolation rules at once.
+   *
+   * Strict workspace isolation (ADR 0006) — a project is listed only if its
+   * `workspaceId` matches, so one the caller owns in *another* workspace stays
+   * out. That is deliberately NOT {@link listForUser}'s rule, whose owner/member
+   * branches are workspace-independent by design (ADR 0003).
+   *
+   * AND readability ({@link canRead}) — owner OR member OR internal/public.
+   * Being a member of the workspace is not by itself permission to see a
+   * *private* project inside it. Until 2026-08-06 this filtered on workspaceId
+   * alone, so every workspace member saw every private project's name, colour
+   * and issue counts while `GET /projects/:id` on the same project correctly
+   * 404'd — the list contradicted the detail route, and `canRead` was
+   * documented as the single source of truth it was not being asked.
+   *
+   * Found by test:phase7 flaking: the seeded projects share an `updatedAt`, so
+   * the tie-break in `sort` moved a private project into first place and the
+   * suite picked it. The leak had been there since the list existed.
    */
   async listInWorkspace(userId: string, workspaceId: string) {
     await this.access.assertWorkspaceMember(userId, workspaceId);
+    const me = new Types.ObjectId(userId);
     const projects = await this.projectModel
-      .find({ workspaceId: new Types.ObjectId(workspaceId) })
+      .find({
+        workspaceId: new Types.ObjectId(workspaceId),
+        // Mirrors canReadProject. The "in a workspace I belong to" half of that
+        // rule is already guaranteed by assertWorkspaceMember above, so what
+        // remains is the visibility test.
+        $or: [
+          { ownerId: me },
+          { members: me },
+          { visibility: { $in: ['internal', 'public'] } },
+        ],
+      })
       .select('-overview')
       .sort({ updatedAt: -1 })
       .lean();
