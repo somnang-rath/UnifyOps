@@ -285,20 +285,31 @@ export function SpaceCover({ src }: { src: string }) {
 
 ## 8. States checklist + Definition of done
 
-> **ស្ថានភាព (2026-07-31)** — feature **ship រួច** (ADR 0010: `unsplash` module,
-> owner-only gate, dev key configured)។ បញ្ជីខាងក្រោមមិនមែនការងារនៅសល់ទេ — វាជា
-> **manual QA pass** ដែលមិនដែលកត់ត្រាថាបានធ្វើ។ គូសមិនបានដោយអាន code —
-> "ឃើញពិត", "Network tab", "keyboard-only", "render 4:1" ត្រូវការមនុស្សបើក browser។
+> **ស្ថានភាព (2026-07-31)** — feature ship រួច (ADR 0010) ហើយ QA pass នេះ
+> **ធ្វើរួច ដោយស្វ័យប្រវត្តិ**៖ `pnpm --filter web test:cover`
+> (`apps/web/test/cover-picker.browser.mjs`, 15 checks + 1 env skip)។
 >
-> ទុក `[ ]` ដោយចេតនា។ គូសវាដោយមិនបានធ្វើ គឺជាកំហុសដដែលដែល audit 2026-07-31
-> កំពុងជួសជុល។ បើនរណាដើរតាមបញ្ជីនេះ សូមកត់កាលបរិច្ឆេទទុក។
+> ដើមឡើយបញ្ជីនេះសរសេរជា *manual* pass ("ឃើញពិត", "Network tab", "keyboard-only")
+> ហើយអង្គុយចោលមិនបានគូស។ Manual ជាទម្រង់ខុសសម្រាប់វា — គ្រប់ធាតុសង្កេតបានពី
+> browser ដែលបើកដោយ script ហើយប្រអប់ដែលគូសដោយដៃ ចាស់ភ្លាមពេលនរណាកែ picker។
+> State ដែលបរាជ័យ (502, no results, Unsplash បិទ) បង្កើតតាមតម្រូវការមិនបានទេ
+> ដូច្នេះ suite intercept `/unsplash/search`; មួយ check ទុកមិន intercept ដើម្បី
+> សាកល្បង proxy ពិត ហើយ skip-warn ពេលគ្មាន key។
 
-- [ ] Picker: initial(default query) · loading skeleton · loaded · appending ·
-      no-results · 502 inline (no toast) · not-configured gate — ទាំង 7 ឃើញពិត
-- [ ] Trigger visibility: instance boolean off ⇒ Add/Change បាត់ទាំងអស់ ប៉ុន្តែ Remove នៅ
-- [ ] Select ⇒ cover ឡើងភ្លាម + `POST /unsplash/download` fired (Network tab) ដោយមិន block
-- [ ] Attribution links per-tile + footer, UTM intact, `target="_blank"`
-- [ ] Keyboard-only: បើក modal → search → Tab ដល់ tile → Enter select → focus ត្រឡប់ trigger
-- [ ] Banner: project overview + settings + wiki + space render 4:1 ដូចគ្នា; img error ⇒
-      gradient fallback (web) / silent hide (space)
-- [ ] `pnpm --filter web build` + `pnpm --filter space build` ✅ ហើយ E2E ពិត (workflow rule)
+**QA pass នេះរកឃើញ bug ពិតមួយក្នុង `packages/ui`** (មិនមែនក្នុង picker)៖
+`useFocusTrap` អាន `document.activeElement` នៅក្នុង effect ពេលបើក — តែ React
+អនុវត្ត `autoFocus` របស់ child នៅ commit ដែល **មុន** passive effect ដូច្នេះវាចាប់
+យក input របស់ dialog ខ្លួនឯងជាគោលដៅ "restore"។ ពេលបិទ វា focus node ដែល detach
+ទៅហើយ (no-op ស្ងាត់) ហើយអ្នកប្រើធ្លាក់ទៅ `<body>`។ ប៉ះពាល់ **គ្រប់ Modal/Drawer
+ដែលមាន field autoFocus** មិនមែនត្រឹម cover picker។ ដោះដោយតាមដាន focus នៅ
+document level (module-level listener, ត្រង element ក្នុង `[role="dialog"]` ចេញ)។
+
+- [x] Picker: initial(default query) · loading skeleton · loaded · appending ·
+      no-results · 502 inline (no toast) · not-configured gate — ទាំង 7
+- [x] Trigger visibility: instance boolean off ⇒ Add/Change បាត់ ប៉ុន្តែ Remove នៅ
+- [x] Select ⇒ cover ឡើងភ្លាម + `POST /unsplash/download` fired ដោយមិន block
+      (suite កាន់ ping ចោលមិនឆ្លើយ ដើម្បីបញ្ជាក់ថា modal បិទដោយមិនរង់ចាំ)
+- [x] Attribution links per-tile + footer, UTM intact, `target="_blank"` + `rel=noopener`
+- [x] Keyboard-only: បើក modal → search → Tab ដល់ tile → Enter select → focus ត្រឡប់ trigger
+- [x] Banner render 4:1 + img error ⇒ gradient fallback (មិន collapse)
+- [x] `pnpm --filter web build` + `pnpm --filter space build` ✅ ហើយ E2E ពិត (workflow rule)

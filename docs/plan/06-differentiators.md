@@ -185,14 +185,54 @@ Notion AI ដែរ។ គ្មាន moat ទេ។
 **Moat ចាប់ផ្ដើមពេល AI *ធ្វើការ* ជំនួស** — ហើយ Prism មានអ្វីដែលអ្នកដទៃគ្មាន៖
 tool surface ដែលភ្ជាប់ chat, Telegram, intake, bulk ops, cycles, scheduler **ក្នុង instance តែមួយ**។
 
-### 2.3 ការងារ
+### 2.3 ការងារ — ✅ **បិទទាំង ៤ 2026-07-31**
 
 | # | អ្វី | ប្រើអ្វីមានស្រាប់ | Effort |
 | - | ---- | ----------------- | ------ |
-| 2a | **Write tools** — `update_issue`, `assign_issue`, `bulk_update`, `move_to_cycle`, `move_to_module`, `create_cycle` | `POST /issues/bulk` + `/bulk/delete` មានស្រាប់ (Phase 7, per-issue authz + partial success — ត្រូវនឹង tool loop ល្អឥតខ្ចោះ) | M |
-| 2b | **Assistant ក្នុង chat + Telegram** — `@prism សរុបអ្វីដែល team ធ្វើសប្ដាហ៍នេះ` | `chat.gateway.ts` + `chat/telegram/` bridge (ADR 0007) | M |
-| 2c | **Auto-triage លើ intake** — submission ចូល → AI ស្នើ label/priority/assignee | `POST /intake/submissions/:id/triage` **មានស្រាប់រួចហើយ** — គ្រាន់តែភ្ជាប់ assistant ចូល | S |
-| 2d | **Weekly digest** — cycle progress សរុបដោយ AI ផ្ញើទៅ Telegram/email រាល់ថ្ងៃសុក្រ | `notifications.scheduler.ts` មាន `@Cron` រួច (`EVERY_DAY_AT_8AM`, `EVERY_WEEK`) | S |
+| 2a ✅ | **Write tools** — `update_issue`, `assign_issue`, `bulk_update`, `move_to_cycle`, `move_to_module`, `create_cycle` | `POST /issues/bulk` + `/bulk/delete` មានស្រាប់ (Phase 7, per-issue authz + partial success — ត្រូវនឹង tool loop ល្អឥតខ្ចោះ) | M |
+| 2b ✅ | **Assistant ក្នុង chat + Telegram** — `@prism សរុបអ្វីដែល team ធ្វើសប្ដាហ៍នេះ` | `chat.gateway.ts` + `chat/telegram/` bridge (ADR 0007) | M |
+| 2c ✅ | **Auto-triage លើ intake** — submission ចូល → AI ស្នើ label/priority/assignee | `POST /intake/submissions/:id/triage` **មានស្រាប់រួចហើយ** — គ្រាន់តែភ្ជាប់ assistant ចូល | S |
+| 2d ✅ | **Weekly digest** — cycle progress សរុបដោយ AI ផ្ញើទៅ Telegram/email រាល់ថ្ងៃសុក្រ | `notifications.scheduler.ts` មាន `@Cron` រួច (`EVERY_DAY_AT_8AM`, `EVERY_WEEK`) | S |
+
+### 2.3.1 អ្វីដែលបានសាងពិត (2026-07-31)
+
+Tools ពី ៤ → **១៥**៖ read ៦ (`search_issues` `search_wiki` `get_wiki_page`
+`list_project_members` `list_cycles` `list_modules`) · Tier A ៦ · Tier B ១ · Tier C ២។
+Read tools ៣ ថ្មីមិនមែនជា feature ទេ — ជា**លក្ខខណ្ឌចាំបាច់** នៃច្បាប់ id provenance៖
+បើ model មិនអាច *រក* id បាន វានឹង *ទាយ*។
+
+រឿងដែលអានកូដមិនឃើញ តែសំខាន់៖
+
+- **Emitter abstraction ជំនួសការ copy loop** — Telegram ត្រូវការ agentic loop ដដែល
+  តែគ្មាន SSE។ ជំនួសការសរសេរ loop ទី ២ (ដែលនឹងបែកចេញពីគ្នាភ្លាម) `LoopParams.res:
+  Response` ប្ដូរជា `emit: LoopEmitter`; web បញ្ជូន SSE emitter, Telegram/digest
+  បញ្ជូន `SILENT`។ Loop មិនដឹងថាមានអ្នកមើលឬអត់។
+- **Provenance យកតែពី result ជោគជ័យ** — `runTool` ហៅ `session.observe()` តែពេល
+  `run.ok`។ បើយកពី error ផង នោះ `update_issue` លើ id ប្រឌិត នឹង**ធ្វើឲ្យ id នោះ
+  ស្របច្បាប់** សម្រាប់ការហៅបន្ទាប់ — គឺជាការបើកផ្លូវឲ្យអ្វីដែល §2.3 ចង់បិទ។
+  មាន check ដាច់ដោយឡែកក្នុង suite សម្រាប់រឿងនេះ។
+- **`ChatChannel.projectId` គឺជា field ថ្មី** — ADR §2.4 សរសេរថា "scope តាម project
+  របស់ channel" ប៉ុន្តែ channel **គ្មាន** project link សោះ។ បន្ថែម (nullable, ដាក់បាន
+  តែដោយអ្នកដែល write project នោះបាន) ហើយ **គ្មាន project = assistant មិនដំណើរការ**។
+- **Digest ធ្លាក់ចុះបានដោយគ្មាន AI** — `complete()` ត្រឡប់ `null` ពេលគ្មាន key ហើយ
+  `plainSummary()` សរសេរការពិតដដែលដោយគ្មាន prose។ Digest ជា notification feature
+  ដែល AI ធ្វើឲ្យប្រសើរ មិនមែន feature ដែល AI ជា gate។ ដូចគ្នាសម្រាប់ intake
+  suggestion (គ្មាន suggestion ≠ triage ខូច)។
+- **Suite ជា TypeScript in-process** — ច្បាប់ tier/provenance/pin គ្មាន HTTP surface
+  **ដោយចេតនា** (tool-runner តាម HTTP គឺជា surface ដែល ADR នេះកើតឡើងដើម្បីជៀស)។
+  ដូច្នេះ `test:assistant-tools` boot `NestFactory.createApplicationContext` ពិត ហើយ
+  ហៅ service ពិតជាមួយ fixture ពិត។ ត្រូវការ `ts-node --files` — បើគ្មាន `--files`
+  ambient `.d.ts` (`markdown-it-task-lists`) មិនចូល program ហើយ compile បរាជ័យ
+  ទោះ `nest build` ជោគជ័យក៏ដោយ។
+
+**បញ្ជាក់**: `test:assistant-tools` **18/18** · regression `test:security` 21 ·
+`test:phase7` 44 · `test:phase8` 16 (រួម intake triage) · `test:cycles-modules` 30 ·
+បូកនឹងការ drive endpoint ថ្មីលើ API ពិត។
+
+**នៅសល់ដោយចេតនា**: (១) `apps/web` គ្មានអេក្រង់ intake ណាមួយសោះ ដូច្នេះ suggestion
+មើលឃើញតែតាម API — ការសាង UI intake ជាការងារ Tier 2 មិនមែន §2.5; (២) ចម្លើយ Telegram
+ចូលតែ group មិនចូល Prism channel (bot ត្រូវការ author identity); (៣) model round-trip
+មិនទាន់ដេញក្នុង CI ព្រោះគ្មាន AI key — អ្វីដែល suite បញ្ជាក់គឺ layer authorization។
 
 ### 2.4 ហេតុអ្វីនេះឈ្នះ
 
@@ -201,9 +241,21 @@ tool surface ដែលភ្ជាប់ chat, Telegram, intake, bulk ops, cycle
   ព្រោះទីផ្សារគោលដៅរបស់គេប្រើ Slack។ ចំណែក team កម្ពុជា **រស់នៅក្នុង Telegram**។
 - 2a ប្រែ assistant ពី "ជំនួយការឆ្លើយសំណួរ" → "សមាជិក team" — នេះជា narrative លក់បាន។
 
-### 2.5 ត្រូវការ ADR
+### 2.5 ត្រូវការ ADR — ✅ **សរសេររួច 2026-07-31**: `docs/adr/0015-assistant-write-tools-and-authorization.md`
 
-បាទ — **ADR 0015: AI assistant write-tools & authorization**។ សំណួរដែលត្រូវឆ្លើយមុនសរសេរកូដ:
+សេចក្ដីសម្រេចសំខាន់៖ (១) គ្រប់ tool ដំណើរការ**ជា caller** មិនមែន service account
+(`[LOCKED]`) ដូច្នេះ blast radius នៃ prompt injection = អ្វីដែល user នោះចុចបាន។
+(២) Tool បែងចែក ៣ tier តាម blast radius — Tier A auto, Tier B (bulk) auto តែមាន cap
+និងច្បាប់ "id ត្រូវធ្លាប់លេចក្នុង tool result មុន", Tier C (លុប/publish/ផ្ញើចេញក្រៅ)
+**ត្រូវការ confirmation** ហើយ tool ត្រឡប់ `pendingAction` ជំនួសការធ្វើ។
+(៣) Telegram: `TelegramIdentity.userId === null` → assistant **មិនដំណើរការសោះ**
+(ឆ្លើយតែពាក្យណែនាំឲ្យ link); linked → ដំណើរការជាអ្នកនោះ តែ scope តាម **project របស់
+channel** ព្រោះចម្លើយឃើញដោយសមាជិកគ្រុបទាំងអស់; Tier B/C បិទលើ Telegram។
+(៤) 2c ស្នើ មិនធ្វើ — `triage` នៅតែត្រូវការមនុស្ស។ (៥) 2d គ្មាន identity ដូច្នេះ
+summarise តែ payload ដែល scoped រួច មិន call tool។ (៦) រាល់ write តាម tool ចូល
+`AuditLog` ជាមួយ `detail.via = 'assistant'`។
+
+សំណួរដើមដែល ADR ឆ្លើយ:
 
 - Write tool ដំណើរការក្រោម audience/permission របស់អ្នកណា? (**ត្រូវជា caller មិនមែន service account**)
 - Tool ណាត្រូវការ confirmation ពីអ្នកប្រើ vs auto-execute? (bulk delete ត្រូវតែ confirm)
@@ -258,7 +310,7 @@ tool surface ដែលភ្ជាប់ chat, Telegram, intake, bulk ops, cycle
 | - | ---- | ------- | ------ |
 | 4a | **Search ⌘K = រក + *ធ្វើ*** | `CommandPalette` មានស្រាប់ (Phase 6 Tier 3)។ បន្ថែម action ("assign to me", "move to cycle") ធ្វើឲ្យវាដូច Linear — keyboard-first ជា signal "professional tool" | M |
 | 4b | **Time tracking / worklog** | គ្មានទាល់តែសោះ។ Timer → worklog → billable → invoice ជាអ្វីដែល agency/outsourcing ត្រូវការ ហើយ Plane ខ្សោយខ្លាំង។ ត្រូវការ §1.2 (estimates) ជាមុន | L |
-| 4c | **Automations rule builder UI** | Backend មានស្រាប់ (trigger/condition/action/log) តែគ្មាន UI = គ្មានអ្នកប្រើ។ ត្រូវការ §1.4 មុន | M |
+| 4c | **Automations rule builder UI** | Backend មានស្រាប់ (trigger/condition/action/log) តែគ្មាន UI = គ្មានអ្នកប្រើ។ ~~ត្រូវការ §1.4 មុន~~ — §1.4 (tenancy) និង condition engine (`modules/automations/condition.ts`, បិទ 2026-07-31) **រួចរាល់ទាំងពីរ**។ UI អាច render grammar ដែលមានស្រាប់ដោយផ្ទាល់៖ ops = `CONDITION_OPS`, group = `all`/`any`/`not` | M |
 | 4d | **Semantic search លើ wiki** (embeddings) | "រកអ្វីដែលខ្ញុំមិនចាំពាក្យ"។ ធ្វើក្រោយ §1.3 (text index) — កុំលោត | M |
 | 4e | **PWA + mobile** | គ្មាន manifest, គ្មាន service worker។ Mobile ជា weak spot របស់ Plane/Linear/Jira ទាំងអស់ | L |
 | 4f | **Analytics ស្អាត** (burndown, velocity, "អ្នកណា overloaded") | `analytics` + `reports` + `dashboard` មានស្រាប់; cycle rollup ត្រឡប់ `byStatus` រួច។ ភាគច្រើនជាការងារ chart — ប្រើ `dataviz` skill | M |
@@ -274,9 +326,9 @@ Tier 0 ────────────────────────�
   §1.2 estimates លុប + inventory check  ✅ បិទ 2026-07-31
   §1.4 automations workspaceId          ✅ បិទ 2026-07-31 (test:phase7 38/38)
 
-Tier 1 ────────────────────────────────  ជ្រើសមួយ ធ្វើឲ្យចប់
-  ផ្លូវ A (AI):     ADR 0015 → 2c → 2d → 2a → 2b
-  ផ្លូវ B (ខ្មែរ):   ADR 0016 → 3a → 3d → 3c → 3b
+Tier 1 ────────────────────────────────  ផ្លូវ A ចប់ហើយ
+  ផ្លូវ A (AI):     ADR 0015 → 2c → 2d → 2a → 2b  ✅ បិទ 2026-07-31 (18/18)
+  ផ្លូវ B (ខ្មែរ):   ADR 0016 → 3a → 3d → 3c → 3b  ← moat បន្ទាប់
 
 Tier 2 ────────────────────────────────  ក្រោយពេល moat មួយចប់ពិត
   4a → 4f → 4c → 4b → 4d → 4e

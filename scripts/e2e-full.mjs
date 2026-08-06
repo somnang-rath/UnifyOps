@@ -8,10 +8,13 @@
  * throttle window reset. Zero dependencies on purpose — like the suites
  * themselves, this must run with nothing installed beyond node + pnpm.
  *
- * notes-collab is special: its header demands a disposable api on :4012
- * (never the dev instance), so this runner boots `node dist/main` with
- * PORT=4012 for that suite and kills it after. The dev api's tsc watch keeps
- * dist/ current.
+ * Two suites bring their own server rather than using the dev stack:
+ *  - notes-collab demands a disposable api on :4012 (never the dev instance),
+ *    so this runner boots `node dist/main` with PORT=4012 for it and kills it
+ *    after. The dev api's tsc watch keeps dist/ current.
+ *  - live's test:limits boots its own live server on :3111 with tiny caps —
+ *    it does that itself, so the runner just needs to invoke it in the `live`
+ *    workspace instead of `api` (see `filter` on the suite list).
  *
  * Env: E2E_COOLDOWN_MS to override the gap (0 disables, e.g. against an API
  * started with throttling relaxed).
@@ -23,6 +26,15 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const API_DIR = path.join(ROOT, 'apps', 'api');
 
+/**
+ * `filter` is the pnpm workspace the script lives in — `api` unless stated.
+ *
+ * Everything here must be headless and need nothing beyond the dev api plus the
+ * E2E fixture. The three browser suites (`web: test:browser-smoke`, `test:csp`,
+ * `test:project-tabs`) are deliberately NOT in this list: they need web/admin/
+ * space serving as well as Playwright, so folding them in would turn a failure
+ * to start a frontend into a failed API run. Run those separately.
+ */
 const SUITES = [
   { script: 'test:security' },
   { script: 'test:phase7' },
@@ -34,6 +46,13 @@ const SUITES = [
   { script: 'test:cross-app' },
   { script: 'test:publish-space' },
   { script: 'test:cycles-modules' },
+  // In-process (ts-node + a Nest application context), so it needs no dev API
+  // and costs no login — the assistant's tool rules have no HTTP surface to
+  // drive on purpose. See the file header.
+  { script: 'test:assistant-tools' },
+  // Boots its own live server on :3111 with tiny caps; never touches :3100.
+  // Needs the dev api for real collab tokens, so it belongs in this chain.
+  { script: 'test:limits', filter: 'live' },
 ];
 
 const COOLDOWN_MS = process.env.E2E_COOLDOWN_MS
@@ -82,8 +101,8 @@ async function withIsolatedApi(port, fn) {
   }
 }
 
-function runSuite(script, extraEnv = {}) {
-  const res = spawnSync('pnpm', ['--filter', 'api', script], {
+function runSuite(script, extraEnv = {}, filter = 'api') {
+  const res = spawnSync('pnpm', ['--filter', filter, script], {
     stdio: 'inherit',
     shell: true, // pnpm is a .cmd shim on Windows
     env: { ...process.env, ...SUITE_ENV, ...extraEnv },
@@ -105,11 +124,13 @@ for (const [i, suite] of SUITES.entries()) {
     ? await withIsolatedApi(suite.isolatedApiPort, () =>
         // The isolated suite must never touch the dev api (its header says so):
         // point API_URL at the disposable instance, keeping the 127.0.0.1 pin.
-        runSuite(suite.script, {
-          API_URL: `http://127.0.0.1:${suite.isolatedApiPort}/api/v1`,
-        }),
+        runSuite(
+          suite.script,
+          { API_URL: `http://127.0.0.1:${suite.isolatedApiPort}/api/v1` },
+          suite.filter,
+        ),
       )
-    : runSuite(suite.script);
+    : runSuite(suite.script, {}, suite.filter);
   if (!ok) {
     failed = suite.script;
     break;
