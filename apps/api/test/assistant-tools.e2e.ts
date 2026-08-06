@@ -20,10 +20,13 @@
  * covered by the browser check in the plan doc, not by pretending here.
  *
  * Needs: MongoDB with the E2E fixture (test-seed.ts). Does NOT need the dev
- * API running, an AI key, or the network.
+ * API running, an AI key, or the network — the Telegram section binds a Bot API
+ * mock on an ephemeral loopback port and points `TELEGRAM_API_BASE` at it.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import { getConnectionToken } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
@@ -35,7 +38,13 @@ import { CyclesService } from '../src/modules/cycles/cycles.service';
 import { ModulesService } from '../src/modules/modules/modules.service';
 import { ProjectsService } from '../src/modules/projects/projects.service';
 import { AuditService } from '../src/modules/audit/audit.service';
-import { TelegramAssistantService } from '../src/modules/chat/telegram/telegram-assistant.service';
+import {
+  ASSISTANT_AUTHOR_NAME,
+  TelegramAssistantService,
+} from '../src/modules/chat/telegram/telegram-assistant.service';
+import { TelegramInboundService } from '../src/modules/chat/telegram/telegram-inbound.service';
+import { InstanceService } from '../src/modules/instance/instance.service';
+import { ChatGateway } from '../src/modules/chat/chat.gateway';
 import { buildTools, runTool, ToolDeps } from '../src/modules/assistant/tools';
 import { ToolSession } from '../src/modules/assistant/tool-session';
 import type { AuthUserPayload } from '../src/common/decorators/current-user.decorator';
@@ -66,10 +75,94 @@ const parse = (content: string): Record<string, unknown> => {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** One call the Bot API mock received. */
+interface BotCall {
+  method: string;
+  body: Record<string, unknown>;
+  result?: Record<string, unknown>;
+}
+
+const BOT = {
+  id: 424242,
+  is_bot: true,
+  first_name: 'Prism',
+  username: 'prism_e2e_bot',
+};
+
+/**
+ * A stand-in for `api.telegram.org`, so the bridge can be driven end to end
+ * without a bot, a group, or the network. Must be listening *before* the Nest
+ * context is created: `TelegramApiService` reads `TELEGRAM_API_BASE` once, in a
+ * field initializer, at construction.
+ */
+async function startBotApiMock(calls: BotCall[]) {
+  let nextMessageId = 5000;
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      const method = (req.url ?? '').split('/').pop() ?? '';
+      const body = chunks.length
+        ? (JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>)
+        : {};
+      let result: Record<string, unknown> | boolean = true;
+      if (method === 'getMe') result = BOT;
+      if (method === 'sendMessage') {
+        nextMessageId += 1;
+        result = {
+          message_id: nextMessageId,
+          from: BOT,
+          chat: { id: Number(body.chat_id), type: 'supergroup' },
+          date: Math.floor(Date.now() / 1000),
+          text: String(body.text ?? ''),
+        };
+      }
+      calls.push({
+        method,
+        body,
+        result: typeof result === 'object' ? result : undefined,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, result }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  process.env.TELEGRAM_API_BASE = `http://127.0.0.1:${port}`;
+  return server;
+}
+
 async function main() {
+  const botCalls: BotCall[] = [];
+  const botApi = await startBotApiMock(botCalls);
+
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: false,
     abortOnError: false,
+  });
+
+  // An application context has no WebSocket adapter, so the chat gateway has no
+  // `server`. Standing one in is not just to stop a crash on post — the recorded
+  // emissions are asserted below: a mirrored reply that lands in Mongo but never
+  // reaches an open chat window would be a half-built feature.
+  const emitted: { room: string; event: string; payload: unknown }[] = [];
+  (app.get(ChatGateway) as unknown as { server: unknown }).server = {
+    to: (room: string) => ({
+      emit: (event: string, payload: unknown) =>
+        emitted.push({ room, event, payload }),
+    }),
+  };
+
+  // Give the bridge a bot token without writing one into instanceConfig — this
+  // runs against the dev database, where a real token may already be configured.
+  // `enabled` stays false so the long-poll transport never starts and starts
+  // stealing updates from the dev API.
+  const instance = app.get(InstanceService);
+  instance.getTelegramConfig = async () => ({
+    enabled: false,
+    botToken: 'e2e-bot-token',
+    webhookUrl: '',
+    webhookSecret: '',
   });
 
   const deps: ToolDeps = {
@@ -315,7 +408,24 @@ async function main() {
 
   const scopedChannelId = new Types.ObjectId();
   const unscopedChannelId = new Types.ObjectId();
+  const bridgedChannelId = new Types.ObjectId();
   await channels.insertMany([
+    {
+      _id: bridgedChannelId,
+      workspaceId: wsId,
+      kind: 'channel',
+      name: 'tool-suite-bridged',
+      slug: `tool-suite-bridged-${Date.now()}`,
+      topic: '',
+      visibility: 'private',
+      projectId: new Types.ObjectId(aliceProject),
+      createdBy: new Types.ObjectId(alice.id),
+      memberIds: [new Types.ObjectId(alice.id)],
+      archived: false,
+      lastMessageAt: new Date(),
+      lastMessagePreview: '',
+      messageCount: 0,
+    },
     {
       _id: scopedChannelId,
       workspaceId: wsId,
@@ -450,6 +560,139 @@ async function main() {
     assert.equal(run.ok, false, 'the pin must hold for writes too');
   });
 
+  // ── The reply the group sees also lands in the Prism channel ──────
+  //
+  // Driven through the real inbound handler against the Bot API mock, because
+  // the thing being proved is a whole round trip: update in → answer out to the
+  // group → the same answer mirrored back into the channel, exactly once, and
+  // never relayed to the group a second time.
+  //
+  // The sender is deliberately *unlinked*, which is what makes this runnable
+  // with no AI key: rule 1 of the assistant surface answers an unlinked sender
+  // with the link instruction, before any model or tool is reached.
+  const inbound = app.get(TelegramInboundService);
+  const links = conn.collection('telegramlinks');
+  const identities = conn.collection('telegramidentities');
+  const chatMessages = conn.collection('chatmessages');
+  const bridgeChatId = '-1009900990099';
+  const strangerTelegramId = 99009900;
+
+  await links.insertOne({
+    channelId: bridgedChannelId,
+    workspaceId: wsId,
+    chatId: bridgeChatId,
+    threadId: null,
+    chatTitle: 'tool-suite group',
+    direction: 'both',
+    active: true,
+    linkedBy: new Types.ObjectId(alice.id),
+    linkedAt: new Date(),
+    consecutiveFailures: 0,
+  });
+
+  const askUpdate = (updateId: number, messageId: number) => ({
+    update_id: updateId,
+    message: {
+      message_id: messageId,
+      from: {
+        id: strangerTelegramId,
+        is_bot: false,
+        first_name: 'Sokha',
+        username: 'sokha',
+      },
+      chat: { id: Number(bridgeChatId), type: 'supergroup', title: 'tool-suite group' },
+      date: Math.floor(Date.now() / 1000),
+      text: '@prism what is open on this project?',
+    },
+  });
+
+  botCalls.length = 0;
+  emitted.length = 0;
+  await inbound.handleUpdate(askUpdate(9001, 7001));
+  const sends = () => botCalls.filter((c) => c.method === 'sendMessage');
+
+  await check('the assistant answers the group over Telegram', async () => {
+    assert.equal(sends().length, 1, 'expected exactly one reply to the group');
+    assert.equal(String(sends()[0].body.chat_id), bridgeChatId);
+    assert.match(String(sends()[0].body.text), /verify/i);
+  });
+
+  await check('the reply is HTML-escaped before it is sent', async () => {
+    // `sendMessage` runs with parse_mode: HTML. The link instruction contains a
+    // literal `/verify <code>`; sent raw, Telegram answers 400 and the reply
+    // silently never appears in the group.
+    const text = String(sends()[0].body.text);
+    assert.match(text, /&lt;code&gt;/, 'the angle brackets were not escaped');
+  });
+
+  await check('the reply is mirrored into the Prism channel', async () => {
+    const rows = await chatMessages
+      .find({ channelId: bridgedChannelId })
+      .sort({ _id: 1 })
+      .toArray();
+    assert.equal(rows.length, 2, 'expected the question and the answer');
+
+    const [question, answer] = rows;
+    assert.equal(question.kind, 'user');
+    assert.match(String(question.body), /@prism/);
+
+    assert.equal(answer.kind, 'system', 'the bot post must not look like a person');
+    assert.equal(answer.source, 'telegram');
+    assert.equal(answer.authorId, null);
+    assert.equal(
+      (answer.externalAuthor as { name: string }).name,
+      ASSISTANT_AUTHOR_NAME,
+    );
+    // The channel holds Prism's markdown subset, not the Telegram HTML that was
+    // put on the wire — the same body any other message in this channel carries.
+    assert.match(
+      String(answer.body),
+      /`\/verify <code>`/,
+      'the stored body is not the plain answer',
+    );
+    assert.ok(
+      !String(answer.body).includes('&lt;'),
+      'Telegram HTML escaping leaked into the stored body',
+    );
+    // Recorded under the id Telegram gave it, which is what makes the mirror
+    // dedupe on the same unique index as any inbound message.
+    assert.equal(
+      (answer.telegram as { messageId: number }).messageId,
+      sends()[0].result!.message_id,
+    );
+  });
+
+  await check('the mirrored reply is broadcast to open chat windows', async () => {
+    const messages = emitted.filter(
+      (e) => e.event === 'chat:message' && e.room === `channel:${bridgedChannelId}`,
+    );
+    assert.equal(messages.length, 2, 'both the question and the answer must emit');
+    const last = messages[1].payload as { kind: string; externalAuthor?: { name: string } };
+    assert.equal(last.kind, 'system');
+    assert.equal(last.externalAuthor?.name, ASSISTANT_AUTHOR_NAME);
+  });
+
+  await check('the mirrored reply is never relayed back to the group', async () => {
+    // The outbound relay is fire-and-forget, so a bounce would arrive late.
+    await sleep(400);
+    assert.equal(sends().length, 1, 'the assistant answer was posted twice');
+  });
+
+  await check('a redelivered update neither answers nor mirrors twice', async () => {
+    // Same message_id, new update_id — exactly what Telegram retries look like.
+    await inbound.handleUpdate(askUpdate(9002, 7001));
+    await sleep(200);
+    assert.equal(sends().length, 1, 'the duplicate was answered again');
+    const count = await chatMessages.countDocuments({ channelId: bridgedChannelId });
+    assert.equal(count, 2, 'the duplicate was stored again');
+  });
+
+  await check('the channel preview reflects the assistant reply', async () => {
+    const channel = (await channels.findOne({ _id: bridgedChannelId }))!;
+    assert.equal(channel.messageCount, 2);
+    assert.match(String(channel.lastMessagePreview), /verify/i);
+  });
+
   // ── Assignment ids are looked up, not guessed ────────────────────
   await check('assign_issue refuses a user id that was never surfaced', async () => {
     const session = webSession([aliceIssueA]);
@@ -521,8 +764,12 @@ async function main() {
 
   // ── Cleanup ───────────────────────────────────────────────────────
   await channels.deleteMany({
-    _id: { $in: [scopedChannelId, unscopedChannelId] },
+    _id: { $in: [scopedChannelId, unscopedChannelId, bridgedChannelId] },
   });
+  await chatMessages.deleteMany({ channelId: bridgedChannelId });
+  await conn.collection('chatreadstates').deleteMany({ channelId: bridgedChannelId });
+  await links.deleteMany({ channelId: bridgedChannelId });
+  await identities.deleteMany({ telegramUserId: String(strangerTelegramId) });
   await conn
     .collection('issues')
     .deleteMany({ _id: { $in: made.issues.map((i) => new Types.ObjectId(i)) } });
@@ -535,6 +782,7 @@ async function main() {
   }
 
   await app.close();
+  botApi.close();
   console.log(`\n${pass} passed, ${fail} failed\n`);
   process.exit(fail === 0 ? 0 : 1);
 }
