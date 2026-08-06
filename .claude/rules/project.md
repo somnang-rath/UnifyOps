@@ -94,8 +94,8 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
     suggestion. Nothing breaks on an unconfigured instance.
 
   Left undone deliberately: ~~`apps/web` has no intake screen at all~~ (built 2026-08-06 —
-  see the intake entry below); the Telegram reply
-  posts to the group but not back into the Prism channel; and the model round-trip is not
+  see the intake entry below); ~~the Telegram reply posts to the group but not back into
+  the Prism channel~~ (mirrored 2026-08-06 — see below); and the model round-trip is not
   exercised in CI (no key) — the suite proves the authorization layer.
 
 - **Workspace project-list leak** ✅ — closed 2026-08-06. `GET /projects?workspace=<id>`
@@ -142,6 +142,36 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
   hydration* is wiped by React, leaving the submit button permanently disabled (a test
   artefact here, but the reason that suite waits for `networkidle` on space).
 
+- **Telegram assistant reply → Prism channel** ✅ — closed 2026-08-06, the second of the
+  three items ADR 0015 left undone. `@prism …` in a bridged group was answered *only* in
+  Telegram, so half the conversation existed nowhere in Prism. The answer is now mirrored
+  into the channel as `kind: 'system'`, authored by `ASSISTANT_AUTHOR_NAME`. Four things
+  worth carrying forward:
+
+  - **It is written through `ingestFromTelegram`, not the normal send path.** `send()`
+    relays outward, which would post the answer to the group a second time. Ingest also
+    records the Telegram message id the reply was *sent* as, which puts the mirror under
+    the same unique `{chatId, messageId}` dedupe as any inbound message; `kind: 'system'`
+    is the structural belt to that braces (`enqueueSend` drops anything that is not a
+    prism-origin `'user'` message).
+  - **`reply()` never escaped its text.** `sendMessage` runs `parse_mode: HTML`, so an
+    assistant answer containing `<` or `&` — or the literal `/verify <code>` in the two
+    usage hints — was a 400 and the message silently never appeared in the group. Every
+    bot post now goes through `toTelegramHtml` + `splitForTelegram`.
+  - **Grouping keyed on `author._id`, which is null for everyone from Telegram.** The
+    mirrored answer therefore rendered *underneath the asker's name*, as if the human had
+    said it. `speakerKey()` in `message-list.tsx` now keys on kind + source + author-or-
+    external-name; the same bug had been silently merging two different unlinked senders.
+  - **The suite proves it without an AI key**, because rule 1 of the surface answers an
+    *unlinked* sender with the link instruction before any model or tool is reached. That
+    reply is a real reply, so the whole round trip is drivable offline.
+
+  `test:assistant-tools` 18 → **25**: it now binds a Bot API mock on a loopback port
+  (`TELEGRAM_API_BASE`, read once in a field initializer — hence *before* the Nest context),
+  stands in a chat-gateway `server` so emissions can be asserted rather than merely
+  survived, and patches `getTelegramConfig` in memory rather than writing a bot token into
+  the dev instance config.
+
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
 
 Known deferred work (verified against the code 2026-07-31 — the previous three entries
@@ -177,8 +207,9 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
 
 ## E2E testing
 
-- `pnpm test:e2e:full` — canonical run: 11 API suites + `live: test:limits` (**242**
-  checks as of 2026-07-31 — `test:assistant-tools` added 18; it is in-process and costs
+- `pnpm test:e2e:full` — canonical run: 11 API suites + `live: test:limits` (**249**
+  checks as of 2026-08-06 — `test:assistant-tools` added 18 and grew to 25 with the
+  Telegram reply mirror; it is in-process and costs
   no login, so the runner needs no cool-down around it. Earlier deltas:
   security 18→21 for the `/search` scope, phase7 31→38 for automation tenancy and
   38→44 for the condition engine, publish-space 16→21 for per-page indexing) via
@@ -191,8 +222,10 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
   `test:notes-collab` needs its own API instance (the runner provides :4012).
 - `pnpm --filter api test:assistant-tools` — the odd one out: **TypeScript, in-process**
   (`ts-node --files`, a real `NestFactory.createApplicationContext`, real services, real
-  fixture). 18 checks over ADR 0015 §5. Needs Mongo + the fixture and **nothing else** —
-  no dev API, no AI key, no network. See its file header for why it cannot be a fetch suite.
+  fixture). 25 checks over ADR 0015 §5 — the last 7 drive a whole Telegram round trip
+  (update in → answer to the group → answer mirrored into the channel) against a Bot API
+  mock it binds itself. Needs Mongo + the fixture and **nothing else** — no dev API, no AI
+  key, no network. See its file header for why it cannot be a fetch suite.
 - `pnpm --filter web test:browser-smoke` — Playwright smoke (12 checks) across web/admin/space;
   needs the full dev stack up.
 - `pnpm --filter web test:csp` — Playwright, 24 checks that the web/admin/space CSP is both

@@ -225,14 +225,18 @@ Read tools ៣ ថ្មីមិនមែនជា feature ទេ — ជា**�
   ambient `.d.ts` (`markdown-it-task-lists`) មិនចូល program ហើយ compile បរាជ័យ
   ទោះ `nest build` ជោគជ័យក៏ដោយ។
 
-**បញ្ជាក់**: `test:assistant-tools` **18/18** · regression `test:security` 21 ·
+**បញ្ជាក់**: `test:assistant-tools` **25/25** (18 ដើម + 7 សម្រាប់ Telegram reply mirror,
+2026-08-06) · regression `test:security` 21 ·
 `test:phase7` 44 · `test:phase8` 16 (រួម intake triage) · `test:cycles-modules` 30 ·
 បូកនឹងការ drive endpoint ថ្មីលើ API ពិត។
 
 **នៅសល់ដោយចេតនា**: (១) ~~`apps/web` គ្មានអេក្រង់ intake~~ — **សាងរួច 2026-08-06**:
 triage queue `/[workspaceSlug]/intake` + public form `/spaces/intake/[anchor]`,
-suite `pnpm --filter web test:intake`; (២) ចម្លើយ Telegram
-ចូលតែ group មិនចូល Prism channel (bot ត្រូវការ author identity); (៣) model round-trip
+suite `pnpm --filter web test:intake`; (២) ~~ចម្លើយ Telegram
+ចូលតែ group មិនចូល Prism channel~~ — **សាងរួច 2026-08-06**: ចម្លើយចូល channel ជា
+`kind: 'system'` ក្រោមឈ្មោះ `Prism assistant`, សរសេរតាម `ingestFromTelegram`
+(មិនមែន `send()`) ដូច្នេះវាមិន relay ត្រឡប់ទៅ group វិញ ហើយ dedupe លើ
+`{chatId, messageId}` ដដែល; (៣) model round-trip
 មិនទាន់ដេញក្នុង CI ព្រោះគ្មាន AI key — អ្វីដែល suite បញ្ជាក់គឺ layer authorization។
 
 ### 2.4 ហេតុអ្វីនេះឈ្នះ

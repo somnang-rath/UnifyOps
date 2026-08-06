@@ -111,6 +111,14 @@ Therefore, for `@prism …` in a bridged channel:
   user can read — otherwise a linked user asking a broad question leaks private
   projects into a group chat. This is a narrower scope than the web assistant on
   purpose.
+- **The reply is mirrored into the Prism channel** (added 2026-08-06), as a
+  `kind: 'system'` message authored by `Prism assistant`. It is written through
+  `ingestFromTelegram` rather than the normal send path — that path relays
+  outward and would post the answer to the group a second time — and it carries
+  the Telegram message id it was sent as, so a redelivery dedupes on the same
+  unique `{chatId, messageId}` index as any inbound message. Nothing about the
+  scope rules above changes: what is mirrored is exactly what the group was
+  already shown.
 
 ### 2.5 Auto-triage (2c) proposes; a human accepts
 
@@ -186,7 +194,10 @@ A new suite, `apps/api/test/assistant-tools.e2e.mjs`, must prove, at minimum:
 5. a linked Telegram sender is answered within the channel's project scope only;
 6. a Tier C tool returns a `pendingAction` and performs nothing;
 7. every write through a tool leaves an `AuditLog` row with `detail.via ===
-   'assistant'`.
+   'assistant'`;
+8. a `@prism` update answered in a bridged group also lands in the Prism channel
+   exactly once, is broadcast to open chat windows, and is never relayed back out
+   to the group (added 2026-08-06, against a Bot API mock).
 
 Per `.claude/rules/workflow.md`, none of 2a–2d is done until it has been driven
 end-to-end, not merely typechecked.

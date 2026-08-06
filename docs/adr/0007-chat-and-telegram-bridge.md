@@ -94,6 +94,12 @@ bot, and the `relayedTo[]` receipt array.
 A chat echo loop is self-amplifying and would hit Telegram's rate limits within seconds,
 so defense in depth is warranted here where it would be overkill elsewhere.
 
+This is what let the assistant's own reply be stored in the channel (ADR 0015 §2.4,
+2026-08-06) without a new mechanism: it is written with `source: 'telegram'` and
+`kind: 'system'`, so the relay's filter excludes it twice over, and it is stored under
+the message id Telegram gave it, so the `{chatId, messageId}` unique index dedupes it
+even if the bot's own post were ever delivered back to us.
+
 ### 7. Inbound transport is chosen at runtime
 
 `TELEGRAM_WEBHOOK_URL` set → webhook (with a `secret_token` compared via
