@@ -7,8 +7,9 @@ import { LoadingScreen } from '@/components/ui/loading-screen';
 /**
  * Permanent flat-route → `/[workspaceSlug]/…` redirect for Tier W list routes
  * (ADR 0011 §3). One implementation shared by every list shim (`/issues`,
- * `/calendar`, `/timeline`, `/wiki`, `/analytics`) — the shims themselves are
- * one-liners so the resolution rule can never drift between routes.
+ * `/calendar`, `/timeline`, `/wiki`, `/analytics`, `/intake`) — the shims
+ * themselves are one-liners so the resolution rule can never drift between
+ * routes.
  *
  * Target workspace: the persisted selection (reconciled by
  * `useCurrentWorkspace()` against the workspaces the user can see), else the

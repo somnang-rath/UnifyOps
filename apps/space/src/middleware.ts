@@ -3,8 +3,10 @@ import {
   NONCE_HEADER,
   STATIC_SECURITY_HEADERS,
   buildCsp,
+  connectOrigins,
   generateNonce,
 } from '@prism/constants';
+import { PUBLIC_API_URL } from '@/lib/api-url';
 
 /**
  * Content Security Policy for apps/space (docs/plan/01 §3.4).
@@ -27,16 +29,23 @@ import {
  *
  * ## What is different here
  *
- * `connect-src` gets no extra origins. Space is anonymous, server-rendered, and
- * fetches the API from the Node process (`lib/public-api.ts`), never from the
- * browser — so `'self'` is the whole list, and this is the one app where that
- * is genuinely true.
+ * `connect-src` names exactly one extra origin, and only because of the intake
+ * form (`/intake/[anchor]`). Every *read* in this app is server-rendered — the
+ * Node process fetches the API and the browser never does. The intake **submit**
+ * is the one exception, and it goes direct on purpose: the endpoint is
+ * throttled per IP, so relaying it through this server would collapse every
+ * anonymous visitor into a single bucket and let one submitter lock the form
+ * for everyone. Nothing else here should be added to this list.
  */
 export function middleware(request: NextRequest) {
   const nonce = generateNonce();
   const dev = process.env.NODE_ENV !== 'production';
 
-  const csp = buildCsp({ nonce, dev });
+  const csp = buildCsp({
+    nonce,
+    dev,
+    connectSrc: connectOrigins([PUBLIC_API_URL]),
+  });
 
   // Next reads the nonce back off the request's own CSP header and stamps it
   // onto the script tags it emits.

@@ -44,6 +44,34 @@ export const getPublicPayload = cache(
   },
 );
 
+/** The public projection of an intake form — no ids, no project, no members. */
+export interface PublicIntakeForm {
+  anchor: string;
+  title: string;
+  description: string;
+}
+
+/**
+ * Resolve a published intake form. Same 404-means-null contract as
+ * {@link getPublicPayload}: a closed form and a non-existent one are
+ * indistinguishable to a stranger, and must stay that way.
+ *
+ * This lives on `/intake/forms/:anchor` rather than `/public/anchor/:anchor`
+ * because an intake form is a *write* surface, not published content — it has
+ * its own throttle and its own module.
+ */
+export const getIntakeForm = cache(
+  async (anchor: string): Promise<PublicIntakeForm | null> => {
+    const res = await fetch(
+      `${API_URL}/intake/forms/${encodeURIComponent(anchor)}`,
+      { cache: 'no-store' },
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Public API responded ${res.status}`);
+    return (await res.json()) as PublicIntakeForm;
+  },
+);
+
 /**
  * Sanitize editor-produced HTML before it is rendered to the public. This is
  * the single security boundary between wiki content and anonymous visitors
