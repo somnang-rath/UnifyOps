@@ -129,12 +129,20 @@ export class PublicService {
     const page = await this.wiki
       .findOne(
         { anchor, isPublic: true },
-        { title: 1, content: 1, coverImage: 1, updatedAt: 1, _id: 0 },
+        {
+          title: 1,
+          content: 1,
+          coverImage: 1,
+          publicIndexing: 1,
+          updatedAt: 1,
+          _id: 0,
+        },
       )
       .lean<{
         title: string;
         content: string;
         coverImage: string | null;
+        publicIndexing?: boolean;
         updatedAt: Date;
       }>();
     if (!page) return null;
@@ -152,6 +160,10 @@ export class PublicService {
       // The only non-content public field added by ADR 0010: a write-validated
       // https URL rendered as an <img src>, never HTML — no sanitization needed.
       coverImage: page.coverImage ?? null,
+      // `?? true` covers documents written before the field existed: Mongoose
+      // defaults only apply on write, so an old page has no `publicIndexing`
+      // key at all and must keep its previous (indexable) behaviour.
+      indexable: page.publicIndexing ?? true,
       updatedAt: page.updatedAt,
     };
   }
@@ -167,6 +179,7 @@ export class PublicService {
           sortBy: 1,
           filters: 1,
           projectId: 1,
+          publicIndexing: 1,
           updatedAt: 1,
           _id: 0,
         },
@@ -178,6 +191,7 @@ export class PublicService {
         sortBy: string;
         filters: Record<string, unknown>;
         projectId: Types.ObjectId | null;
+        publicIndexing?: boolean;
         updatedAt: Date;
       }>();
     // Only project-scoped views are publishable (ADR 0012 §3); a null
@@ -202,6 +216,7 @@ export class PublicService {
         ? { columns: await this.boardColumns(view.projectId) }
         : {}),
       issues,
+      indexable: view.publicIndexing ?? true,
       updatedAt: view.updatedAt,
     };
   }
@@ -210,12 +225,13 @@ export class PublicService {
     const project = await this.projects
       .findOne(
         { anchor, isPublic: true },
-        { name: 1, boardLists: 1, updatedAt: 1 },
+        { name: 1, boardLists: 1, publicIndexing: 1, updatedAt: 1 },
       )
       .lean<{
         _id: Types.ObjectId;
         name: string;
         boardLists?: { id: string; name: string; color: string }[];
+        publicIndexing?: boolean;
         updatedAt: Date;
       }>();
     if (!project) return null;
@@ -231,6 +247,7 @@ export class PublicService {
       groupBy: 'status',
       columns: this.toColumns(project.boardLists),
       issues,
+      indexable: project.publicIndexing ?? true,
       updatedAt: project.updatedAt,
     };
   }

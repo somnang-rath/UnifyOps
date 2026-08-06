@@ -16,6 +16,10 @@ import {
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
 import { ZodQueryPipe, ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  PublishOptionsDto,
+  PublishOptionsSchema,
+} from '../../common/anchor.util';
 import { AuthService } from '../auth/auth.service';
 import { WikiService } from './wiki.service';
 import {
@@ -86,8 +90,13 @@ export class WikiController {
 
   // ── Phase 3: publish to the public Space (ADR 0002 §3) ──
   @Post(':id/publish')
-  publish(@CurrentUser() u: { id: string }, @Param('id') id: string) {
-    return this.wiki.publish(u.id, id);
+  @UsePipes(new ZodValidationPipe(PublishOptionsSchema))
+  publish(
+    @CurrentUser() u: { id: string },
+    @Param('id') id: string,
+    @Body() dto: PublishOptionsDto,
+  ) {
+    return this.wiki.publish(u.id, id, dto);
   }
 
   @Delete(':id/publish')

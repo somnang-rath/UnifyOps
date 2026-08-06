@@ -78,8 +78,25 @@ export interface PublicBoardColumn {
   color?: string;
 }
 
+/**
+ * Whether search engines may index this published page (docs/plan/01 §3.4).
+ *
+ * "Published" and "indexed" are two different decisions: a team shares a board
+ * with a client over a link far more often than it wants that board turning up
+ * in a search result. Until this field existed the only control was the
+ * instance-wide `SPACE_INDEXING` env var — all pages or none.
+ *
+ * `true` is the default, because a Space that nothing can find is not a Space;
+ * it also keeps every page published before this field existed behaving as it
+ * did. Anonymous readers still reach a `false` page through its link — this is
+ * a crawler directive, never an access control.
+ */
+export interface PublicIndexable {
+  indexable: boolean;
+}
+
 /** Published wiki page (ADR 0002 §4 — unchanged by ADR 0012). */
-export interface PublicWikiPage {
+export interface PublicWikiPage extends PublicIndexable {
   type: 'wiki';
   anchor: string;
   title: string;
@@ -90,7 +107,7 @@ export interface PublicWikiPage {
 }
 
 /** Published saved view (project-scoped only in v1 — ADR 0012 §3). */
-export interface PublicView {
+export interface PublicView extends PublicIndexable {
   type: 'view';
   anchor: string;
   title: string;
@@ -108,7 +125,7 @@ export interface PublicView {
 }
 
 /** Published project — always its default board (ADR 0012 §5). */
-export interface PublicProject {
+export interface PublicProject extends PublicIndexable {
   type: 'project';
   anchor: string;
   title: string;

@@ -25,6 +25,10 @@ import {
   UpdateViewDto,
   UpdateViewSchema,
 } from './dto/view.dto';
+import {
+  PublishOptionsDto,
+  PublishOptionsSchema,
+} from '../../common/anchor.util';
 
 @Controller('views')
 export class ViewsController {
@@ -57,8 +61,13 @@ export class ViewsController {
 
   /** Publish to the public Space (ADR 0012 §3) → { anchor, isPublic, publishedAt }. */
   @Post(':id/publish')
-  publish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
-    return this.views.publish(user.id, id);
+  @UsePipes(new ZodValidationPipe(PublishOptionsSchema))
+  publish(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body() dto: PublishOptionsDto,
+  ) {
+    return this.views.publish(user.id, id, dto);
   }
 
   /** Unpublish (anchor preserved, ADR 0012 §3) → { isPublic: false }. */

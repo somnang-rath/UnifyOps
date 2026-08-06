@@ -19,7 +19,7 @@ import {
 } from '../notifications/mentions.util';
 import { UsersService } from '../users/users.service';
 // Hoisted to common/ by ADR 0012 §2 so views + projects mint the same grammar.
-import { anchorFor } from '../../common/anchor.util';
+import { anchorFor, PublishOptionsDto } from '../../common/anchor.util';
 
 const oid = (v?: string | null) =>
   v ? new Types.ObjectId(v) : null;
@@ -239,7 +239,7 @@ export class WikiService {
    * (owner/member via `accessFor`). Mints a stable `anchor` on first publish and
    * reuses it thereafter. Returns the public publish state.
    */
-  async publish(userId: string, id: string) {
+  async publish(userId: string, id: string, opts: PublishOptionsDto = {}) {
     if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
     const { canWrite } = await this.accessFor(userId, id);
     if (!canWrite) throw new ForbiddenException();
@@ -251,12 +251,16 @@ export class WikiService {
     page.isPublic = true;
     page.publishedAt = new Date();
     page.publishedBy = new Types.ObjectId(userId);
+    // Only an explicit boolean moves it: re-publishing is how an owner refreshes
+    // a page, and that must not quietly re-open a page to crawlers.
+    if (opts.indexing !== undefined) page.publicIndexing = opts.indexing;
     const saved = await page.save();
 
     return {
       anchor: saved.anchor,
       isPublic: saved.isPublic,
       publishedAt: saved.publishedAt,
+      indexing: saved.publicIndexing,
     };
   }
 

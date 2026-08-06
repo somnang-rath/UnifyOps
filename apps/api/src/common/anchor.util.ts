@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { z } from 'zod';
 
 /**
  * Public-anchor helpers (ADR 0002 §2, ADR 0012 §2).
@@ -7,6 +8,26 @@ import { randomBytes } from 'crypto';
  * Space app (`GET /public/anchor/:anchor`). Minted once on first publish and
  * kept across unpublish, so a re-publish yields the same URL forever.
  */
+
+/**
+ * Body accepted by every `POST /:id/publish` — wiki, views and projects share
+ * it, because "publish" means the same thing for all three and a per-module
+ * copy is how three endpoints drift into three shapes.
+ *
+ * `indexing` omitted leaves the stored value alone: publishing is idempotent
+ * (it re-uses the existing anchor), so re-publishing must not silently reset a
+ * page the owner had already marked noindex. Only an explicit boolean changes
+ * it. A brand-new page defaults to `true` from the schema (docs/plan/01 §3.4).
+ */
+export const PublishOptionsSchema = z
+  .object({
+    /** Allow crawlers to index this page. Not an access control. */
+    indexing: z.boolean().optional(),
+  })
+  // The endpoints took no body before this existed, and clients still send
+  // none — an absent body must stay a valid publish.
+  .default({});
+export type PublishOptionsDto = z.infer<typeof PublishOptionsSchema>;
 
 /** Public-slug helper (ADR 0002 §2): `slug(title).slice(0,50)-<8hex>`. */
 export const anchorFor = (title: string): string => {

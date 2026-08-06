@@ -39,6 +39,18 @@ export class WikiPage {
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   publishedBy: Types.ObjectId | null;
+
+  /**
+   * Whether crawlers may index this page once published (docs/plan/01 §3.4).
+   * Sharing a link and inviting Google are separate decisions; before this
+   * field the only control was the instance-wide `SPACE_INDEXING` switch.
+   *
+   * `true` by default so pages published before it existed keep behaving as
+   * they did. This is a crawler directive only — a `false` page is still
+   * readable by anyone holding the link.
+   */
+  @Prop({ default: true })
+  publicIndexing: boolean;
 }
 export type WikiPageDocument = HydratedDocument<WikiPage>;
 export const WikiPageSchema = SchemaFactory.createForClass(WikiPage);

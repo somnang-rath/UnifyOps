@@ -348,9 +348,57 @@ async function main() {
     assert.equal(gone.status, 404, `unpublished project still resolves: ${gone.status}`);
   });
 
+  // ── Per-page crawler indexing (docs/plan/01 §3.4) ───────────────────
+  // "Published" and "indexed" are separate decisions; until this landed the
+  // only control was the instance-wide SPACE_INDEXING env var. The public
+  // payload carries `indexable`, and apps/space turns it into <meta robots>.
+  await check('a freshly published page is indexable by default', async () => {
+    const res = await alice('POST', `/projects/${projectId}/publish`);
+    assert.equal(res.status, 201, `got ${res.status}: ${JSON.stringify(res.data)}`);
+    assert.equal(res.data.indexing, true, 'default should be indexable');
+    const got = await pub(`/public/anchor/${projectAnchor}`);
+    assert.equal(got.status, 200);
+    assert.equal(got.data.indexable, true, 'public payload lost `indexable`');
+  });
+
+  await check('publishing with { indexing: false } makes it noindex', async () => {
+    const res = await alice('POST', `/projects/${projectId}/publish`, {
+      indexing: false,
+    });
+    assert.equal(res.status, 201, `got ${res.status}: ${JSON.stringify(res.data)}`);
+    assert.equal(res.data.indexing, false);
+    const got = await pub(`/public/anchor/${projectAnchor}`);
+    assert.equal(got.status, 200, 'noindex must not affect reachability');
+    assert.equal(got.data.indexable, false, 'public payload still says indexable');
+  });
+
+  await check('re-publishing without the flag preserves noindex', async () => {
+    // Publishing is idempotent — an owner re-publishes to refresh, and that
+    // must not silently re-open the page to crawlers.
+    const res = await alice('POST', `/projects/${projectId}/publish`);
+    assert.equal(res.status, 201);
+    assert.equal(res.data.indexing, false, 're-publish reset the indexing flag');
+  });
+
+  await check('{ indexing: true } turns it back on', async () => {
+    const res = await alice('POST', `/projects/${projectId}/publish`, {
+      indexing: true,
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.indexing, true);
+  });
+
+  await check('a non-boolean indexing value is rejected (400)', async () => {
+    const res = await alice('POST', `/projects/${projectId}/publish`, {
+      indexing: 'yes',
+    });
+    assert.equal(res.status, 400, `expected 400, got ${res.status}`);
+  });
+
   // ── Cleanup ────────────────────────────────────────────────────────
   if (viewId) await alice('DELETE', `/views/${viewId}`);
   if (wsViewId) await alice('DELETE', `/views/${wsViewId}`);
+  if (projectId) await alice('POST', `/projects/${projectId}/unpublish`);
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
   process.exit(fail === 0 ? 0 : 1);

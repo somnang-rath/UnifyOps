@@ -31,6 +31,7 @@ import {
   anchorFor,
   isDuplicateAnchorError,
   mintUniqueAnchor,
+  PublishOptionsDto,
 } from '../../common/anchor.util';
 
 const slug = (s: string) =>
@@ -173,6 +174,30 @@ export class ProjectsService {
     // 404 (not 403) on no-access so we don't leak that the project exists.
     if (!(await this.canRead(userId, p))) throw new NotFoundException();
     return p;
+  }
+
+  /**
+   * Project members (owner included) with the fields needed to name a person,
+   * for the AI assistant's `list_project_members` tool.
+   *
+   * Gated by the ordinary project read rule via {@link byId}, so it exposes no
+   * one the caller could not already see on the project page — and it exists so
+   * the assistant can *look up* an assignee id rather than guess one (ADR 0015
+   * §2.3).
+   */
+  async membersForAssistant(userId: string, projectId: string) {
+    const project = await this.byId(userId, projectId);
+    const ids = [project.ownerId, ...(project.members ?? [])];
+    const users = await this.userModel
+      .find({ _id: { $in: ids } }, { name: 1, email: 1 })
+      .lean();
+    const ownerId = String(project.ownerId);
+    return users.map((u) => ({
+      id: String(u._id),
+      name: u.name,
+      email: u.email,
+      role: String(u._id) === ownerId ? 'owner' : 'member',
+    }));
   }
 
   async create(userId: string, dto: CreateProjectDto) {
@@ -365,7 +390,7 @@ export class ProjectsService {
    * members cannot expose a project to the internet. Mints a stable `anchor`
    * on first publish and reuses it thereafter.
    */
-  async publish(userId: string, id: string) {
+  async publish(userId: string, id: string, opts: PublishOptionsDto = {}) {
     const project = await this.loadOwned(userId, id);
 
     if (!project.anchor) {
@@ -378,6 +403,9 @@ export class ProjectsService {
     project.isPublic = true;
     project.publishedAt = new Date();
     project.publishedBy = new Types.ObjectId(userId);
+    // Explicit boolean only — re-publishing must not silently re-open a project
+    // its owner had marked noindex (docs/plan/01 §3.4).
+    if (opts.indexing !== undefined) project.publicIndexing = opts.indexing;
     try {
       await project.save();
     } catch (err) {
@@ -392,6 +420,7 @@ export class ProjectsService {
       anchor: project.anchor,
       isPublic: project.isPublic,
       publishedAt: project.publishedAt,
+      indexing: project.publicIndexing,
     };
   }
 

@@ -14,19 +14,50 @@ function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
+/**
+ * Crawler directive for one published page (docs/plan/01 §3.4).
+ *
+ * Two switches, and the restrictive one always wins:
+ *  - `SPACE_INDEXING=off` turns the whole instance noindex (it also drives
+ *    `robots.ts`, which is the site-wide statement crawlers read first).
+ *  - `payload.indexable` is the per-page setting an owner chose at publish
+ *    time. Sharing a board with a client and inviting Google are different
+ *    decisions, and until this existed only the instance-wide switch existed.
+ *
+ * Next emits this as `<meta name="robots">`. That is the per-page equivalent of
+ * an `X-Robots-Tag` header and the only one available here — response headers
+ * in `next.config.mjs` are matched by path pattern, and `[anchor]` is exactly
+ * the case a pattern cannot decide.
+ *
+ * `nocache`/`noarchive` ride along with noindex: a page the owner does not want
+ * found should not survive in a search cache either. This is never an access
+ * control — a noindex page is still readable by anyone holding its link.
+ */
+function robotsFor(indexable: boolean): Metadata['robots'] {
+  const allowed = indexable && process.env.SPACE_INDEXING !== 'off';
+  return allowed
+    ? { index: true, follow: true }
+    : { index: false, follow: false, nocache: true, noarchive: true };
+}
+
 export async function generateMetadata({
   params,
 }: Params): Promise<Metadata> {
   // A metadata error bypasses error.tsx entirely (Next 14) — swallow it here
   // and let the page's own fetch throw, so §3.6's error boundary renders.
   const payload = await getPublicPayload(params.anchor).catch(() => null);
-  if (!payload) return { title: 'Not found · Prism Space' };
+  // A page that does not resolve must never be indexed either.
+  if (!payload) {
+    return { title: 'Not found · Prism Space', robots: robotsFor(false) };
+  }
+  const robots = robotsFor(payload.indexable);
   switch (payload.type) {
     case 'wiki': {
       const images = payload.coverImage ? [payload.coverImage] : undefined;
       return {
         title: `${payload.title} · Prism Space`,
         description: `Published page: ${payload.title}`,
+        robots,
         openGraph: {
           title: payload.title,
           type: 'article',
@@ -47,6 +78,7 @@ export async function generateMetadata({
         description: payload.projectName
           ? `Public board for ${payload.projectName}`
           : 'Published view',
+        robots,
         openGraph: { title: payload.title, type: 'website' },
       };
     case 'project':
@@ -56,10 +88,11 @@ export async function generateMetadata({
           payload.description ?? 'Published project board',
           160,
         ),
+        robots,
         openGraph: { title: payload.title, type: 'website' },
       };
     default:
-      return { title: 'Not found · Prism Space' };
+      return { title: 'Not found · Prism Space', robots: robotsFor(false) };
   }
 }
 

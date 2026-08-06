@@ -36,6 +36,9 @@ import { View, ViewSchema } from '../views/schemas/view.schema';
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],
-  exports: [MongooseModule],
+  // ProjectsService is exported for the assistant's `list_project_members`
+  // tool, which must go through the service (and its read gate) rather than
+  // query the collection itself (ADR 0015 §2.1).
+  exports: [MongooseModule, ProjectsService],
 })
 export class ProjectsModule {}

@@ -143,6 +143,12 @@ export class Project {
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   publishedBy: Types.ObjectId | null;
+
+  // Crawler indexing, per published project (docs/plan/01 §3.4). Mirrors
+  // WikiPage; `true` by default so already-published projects are unaffected.
+  // Not an access control — a `false` project is still readable via its link.
+  @Prop({ default: true })
+  publicIndexing: boolean;
 }
 
 export const ProjectSchema = SchemaFactory.createForClass(Project);

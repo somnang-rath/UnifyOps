@@ -25,6 +25,7 @@ import {
   anchorFor,
   isDuplicateAnchorError,
   mintUniqueAnchor,
+  PublishOptionsDto,
 } from '../../common/anchor.util';
 
 const oid = (v: string) => new Types.ObjectId(v);
@@ -188,7 +189,7 @@ export class ViewsService {
    *
    * Mints a stable `anchor` on first publish and reuses it thereafter.
    */
-  async publish(userId: string, id: string) {
+  async publish(userId: string, id: string, opts: PublishOptionsDto = {}) {
     const view = await this.loadPublishable(userId, id);
 
     if (!view.anchor) {
@@ -201,6 +202,9 @@ export class ViewsService {
     view.isPublic = true;
     view.publishedAt = new Date();
     view.publishedBy = oid(userId);
+    // Explicit boolean only — re-publishing must not silently re-open a view
+    // its owner had marked noindex (docs/plan/01 §3.4).
+    if (opts.indexing !== undefined) view.publicIndexing = opts.indexing;
     try {
       await view.save();
     } catch (err) {
@@ -215,6 +219,7 @@ export class ViewsService {
       anchor: view.anchor,
       isPublic: view.isPublic,
       publishedAt: view.publishedAt,
+      indexing: view.publicIndexing,
     };
   }
 

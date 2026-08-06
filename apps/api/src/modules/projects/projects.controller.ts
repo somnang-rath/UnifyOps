@@ -7,10 +7,15 @@ import {
   Patch,
   Post,
   Query,
+  UsePipes,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  PublishOptionsDto,
+  PublishOptionsSchema,
+} from '../../common/anchor.util';
 import {
   CreateProjectDto,
   CreateProjectSchema,
@@ -85,8 +90,13 @@ export class ProjectsController {
 
   /** Publish to the public Space (ADR 0012 §4, owner only) → { anchor, isPublic, publishedAt }. */
   @Post(':id/publish')
-  publish(@CurrentUser() user: { id: string }, @Param('id') id: string) {
-    return this.projects.publish(user.id, id);
+  @UsePipes(new ZodValidationPipe(PublishOptionsSchema))
+  publish(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body() dto: PublishOptionsDto,
+  ) {
+    return this.projects.publish(user.id, id, dto);
   }
 
   /** Unpublish (anchor preserved, ADR 0012 §4, owner only) → { isPublic: false }. */

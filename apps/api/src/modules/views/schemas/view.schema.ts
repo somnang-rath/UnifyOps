@@ -81,6 +81,12 @@ export class View {
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   publishedBy: Types.ObjectId | null;
+
+  // Crawler indexing, per published view (docs/plan/01 §3.4). Mirrors WikiPage;
+  // `true` by default so already-published views are unaffected. Not an access
+  // control — a `false` view is still readable by anyone with the link.
+  @Prop({ default: true })
+  publicIndexing: boolean;
 }
 
 export const ViewSchema = SchemaFactory.createForClass(View);
