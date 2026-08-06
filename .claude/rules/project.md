@@ -172,6 +172,44 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
   survived, and patches `getTelegramConfig` in memory rather than writing a bot token into
   the dev instance config.
 
+- **Tier 1 — Khmer moat (path B), ADR 0016 + 3a** ✅ — closed 2026-08-06. `packages/i18n`
+  is new: locale identity + `resolveLocale` (cookie → `Accept-Language` → `en`, the one
+  place all three apps read the chain from) + `createTranslator`/`LocaleProvider`/`useT`
+  + `Intl` wrappers (`formatDate`, `formatNumber`, `compareNames`). `User.locale` in the
+  API, `x-locale` set by the middleware each app already runs, `<html lang>` + provider in
+  each root layout, switcher in Settings → Appearance, whole sidebar translated. Six things
+  worth carrying forward:
+
+  - **The locale is a cookie, never a URL segment** (ADR 0016 §2.1). ADR 0011 had just
+    finished collapsing the route space; a `[locale]` prefix multiplies every route *and*
+    every permanent shim, and the first segment is already a user-named workspace slug.
+  - **And never `localStorage`, despite the theme precedent.** Theme is an attribute the
+    pre-paint script swaps; language is the content the server renders. A store the server
+    cannot see means wrong-language SSR and a hydration mismatch on every string.
+  - **The Khmer font was already loaded and unreachable.** All three layouts instantiate
+    Kantumruy Pro as `--font-khmer`, but `tailwind-preset.ts` had `sans: [var(--font-sans),
+    'Inter', …]` — no Khmer family. Every page downloaded a webfont no UI could use. One
+    stack now holds both scripts, deliberately not a stack per locale: mixed-script strings
+    ("Sprint ១២ — Acme") are normal here and would otherwise render in two fonts.
+  - **`hydrateLocale` must not reload.** It runs inside `onAuthSuccess`, one line before
+    the login page navigates; reloading there cancels the navigation and drops the user
+    back on `/login`, looking exactly like a failed sign-in. It returns "the document
+    disagrees" and the caller picks — hard `location.assign` on login, reload on the
+    session-restore path.
+  - **`packages/ui` takes no i18n dependency** (§2.5) and did not need one: it already
+    took its text as props. The four remaining literals became props with English
+    defaults. Don't "improve" this by putting `useT()` in a shared primitive.
+  - **`apps/space` loses nothing by reading `headers()`.** ADR §3.3 flagged static
+    rendering as the risk; the published route is already `force-dynamic` with `no-store`
+    fetches because an unpublish must take effect immediately.
+
+  New suite `pnpm --filter web test:i18n` (9 checks). The one that earns its place is the
+  computed `font-family` assertion — everything else can pass while Khmer renders in an
+  arbitrary OS fallback. A `km` message file missing a key is a **compile error**
+  (`Record<MessageKey, Message>`), confirmed by deleting one. Left for 3b/3c/3d: the
+  translation pass over the screens, Khmer holidays, and date/number/collation adoption at
+  the 79 `toLocale*` call sites.
+
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
 
 Known deferred work (verified against the code 2026-07-31 — the previous three entries
@@ -244,8 +282,16 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
   the E2E fixture, since the per-doc cap only counts authenticated connections and so
   needs real collab tokens.
 
+- `pnpm --filter web test:i18n` — Playwright, 9 checks over the locale machinery
+  (ADR 0016 §5). Not an API suite because nothing here has an interesting HTTP surface:
+  `PATCH /users/me { locale }` is one more field on a covered endpoint. What only a
+  browser proves is the round trip — cookie written client-side, read by middleware on the
+  next request, applied by a server-rendered root layout, in a font that actually has
+  Khmer glyphs. Signs in twice, so it carries its own 65s cool-down; space it from other
+  suites. `I18N_TIMEOUT_MS` overrides 60s. Needs web + space + api up.
+
 The **browser** suites (`test:browser-smoke`, `test:csp`, `test:cover`, `test:project-tabs`,
-`test:intake`) are deliberately outside `test:e2e:full` — they need web/admin/space serving
+`test:intake`, `test:i18n`) are deliberately outside `test:e2e:full` — they need web/admin/space serving
 plus Playwright, so folding them in would turn "a frontend failed to start" into "the API
 run failed".
 - `pnpm --filter web test:intake` — Playwright, 21 checks over the intake triage queue

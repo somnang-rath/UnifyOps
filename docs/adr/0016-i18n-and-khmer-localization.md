@@ -224,13 +224,14 @@ and delivers itself* (notifications, email) is ever the API's problem.
 
 ### 3.3 Detecting locale in `apps/space` per request without thinking about caching
 
-Not rejected — flagged. Reading `headers()`/`cookies()` in space's root layout
-opts its **published pages out of static rendering**, and space is the one app
-whose whole point is fast anonymous SSR of public content (ADR 0002). Build 3a
-so that space resolves the locale in middleware and passes it down, and measure
-before assuming it is free. If it is not, the fallback is: chrome renders in the
-default locale for anonymous crawlers, and the switcher is client-side only on
-space.
+Flagged rather than rejected, and **resolved during 3a: it costs nothing.**
+Reading `headers()` in a root layout opts its routes out of static rendering,
+and space is the one app whose point is fast anonymous SSR of public content
+(ADR 0002). But space was never static: `[anchor]/page.tsx` already declares
+`dynamic = 'force-dynamic'` and every public fetch is `cache: 'no-store'`,
+because a published page must reflect an unpublish immediately. There was
+nothing static to lose. The fallback plan (default locale for anonymous
+visitors, client-side switcher) is not needed.
 
 ### 3.4 `Accept-Language` as the primary signal
 
@@ -271,3 +272,25 @@ against the running stack:
 
 Checks 2 and 3 are the ones that only a browser can prove; the CSP suite
 (`pnpm --filter web test:csp`) is the precedent for how to drive them.
+
+### 5.1 Result — 3a closed 2026-08-06
+
+`pnpm --filter web test:i18n` (9 checks, green) covers 1–5;
+`pnpm --filter @prism/i18n typecheck` covers 6, and was confirmed by deleting a
+Khmer key and watching the build fail. Three notes for whoever picks up 3b:
+
+- **Check 2 reads differently per app than this ADR assumed.** `apps/web`
+  renders *nothing* server-side beyond `<html>`: `Providers` returns `null`
+  until the boot refresh resolves, so there is no flash of English to have,
+  and what the suite asserts on web is `lang="km"` in the server HTML plus a
+  silent console. `apps/space` is where server-rendered locale actually shows,
+  and it is asserted there.
+- **`hydrateLocale` must not reload the page.** It runs inside `onAuthSuccess`,
+  one line before the login page navigates; reloading there cancels the
+  navigation and lands the user back on `/login`, looking exactly like a failed
+  sign-in. It returns "the document disagrees" instead, and the caller picks:
+  the login page does a hard `location.assign(next)`, the session-restore path
+  in `Providers` reloads.
+- **The font check earns its place.** Everything else can pass while Khmer
+  renders in an arbitrary OS fallback, which is precisely the state the app was
+  in before this change (§1.3).

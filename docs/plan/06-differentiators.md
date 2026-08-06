@@ -1,6 +1,8 @@
 # 06 — Differentiators: អ្វីដែលធ្វើឲ្យ Prism ខុសពី app ដទៃ
 
-> **Status: DRAFT — រង់ចាំការយល់ព្រម។** មិនទាន់សរសេរកូដទេ។
+> **Status: កំពុងអនុវត្ត។** (បន្ទាត់នេះធ្លាប់សរសេរថា "DRAFT — មិនទាន់សរសេរកូដទេ"
+> រហូតដល់ 2026-08-06 ខណៈ Tier 0 ទាំង ៤ និង Tier 1 ផ្លូវ A បានបិទរួចហើយ។)
+> Tier 0 ✅ · Tier 1 ផ្លូវ A (AI) ✅ · Tier 1 ផ្លូវ B (ខ្មែរ): 3a ✅, នៅសល់ 3b/3c/3d។
 > ឯកសារ 03 សួរថា *"ខ្វះអ្វីធៀបនឹង Plane?"* — ឯកសារនេះសួរសំណួរផ្សេង៖
 > *"ហេតុអ្វីគេត្រូវជ្រើស Prism ជំនួស Plane/Linear/Jira/ClickUp?"*
 
@@ -295,15 +297,43 @@ summarise តែ payload ដែល scoped រួច មិន call tool។ (៦)
 
 | # | អ្វី | ចំណាំ | Effort |
 | - | ---- | ----- | ------ |
-| 3a | i18n framework (`next-intl` ឬស្រាល `packages/i18n`) + locale switch + persist | ត្រូវសម្រេច **មុន** បន្ថែម screen ថ្មី — retrofit ថ្លៃជាង | M |
-| 3b | បកប្រែ `packages/ui` + navigation + screen ចម្បង (issues/projects/cycles) | បកបន្តិចម្ដងៗបាន; `packages/ui` មុនគេ ព្រោះ web/admin/space ចែករំលែក | L |
+| 3a | ✅ **បិទ 2026-08-06** — `packages/i18n` + locale switch + persist | មើល §3.5 | M |
+| 3b | បកប្រែ navigation + screen ចម្បង (issues/projects/cycles) | បកបន្តិចម្ដងៗបាន។ **កែ**: `packages/ui` មិនត្រូវការបកប្រែទេ — វាទទួល text ជា props រួចហើយ (ADR 0016 §2.5) | L |
 | 3c | ថ្ងៃឈប់សម្រាកខ្មែរក្នុង calendar + cycle capacity | ប៉ះពាល់ `cycles` rollup + `/[workspaceSlug]/calendar` | S |
 | 3d | ទម្រង់កាលបរិច្ឆេទ/លេខខ្មែរ, តម្រៀបឈ្មោះខ្មែរ | `apps/space` មាន font ខ្មែរពិតរួចហើយ (មើល memory: public wiki render) | S |
 
-### 3.4 ត្រូវការ ADR
+### 3.4 ត្រូវការ ADR — ✅ **សរសេររួច 2026-08-06**: `docs/adr/0016-i18n-and-khmer-localization.md`
 
-បាទ — **ADR 0016: i18n strategy**។ វាឆ្លង app ទាំង ៣ (web/admin/space) + `packages/ui`,
-ហើយសំណួរ "locale រក្សាទុកនៅឯណា — user record ឬ cookie?" ប៉ះ API។ ចាក់សោមុនសរសេរ។
+ចម្លើយ: locale នៅក្នុង **cookie** (`pr_locale`) ដែល mirror ទៅ `User.locale`;
+**មិនដាក់ក្នុង URL** ទេ (ADR 0011 ទើបតែបង្រួម route space រួច — locale segment
+នឹងគុណរាល់ route និងរាល់ shim; ហើយ segment ទី ១ ជា `[workspaceSlug]` ដែលជាទិន្នន័យ
+អ្នកប្រើ)។ **មិនប្រើ localStorage** ដូច theme ទេ ព្រោះភាសាជា *content* ដែល server
+render — store ដែល server មើលមិនឃើញ = SSR ខុសភាសា + hydration mismatch។
+
+### 3.5 អ្វីដែលបានសាងពិត (3a, 2026-08-06)
+
+`packages/i18n` ថ្មី (~150 បន្ទាត់, គ្មាន dependency): `LOCALES` en/km · cookie/header
+constants · `resolveLocale()` (cookie → Accept-Language → en, កន្លែងតែមួយដែល ៣ app អាន) ·
+`createTranslator` + `LocaleProvider`/`useT`/`useFormat` · `formatDate/Time/Number` +
+`compareNames` លើ `Intl`។ `User.locale` ថ្មីក្នុង API។ Middleware ទាំង ៣ ដាក់ `x-locale`,
+root layout អាន → `<html lang>` + provider។ Switcher នៅ Settings → Appearance។
+Sidebar ទាំងមូលបកប្រែហើយ (slice ដំបូង)។
+
+រឿងដែលរកឃើញពេលធ្វើ — មិនឃើញដោយ typecheck ឬ build:
+
+- **Font ខ្មែរត្រូវបានផ្ទុករួច តែឈានមិនដល់** — root layout ទាំង ៣ load Kantumruy Pro ជា
+  `--font-khmer` តាំងពីមុន តែ `tailwind-preset` កំណត់ `sans: [var(--font-sans), Inter, …]`
+  គ្មានពុម្ពខ្មែរ។ រាល់ទំព័រ download webfont ខ្មែរដែលគ្មាន UI ណាប្រើ។ ឥឡូវ stack តែមួយ
+  មានទាំងពីរ (មិនប្ដូរ stack តាម locale — string លាយអក្សរពីរជារឿងធម្មតានៅទីនេះ)។
+- **`hydrateLocale` មិនត្រូវ reload** — វារត់ក្នុង `onAuthSuccess` មួយបន្ទាត់មុន login page
+  navigate; reload ត្រង់នោះ **លុបចោល navigation** ហើយអ្នកប្រើត្រឡប់មក `/login` វិញ ដូច
+  login បរាជ័យ។ ឥឡូវវាត្រឡប់ boolean, caller ជាអ្នកសម្រេច។
+- **§3.3 (space នឹងបាត់ static rendering) មិនកើតឡើង** — space ជា `force-dynamic`
+  + `no-store` រួចហើយ ព្រោះ unpublish ត្រូវមានប្រសិទ្ធភាពភ្លាម។ គ្មានអ្វីត្រូវបាត់។
+
+Suite ថ្មី `pnpm --filter web test:i18n` **9/9** (cookie ឆ្លង reload · `lang` ក្នុង HTML
+ពី server · computed font-family · device ថ្មីទទួល `User.locale` · space គោរព cookie)។
+`km` ខ្វះ key = **compile error** (បញ្ជាក់ដោយលុប key មួយមើល)។
 
 ---
 
@@ -333,7 +363,7 @@ Tier 0 ────────────────────────�
 
 Tier 1 ────────────────────────────────  ផ្លូវ A ចប់ហើយ
   ផ្លូវ A (AI):     ADR 0015 → 2c → 2d → 2a → 2b  ✅ បិទ 2026-07-31 (18/18)
-  ផ្លូវ B (ខ្មែរ):   ADR 0016 → 3a → 3d → 3c → 3b  ← moat បន្ទាប់
+  ផ្លូវ B (ខ្មែរ):   ADR 0016 ✅ → 3a ✅ (2026-08-06) → 3d → 3c → 3b  ← កំពុងធ្វើ
 
 Tier 2 ────────────────────────────────  ក្រោយពេល moat មួយចប់ពិត
   4a → 4f → 4c → 4b → 4d → 4e

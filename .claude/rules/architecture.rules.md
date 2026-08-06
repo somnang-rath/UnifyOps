@@ -12,12 +12,16 @@
 
 ## Shared packages
 
-`packages/types`, `packages/constants`, `packages/services`, `packages/ui`, `packages/editor`.
+`packages/types`, `packages/constants`, `packages/services`, `packages/ui`, `packages/editor`,
+`packages/i18n`.
 
 - Anything used by **more than one frontend** belongs in `packages/`, never copy-pasted.
   Triple duplication across web/admin/space is the single biggest pitfall of this conversion.
 - Next.js apps must list consumed `@prism/*` packages in `transpilePackages`.
 - `cn` is canonical in `@prism/ui/cn`. The API client is canonical in `@prism/services` (`createApiClient`).
+- The locale is canonical in `@prism/i18n` (ADR 0016): `resolveLocale` is the one definition
+  of cookie → `Accept-Language` → `en`, and `packages/ui` deliberately does **not** depend on
+  it — shared components take their text as props.
 
 ## Non-negotiable boundaries
 
