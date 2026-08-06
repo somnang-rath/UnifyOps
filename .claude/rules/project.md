@@ -93,8 +93,8 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
     no key, so the digest falls back to `plainSummary()` and intake simply shows no
     suggestion. Nothing breaks on an unconfigured instance.
 
-  Left undone deliberately: `apps/web` has **no intake screen at all**, so triage
-  suggestions are API-only (building that UI is Tier 2 work, not §2.5); the Telegram reply
+  Left undone deliberately: ~~`apps/web` has no intake screen at all~~ (built 2026-08-06 —
+  see the intake entry below); the Telegram reply
   posts to the group but not back into the Prism channel; and the model round-trip is not
   exercised in CI (no key) — the suite proves the authorization layer.
 
@@ -113,6 +113,34 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
   `internal` project needs only workspace membership, writing needs project membership, so
   a test that picks any readable project to write into is a 403 waiting for the right sort
   order.
+
+- **Intake triage UI** ✅ — closed 2026-08-06, the first of the three items ADR 0015 left
+  undone. The `intake` module had been complete and covered since Phase 8 (`test:phase8`)
+  and had **no screen anywhere**; it now has both ends. `apps/web`:
+  `/[workspaceSlug]/intake` (Tier W + flat shim) — project picker → forms rail → queue,
+  with `?project=&form=&status=` as the state. `apps/space`: `/spaces/intake/[anchor]`,
+  the public form. Three decisions worth carrying forward:
+
+  - **The queue is project-scoped because the API is.** `GET /intake/forms` takes a
+    `projectId` and gates on project *write*, so a workspace-wide queue would mean fanning
+    out over every project and hiding a 403 per row. Picking the project first is the
+    honest shape of the endpoint.
+  - **The public submit goes browser → API directly, not through the space server.** The
+    obvious build is a server action (same origin, no CORS, no CSP change) and it is wrong:
+    the endpoint is throttled *per IP*, so relaying it collapses every anonymous visitor
+    into one bucket and lets a single submitter lock the form for everyone. So space's
+    `connect-src` names the API origin — the first and only browser-side fetch in that app
+    (`lib/api-url.ts` is the single definition the fetch and the CSP both read).
+  - **Accept is two buttons over one endpoint.** "Accept" sends an empty body and lets the
+    API apply the stored AI suggestion; "Edit & accept" opens the same values in a form.
+    One click stays honest only because the card already shows the proposal.
+
+  New suite `pnpm --filter web test:intake` (21 checks). Two traps it caught, both
+  invisible to typecheck and build: a Tier W nav item **needs its flat shim** — the sidebar
+  builds hrefs from the resolved slug and `/home` has none, so the first click after login
+  goes to the bare path and 404s without one; and text typed into the space form *before
+  hydration* is wiped by React, leaving the submit button permanently disabled (a test
+  artefact here, but the reason that suite waits for `networkidle` on space).
 
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
 
@@ -183,9 +211,16 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
   the E2E fixture, since the per-doc cap only counts authenticated connections and so
   needs real collab tokens.
 
-The three **browser** suites (`test:browser-smoke`, `test:csp`, `test:project-tabs`) are
-deliberately outside `test:e2e:full` — they need web/admin/space serving plus Playwright,
-so folding them in would turn "a frontend failed to start" into "the API run failed".
+The **browser** suites (`test:browser-smoke`, `test:csp`, `test:cover`, `test:project-tabs`,
+`test:intake`) are deliberately outside `test:e2e:full` — they need web/admin/space serving
+plus Playwright, so folding them in would turn "a frontend failed to start" into "the API
+run failed".
+- `pnpm --filter web test:intake` — Playwright, 21 checks over the intake triage queue
+  (web) and the public request form (space). Not another API test — `test:phase8` already
+  covers the endpoints. What only a browser proves is the **cross-origin submit**: it needs
+  the API's CORS allowlist *and* space's CSP `connect-src`, and if either is wrong the page
+  still renders perfectly and the request silently never lands. That half runs in a second,
+  anonymous context so no session cookie can mask it. `INTAKE_TIMEOUT_MS` overrides 45s.
 - `pnpm --filter web test:project-tabs` — Playwright, 19 checks over the four project
   tabs (cycles/modules/views/pages). It warms each route before asserting: `next dev`
   compiles routes lazily, and without that the first check to touch a cold route times

@@ -348,7 +348,8 @@ Assistant ប្ដូរពី "ឆ្លើយសំណួរ" (៣ read + ១
 - [x] **Audit** — រាល់ write តាម tool ចូល `AuditLog` ជាមួយ `detail.via = 'assistant'` + surface + conversationId តាម `AuditService.record()` ថ្មី។ Read tools មិនចុះ
 - [x] **UI confirmation** — `PendingActionCard` ក្នុង assistant panel + full page: រាយ **title** នៃអ្វីដែលនឹងលុប (មិនមែនត្រឹមចំនួន), confirm = ហៅ REST route ធម្មតា។ Model មិនដែលកាន់ token ណាដែលបញ្ចប់ action បានទេ
 - [x] **Verified**: suite ថ្មី `test:assistant-tools` **18/18** (in-process + Nest application context ពិត, ព្រោះច្បាប់ tier/provenance គ្មាន HTTP surface ដោយចេតនា) · regression `test:security` 21 · `test:phase7` 44 · `test:phase8` 16 · `test:cycles-modules` 30 · បើក API ពិតរួច drive `GET /assistant/digest` (200, scoped), channel→project PATCH (200; អ្នកក្រៅ 404), intake submit→suggest→triage accept-with-edits (issue ចេញមកជាមួយ priority + labels ត្រឹមត្រូវ)
-- [ ] នៅសល់: intake triage UI ក្នុង `apps/web` (គ្មានអេក្រង់ intake ណាមួយសោះ — suggestion មើលឃើញតែតាម API); Telegram assistant reply ចូលតែ group មិនចូល Prism channel; model round-trip មិនទាន់ដេញក្នុង CI (គ្មាន AI key)
+- [x] **Intake triage UI** (2026-08-06) — `/[workspaceSlug]/intake` ក្នុង `apps/web` (Tier W + flat shim; project picker → forms rail → queue; `?project=&form=&status=` ជា state) + public form `/spaces/intake/[anchor]` ក្នុង `apps/space`។ Accept ជាប៊ូតុងពីរលើ endpoint តែមួយ: "Accept" ផ្ញើ body ទទេ ឲ្យ API យក suggestion ដែលរក្សាទុក, "Edit & accept" បើក value ដដែលក្នុង form។ **Submit ចេញពី browser ផ្ទាល់ទៅ API** មិនឆ្លងកាត់ space server ព្រោះ throttle ជា per-IP — relay នឹងធ្វើឲ្យអ្នកទស្សនាទាំងអស់ចែក bucket តែមួយ។ Suite ថ្មី `pnpm --filter web test:intake` **21/21**
+- [ ] នៅសល់: Telegram assistant reply ចូលតែ group មិនចូល Prism channel; model round-trip មិនទាន់ដេញក្នុង CI (គ្មាន AI key)
 
 ---
 

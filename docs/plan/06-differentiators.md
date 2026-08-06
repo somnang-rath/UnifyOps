@@ -229,8 +229,9 @@ Read tools ៣ ថ្មីមិនមែនជា feature ទេ — ជា**�
 `test:phase7` 44 · `test:phase8` 16 (រួម intake triage) · `test:cycles-modules` 30 ·
 បូកនឹងការ drive endpoint ថ្មីលើ API ពិត។
 
-**នៅសល់ដោយចេតនា**: (១) `apps/web` គ្មានអេក្រង់ intake ណាមួយសោះ ដូច្នេះ suggestion
-មើលឃើញតែតាម API — ការសាង UI intake ជាការងារ Tier 2 មិនមែន §2.5; (២) ចម្លើយ Telegram
+**នៅសល់ដោយចេតនា**: (១) ~~`apps/web` គ្មានអេក្រង់ intake~~ — **សាងរួច 2026-08-06**:
+triage queue `/[workspaceSlug]/intake` + public form `/spaces/intake/[anchor]`,
+suite `pnpm --filter web test:intake`; (២) ចម្លើយ Telegram
 ចូលតែ group មិនចូល Prism channel (bot ត្រូវការ author identity); (៣) model round-trip
 មិនទាន់ដេញក្នុង CI ព្រោះគ្មាន AI key — អ្វីដែល suite បញ្ជាក់គឺ layer authorization។
 

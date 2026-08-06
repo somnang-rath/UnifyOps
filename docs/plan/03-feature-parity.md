@@ -18,7 +18,7 @@
 | Estimates | ❌ (គ្មានសោះ — `Issue` គ្មាន field `estimate`; dir ទទេត្រូវលុប 2026-07-31, មើល `06-differentiators.md` §1.2) | schema field + UI + burn-down |
 | Cycles (sprints) | ✅ `cycles` module + project tab (ADR 0014) — derived status, one-at-a-time overlap guard, progress rollup | burn-down chart (rollup already returns `byStatus`) |
 | Modules (epics) | ✅ `modules` module + project tab (ADR 0014) — stored status, lead, parallel by design | member picker (API stores `memberIds`; modal exposes lead only) |
-| **Intake / Inbox** (issue triage) | ❌ | module `intake` + public intake form (space) |
+| **Intake / Inbox** (issue triage) | ✅ module `intake` + triage queue `/[workspaceSlug]/intake` (web) + public form `/spaces/intake/[anchor]` (space) — accept/decline, AI suggestion pre-fill (ADR 0015 §2.5) | — |
 | Time tracking / worklog | ❌ | `worklog` schema + UI (បន្ទាប់) |
 | Bulk operations | ❌ | multi-select + bulk edit bar |
 | Templates (issue/project) | ❌ | `templates` module |
@@ -54,7 +54,7 @@
 | **Publish project / roadmap** | ❌ (deferred — ត្រូវការ `views`) | ក្រោយ views module រួច |
 | **Publish view** (issue list public) | ❌ | anchor → view |
 | Public comments / reactions / votes | ❌ | `PublishSettings` toggles |
-| **Intake form** (public → issue) | ❌ | ភ្ជាប់នឹង intake module |
+| **Intake form** (public → issue) | ✅ `/spaces/intake/[anchor]` — submit ចេញពី browser ដោយផ្ទាល់ទៅ API (throttle ជា per-IP ពិត), CSP `connect-src` + CORS បើកឲ្យតែ request នេះ | — |
 | SEO / OG image / sitemap | 🟡 metadata មាន | OG image + sitemap.xml + robots តាម setting |
 
 ## 5. Collaboration (live)
