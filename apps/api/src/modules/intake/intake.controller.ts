@@ -90,6 +90,17 @@ export class IntakeController {
     @Param('id') id: string,
     @Body() dto: TriageDto,
   ) {
-    return this.intake.triage(user.id, id, dto.action);
+    return this.intake.triage(user.id, id, dto);
+  }
+
+  /**
+   * Re-run the AI triage suggestion for one submission. Same gate as triaging
+   * it. Exists because the suggestion at submit time is fire-and-forget: if
+   * the provider was down, or the assistant was configured afterwards, the
+   * queue would otherwise be stuck with no proposal.
+   */
+  @Post('submissions/:id/suggest')
+  suggest(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.intake.resuggest(user.id, id);
   }
 }

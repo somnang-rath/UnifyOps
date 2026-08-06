@@ -29,6 +29,20 @@ export class ChatChannel {
   @Prop({ default: '' })
   topic: string;
 
+  /**
+   * Optional link to the project this channel is about.
+   *
+   * Its one job today is scoping the AI assistant over Telegram (ADR 0015
+   * §2.4): a bridged group's reply is visible to everyone in it, including
+   * members who have no Prism account, so the assistant answers within *this
+   * project* rather than within everything the asking user can read. No
+   * project set = the assistant does not run in that group's bridge.
+   *
+   * It is not an access control: channel membership still governs the channel.
+   */
+  @Prop({ type: Types.ObjectId, ref: 'Project', default: null })
+  projectId: Types.ObjectId | null;
+
   /** `public` = any workspace member may read and join. `private` = memberIds is the access list. */
   @Prop({ enum: ['public', 'private'], default: 'public' })
   visibility: ChannelVisibility;

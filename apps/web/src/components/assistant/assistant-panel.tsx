@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { MessageBubble } from '@/components/assistant/message-bubble';
+import { PendingActionCard } from '@/components/assistant/pending-action-card';
 import {
   useAssistantConfig,
   useAssistantUsage,
@@ -46,6 +47,8 @@ export function AssistantPanel() {
     streaming,
     streamingText,
     toolSteps,
+    pendingActions,
+    dismissPendingAction,
     pendingUserMessage,
     error,
   } = useChat();
@@ -172,6 +175,15 @@ export function AssistantPanel() {
                   tools={toolSteps}
                 />
               )}
+              {/* Tier C proposals (ADR 0015 §2.2). Rendered after the reply so
+                  the user reads what the assistant said before deciding. */}
+              {pendingActions.map((action, i) => (
+                <PendingActionCard
+                  key={`${action.kind}-${i}`}
+                  action={action}
+                  onDone={() => dismissPendingAction(i)}
+                />
+              ))}
             </div>
           )}
           {error && (

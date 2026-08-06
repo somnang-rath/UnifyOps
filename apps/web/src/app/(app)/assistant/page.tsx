@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { MessageBubble } from '@/components/assistant/message-bubble';
+import { PendingActionCard } from '@/components/assistant/pending-action-card';
 import {
   useAssistantConfig,
   useAssistantUsage,
@@ -47,6 +48,8 @@ export default function AssistantPage() {
     streaming,
     streamingText,
     toolSteps,
+    pendingActions,
+    dismissPendingAction,
     pendingUserMessage,
     error,
   } = useChat();
@@ -181,6 +184,14 @@ export default function AssistantPage() {
                   tools={toolSteps}
                 />
               )}
+              {/* Tier C proposals (ADR 0015 §2.2) — nothing has happened yet. */}
+              {pendingActions.map((action, i) => (
+                <PendingActionCard
+                  key={`${action.kind}-${i}`}
+                  action={action}
+                  onDone={() => dismissPendingAction(i)}
+                />
+              ))}
             </div>
           )}
           {error && (

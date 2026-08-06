@@ -7,6 +7,7 @@ import {
   Activity,
   AtSign,
   BookOpen,
+  Bot,
   CheckCheck,
   CheckCircle2,
   FolderInput,
@@ -68,6 +69,7 @@ const TYPE_META: Record<NotifType, Meta> = {
   note_shared: { Icon: FolderInput, ...E },
   project_member: { Icon: Users, ...E },
   due_soon: { Icon: AlarmClock, ...R },
+  digest: { Icon: Bot, ...V },
 };
 
 function bucketOf(n: Notification, now: Date): string {

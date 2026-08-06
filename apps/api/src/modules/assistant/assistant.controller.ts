@@ -16,6 +16,7 @@ import {
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
 import { AssistantService } from './assistant.service';
+import { DigestService } from './digest.service';
 import {
   ChatDto,
   ChatSchema,
@@ -25,7 +26,22 @@ import {
 
 @Controller('assistant')
 export class AssistantController {
-  constructor(private assistant: AssistantService) {}
+  constructor(
+    private assistant: AssistantService,
+    private digest: DigestService,
+  ) {}
+
+  /**
+   * The caller's own weekly digest, without sending it (ADR 0015 §2.6).
+   *
+   * There is deliberately no `:userId` form. The digest is assembled by reading
+   * *as* the recipient, so "someone else's digest" is not a thing this endpoint
+   * could produce without the service identity the ADR rejected.
+   */
+  @Get('digest')
+  digestPreview(@CurrentUser() u: AuthUserPayload) {
+    return this.digest.previewFor(u.id);
+  }
 
   /** Non-secret assistant settings (enabled/provider/model) for the web UI. */
   @Get('config')

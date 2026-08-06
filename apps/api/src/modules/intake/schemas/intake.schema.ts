@@ -69,6 +69,27 @@ export class IntakeSubmission {
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   triagedBy: Types.ObjectId | null;
+
+  /**
+   * What the AI assistant *proposes* for this submission (ADR 0015 §2.5).
+   *
+   * A suggestion, never an action: `triage` still requires a real user, and
+   * nothing here reaches an issue until someone accepts. An intake form is an
+   * unauthenticated write surface by design, so an assistant that auto-created
+   * and auto-assigned from it would be a stranger driving workspace state
+   * through a model.
+   *
+   * `assigneeId` is validated against the project's member list before it is
+   * stored — a model naming someone outside the project is dropped, not saved.
+   */
+  @Prop({ type: Object, default: null })
+  suggestion: {
+    priority: string | null;
+    labels: string[];
+    assigneeId: Types.ObjectId | null;
+    reasoning: string;
+    generatedAt: Date;
+  } | null;
 }
 
 export const IntakeSubmissionSchema =

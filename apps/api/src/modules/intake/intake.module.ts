@@ -10,6 +10,8 @@ import { IntakeService } from './intake.service';
 import { IntakeController } from './intake.controller';
 import { ProjectAccessModule } from '../projects/access/project-access.module';
 import { IssuesModule } from '../issues/issues.module';
+import { ProjectsModule } from '../projects/projects.module';
+import { AssistantModule } from '../assistant/assistant.module';
 
 @Module({
   imports: [
@@ -20,6 +22,10 @@ import { IssuesModule } from '../issues/issues.module';
     ProjectAccessModule,
     // Accepting a submission mints a real work item via IssuesService.
     IssuesModule,
+    // The AI triage suggestion (ADR 0015 §2.5) proposes a priority/labels/
+    // assignee; ProjectsService supplies the member list it may choose from.
+    ProjectsModule,
+    AssistantModule,
     // WebhooksService (intake.received dispatch) comes from the global
     // WebhooksModule — no import needed.
   ],

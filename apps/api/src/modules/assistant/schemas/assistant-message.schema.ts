@@ -44,6 +44,17 @@ export class AssistantMessage {
     default: undefined,
   })
   tools?: { name: string; input: Record<string, unknown>; ok: boolean }[];
+
+  /**
+   * Every object id a tool result surfaced during this turn (ADR 0015 §2.3).
+   *
+   * This is what makes "the model may only act on ids it has actually seen" a
+   * *conversation*-wide rule rather than a per-request one: the next turn seeds
+   * its `ToolSession` from these. Without it, "delete the ones we just found"
+   * would fail the moment the user pressed enter twice.
+   */
+  @Prop({ type: [String], default: undefined })
+  toolIds?: string[];
 }
 
 export type AssistantMessageDocument = HydratedDocument<AssistantMessage>;

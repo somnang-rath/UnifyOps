@@ -16,6 +16,8 @@ export const NOTIF_TYPES = [
   'note_shared',
   'project_member',
   'due_soon',
+  /** The weekly AI digest (ADR 0015 §2.6). */
+  'digest',
 ] as const;
 export type NotifType = (typeof NOTIF_TYPES)[number];
 

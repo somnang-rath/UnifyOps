@@ -12,7 +12,9 @@ export type NotifType =
   | 'wiki_mention'
   | 'note_shared'
   | 'project_member'
-  | 'due_soon';
+  | 'due_soon'
+  /** The weekly AI digest (ADR 0015 §2.6). */
+  | 'digest';
 
 export type EntityKind =
   | 'issue'

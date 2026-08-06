@@ -9,6 +9,7 @@ import {
   AtSign,
   Bell,
   BookOpen,
+  Bot,
   CheckCheck,
   CheckCircle2,
   FolderInput,
@@ -71,6 +72,7 @@ const TYPE_META: Record<NotifType, TypeMeta> = {
   note_shared: { Icon: FolderInput, ...EMERALD },
   project_member: { Icon: Users, ...EMERALD },
   due_soon: { Icon: AlarmClock, ...ROSE },
+  digest: { Icon: Bot, ...VIOLET },
 };
 
 const TABS: { key: Tab; label: string }[] = [

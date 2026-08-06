@@ -14,6 +14,7 @@ import { InstanceService } from '../../instance/instance.service';
 import { TelegramApiService, TelegramMessage, TelegramUpdate } from './telegram-api.service';
 import { TelegramLinkService } from './telegram-link.service';
 import { TelegramIdentityService } from './telegram-identity.service';
+import { TelegramAssistantService } from './telegram-assistant.service';
 import { fromTelegramText } from './telegram-format.util';
 
 /**
@@ -36,6 +37,7 @@ export class TelegramInboundService {
     private api: TelegramApiService,
     private links: TelegramLinkService,
     private identities: TelegramIdentityService,
+    private assistant: TelegramAssistantService,
   ) {}
 
   async handleUpdate(update: TelegramUpdate): Promise<void> {
@@ -74,7 +76,7 @@ export class TelegramInboundService {
 
     // Dedupe is the unique {telegram.chatId, telegram.messageId} index — ingest
     // catches E11000 and returns null for a duplicate delivery.
-    await this.messages.ingestFromTelegram({
+    const ingested = await this.messages.ingestFromTelegram({
       channel,
       body: text,
       authorId,
@@ -87,6 +89,21 @@ export class TelegramInboundService {
         updateId: update.update_id,
       },
     });
+
+    // `@prism …` → the assistant (ADR 0015 §2.4). Gated on `ingested` so a
+    // redelivered update cannot make the bot answer the same question twice.
+    const prompt = TelegramAssistantService.mentionIn(text);
+    if (prompt !== null && ingested) {
+      const answer = await this.assistant.reply({
+        channel,
+        prompt,
+        senderUserId: authorId,
+      });
+      if (answer) {
+        const { botToken } = await this.instance.getTelegramConfig();
+        await this.reply(botToken, msg, answer);
+      }
+    }
   }
 
   private async handleVerifyCommand(

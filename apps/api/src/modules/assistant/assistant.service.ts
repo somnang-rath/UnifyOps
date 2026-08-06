@@ -26,7 +26,12 @@ import { AuthUserPayload } from '../../common/decorators/current-user.decorator'
 import { ChatContextDto, ChatDto } from './dto/assistant.dto';
 import { IssuesService } from '../issues/issues.service';
 import { WikiService } from '../wiki/wiki.service';
+import { CyclesService } from '../cycles/cycles.service';
+import { ModulesService } from '../modules/modules.service';
+import { ProjectsService } from '../projects/projects.service';
+import { AuditService } from '../audit/audit.service';
 import { buildOpenAiTools, buildTools, runTool, ToolDeps } from './tools';
+import { ToolContext, ToolSession, ToolSurface } from './tool-session';
 
 const oid = (v: string) => new Types.ObjectId(v);
 const sse = (event: string, data: unknown) =>
@@ -41,16 +46,53 @@ interface RateState {
   resetAt: number;
 }
 
-/** Everything a provider streaming loop needs to run one `chat()` request. */
+/**
+ * How a loop reports progress, so the two provider loops serve every surface
+ * without being duplicated: `chat()` passes an SSE-backed emitter, the Telegram
+ * assistant and the digest pass {@link SILENT}. The loop itself never knows
+ * whether anyone is watching.
+ */
+interface LoopEmitter {
+  event(name: string, data: unknown): void;
+  /** Register a cancellation hook (an SSE client hanging up). */
+  onAbort(cb: () => void): void;
+}
+
+const SILENT: LoopEmitter = { event: () => {}, onAbort: () => {} };
+
+const sseEmitter = (res: Response): LoopEmitter => ({
+  event: (name, data) => res.write(sse(name, data)),
+  onAbort: (cb) => res.on('close', cb),
+});
+
+/**
+ * Surface a Tier C proposal on the `tool_result` event so the client can render
+ * the confirm affordance (ADR 0015 §2.2) without re-parsing the model's prose.
+ * The payload is purely descriptive — it carries no token, and confirming means
+ * calling the ordinary REST route.
+ */
+function pendingActionOf(run: { ok: boolean; content: string }): {
+  pendingAction?: unknown;
+} {
+  if (!run.ok || !run.content.startsWith('{')) return {};
+  try {
+    const parsed = JSON.parse(run.content) as { pendingAction?: unknown };
+    return parsed?.pendingAction ? { pendingAction: parsed.pendingAction } : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Everything a provider loop needs to run one turn. */
 interface LoopParams {
   cfg: AiConfig;
   apiKey: string;
   model: string;
   system: string;
   history: { role: 'user' | 'assistant'; content: string }[];
-  user: AuthUserPayload;
+  ctx: ToolContext;
   deps: ToolDeps;
-  res: Response;
+  emit: LoopEmitter;
 }
 
 /** Accumulated output of a provider loop, persisted as one assistant turn. */
@@ -74,7 +116,23 @@ export class AssistantService {
     private instance: InstanceService,
     private issues: IssuesService,
     private wiki: WikiService,
+    private cycles: CyclesService,
+    private modules: ModulesService,
+    private projects: ProjectsService,
+    private audit: AuditService,
   ) {}
+
+  /** The service handles every tool reaches through (ADR 0015 §2.1). */
+  private toolDeps(): ToolDeps {
+    return {
+      issues: this.issues,
+      wiki: this.wiki,
+      cycles: this.cycles,
+      modules: this.modules,
+      projects: this.projects,
+      audit: this.audit,
+    };
+  }
 
   // ── Public, non-secret config (drives the web assistant UI) ─────────
   async publicConfig() {
@@ -240,7 +298,16 @@ export class AssistantService {
     const model =
       dto.model || (isOpenAi ? cfg.openai.model : cfg.anthropic.model);
     const system = this.buildSystemPrompt(cfg, dto.context);
-    const deps: ToolDeps = { issues: this.issues, wiki: this.wiki };
+    const deps = this.toolDeps();
+
+    // Seed the id-provenance set from earlier turns so "delete the ones we just
+    // found" survives pressing enter twice (ADR 0015 §2.3).
+    const session = new ToolSession({
+      surface: 'web',
+      conversationId: String(conversation._id),
+      seedIds: history.flatMap((m) => m.toolIds ?? []),
+    });
+    const ctx: ToolContext = { user, session };
 
     // Begin the SSE response. Past this point, surface failures as SSE
     // `error` events rather than throwing (headers are already sent).
@@ -262,9 +329,9 @@ export class AssistantService {
       model,
       system,
       history: history.map((m) => ({ role: m.role, content: m.content })),
-      user,
+      ctx,
       deps,
-      res,
+      emit: sseEmitter(res),
     };
 
     try {
@@ -272,6 +339,7 @@ export class AssistantService {
         ? await this.runOpenAiLoop(params)
         : await this.runAnthropicLoop(params);
 
+      const seenIds = session.seenIds();
       const saved = await this.messages.create({
         conversationId: conversation._id,
         ownerId: oid(user.id),
@@ -280,6 +348,7 @@ export class AssistantService {
         tokens: result.totalOut,
         inputTokens: result.totalIn,
         ...(result.toolTrace.length ? { tools: result.toolTrace } : {}),
+        ...(seenIds.length ? { toolIds: seenIds } : {}),
       });
       await this.conversations.updateOne(
         { _id: conversation._id },
@@ -309,14 +378,129 @@ export class AssistantService {
     }
   }
 
+  // ── Non-web entry points ────────────────────────────────────────────
+
+  /**
+   * One completion with **no tools at all**.
+   *
+   * For the jobs that have no calling user — intake triage suggestions (ADR
+   * 0015 §2.5) and the weekly digest (§2.6). Under §2.1 an identity-less job has
+   * no read permissions, so rather than inventing a service account, the caller
+   * assembles a payload that was *already* scoped and this method only
+   * summarises it. The model gets text and returns text; it can reach nothing.
+   *
+   * Returns null when the assistant is disabled or has no key — every caller
+   * must degrade to its non-AI behaviour rather than fail.
+   */
+  async complete(
+    system: string,
+    prompt: string,
+    maxTokens = 800,
+  ): Promise<string | null> {
+    const cfg = await this.instance.getAiConfig();
+    if (!cfg.enabled) return null;
+    const isOpenAi = cfg.provider === 'openai';
+    const apiKey = isOpenAi ? cfg.openai.apiKey : cfg.anthropic.apiKey;
+    if (!apiKey) return null;
+
+    try {
+      if (isOpenAi) {
+        const res = await new OpenAI({ apiKey }).chat.completions.create({
+          model: cfg.openai.model,
+          max_completion_tokens: maxTokens,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: prompt },
+          ],
+        });
+        return res.choices[0]?.message?.content?.trim() || null;
+      }
+      const res = await new Anthropic({ apiKey }).messages.create({
+        model: cfg.anthropic.model,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const text = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+        .trim();
+      return text || null;
+    } catch (err) {
+      // A provider outage must never take down the job that called us.
+      console.error('[assistant] completion failed', err);
+      return null;
+    }
+  }
+
+  /**
+   * Run one agentic turn on a surface that is not the web SSE chat — today,
+   * Telegram (ADR 0015 §2.4). Same loop, same tools, same authorization; only
+   * the {@link ToolSession} differs, and it is the session that decides which
+   * tiers exist and whether everything is pinned to one project.
+   *
+   * Returns the reply text (empty when the assistant is off), and never throws:
+   * the caller is a webhook handler that must still ack.
+   */
+  async runOnSurface(opts: {
+    user: AuthUserPayload;
+    surface: ToolSurface;
+    message: string;
+    projectScope?: string | null;
+    conversationId?: string | null;
+    contextNote?: string;
+  }): Promise<string> {
+    const cfg = await this.instance.getAiConfig();
+    const isOpenAi = cfg.provider === 'openai';
+    const apiKey = isOpenAi ? cfg.openai.apiKey : cfg.anthropic.apiKey;
+    if (!cfg.enabled || !apiKey) return '';
+
+    try {
+      this.consumeRate(opts.user.id, cfg.rateLimitPerMin);
+    } catch {
+      return 'You have asked me a lot just now — give it a minute.';
+    }
+
+    const session = new ToolSession({
+      surface: opts.surface,
+      projectScope: opts.projectScope ?? null,
+      conversationId: opts.conversationId ?? null,
+    });
+
+    const parts = [cfg.systemPrompt, opts.contextNote].filter(
+      (s): s is string => Boolean(s && s.trim()),
+    );
+    const params: LoopParams = {
+      cfg,
+      apiKey,
+      model: isOpenAi ? cfg.openai.model : cfg.anthropic.model,
+      system: parts.join('\n\n'),
+      history: [{ role: 'user', content: opts.message }],
+      ctx: { user: opts.user, session },
+      deps: this.toolDeps(),
+      emit: SILENT,
+    };
+
+    try {
+      const result = isOpenAi
+        ? await this.runOpenAiLoop(params)
+        : await this.runAnthropicLoop(params);
+      return result.full.trim();
+    } catch (err) {
+      console.error('[assistant] surface run failed', err);
+      return '';
+    }
+  }
+
   // ── Provider-specific streaming loops ───────────────────────────────
   // Both drive the same SSE events (`delta` / `tool` / `tool_result`) and the
   // same agentic tool loop, returning the accumulated text + token totals so
   // `chat()` can persist one assistant turn regardless of provider.
 
   private async runAnthropicLoop(p: LoopParams): Promise<LoopResult> {
-    const { cfg, apiKey, model, system, user, deps, res } = p;
-    const tools = cfg.allowTools ? buildTools() : [];
+    const { cfg, apiKey, model, system, ctx, deps, emit } = p;
+    const tools = cfg.allowTools ? buildTools(ctx) : [];
     const client = new Anthropic({ apiKey });
     const loopMessages: Anthropic.MessageParam[] = p.history.map((m) => ({
       role: m.role,
@@ -325,7 +509,7 @@ export class AssistantService {
 
     // A mutable handle so a client disconnect aborts whichever turn is active.
     let activeStream: ReturnType<typeof client.messages.stream> | null = null;
-    res.on('close', () => activeStream?.abort());
+    emit.onAbort(() => activeStream?.abort());
 
     let full = '';
     let totalIn = 0;
@@ -345,7 +529,7 @@ export class AssistantService {
       activeStream = stream;
       stream.on('text', (delta) => {
         full += delta;
-        res.write(sse('delta', { text: delta }));
+        emit.event('delta', { text: delta });
       });
 
       const finalMessage = await stream.finalMessage();
@@ -363,10 +547,14 @@ export class AssistantService {
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const tu of toolUses) {
           const input = (tu.input ?? {}) as Record<string, unknown>;
-          res.write(sse('tool', { id: tu.id, name: tu.name, input }));
-          const run = await runTool(tu.name, input, user, deps);
+          emit.event('tool', { id: tu.id, name: tu.name, input });
+          const run = await runTool(tu.name, input, ctx, deps);
           toolTrace.push({ name: tu.name, input, ok: run.ok });
-          res.write(sse('tool_result', { id: tu.id, ok: run.ok }));
+          emit.event('tool_result', {
+            id: tu.id,
+            ok: run.ok,
+            ...pendingActionOf(run),
+          });
           results.push({
             type: 'tool_result',
             tool_use_id: tu.id,
@@ -394,8 +582,8 @@ export class AssistantService {
   }
 
   private async runOpenAiLoop(p: LoopParams): Promise<LoopResult> {
-    const { cfg, apiKey, model, system, user, deps, res } = p;
-    const tools = cfg.allowTools ? buildOpenAiTools() : [];
+    const { cfg, apiKey, model, system, ctx, deps, emit } = p;
+    const tools = cfg.allowTools ? buildOpenAiTools(ctx) : [];
     const client = new OpenAI({ apiKey });
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
@@ -404,7 +592,7 @@ export class AssistantService {
 
     // A mutable handle so a client disconnect aborts whichever turn is active.
     let activeAbort: (() => void) | null = null;
-    res.on('close', () => activeAbort?.());
+    emit.onAbort(() => activeAbort?.());
 
     let full = '';
     let totalIn = 0;
@@ -437,7 +625,7 @@ export class AssistantService {
         if (delta?.content) {
           content += delta.content;
           full += delta.content;
-          res.write(sse('delta', { text: delta.content }));
+          emit.event('delta', { text: delta.content });
         }
         if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
@@ -474,10 +662,14 @@ export class AssistantService {
           } catch {
             input = {};
           }
-          res.write(sse('tool', { id: c.id, name: c.name, input }));
-          const run = await runTool(c.name, input, user, deps);
+          emit.event('tool', { id: c.id, name: c.name, input });
+          const run = await runTool(c.name, input, ctx, deps);
           toolTrace.push({ name: c.name, input, ok: run.ok });
-          res.write(sse('tool_result', { id: c.id, ok: run.ok }));
+          emit.event('tool_result', {
+            id: c.id,
+            ok: run.ok,
+            ...pendingActionOf(run),
+          });
           messages.push({
             role: 'tool',
             tool_call_id: c.id,

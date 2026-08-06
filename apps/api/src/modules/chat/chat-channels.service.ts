@@ -35,6 +35,8 @@ export interface ChannelView {
   slug?: string;
   topic: string;
   visibility: 'public' | 'private';
+  /** The project this channel is about, if any — scopes the Telegram assistant. */
+  projectId: string | null;
   archived: boolean;
   memberIds: string[];
   isMember: boolean;
@@ -160,6 +162,16 @@ export class ChatChannelsService {
     if (dto.topic !== undefined) channel.topic = dto.topic;
     if (dto.visibility !== undefined) channel.visibility = dto.visibility;
     if (dto.archived !== undefined) channel.archived = dto.archived;
+    if (dto.projectId !== undefined) {
+      // Pointing a channel at a project must not become a way to read one:
+      // the caller has to be able to write that project themselves.
+      if (dto.projectId) {
+        await this.projectAccess.assertProjectWritable(userId, dto.projectId);
+      }
+      channel.projectId = dto.projectId
+        ? new Types.ObjectId(dto.projectId)
+        : null;
+    }
     await channel.save();
     const [view] = await this.toViews(userId, [channel.toObject()]);
     return view;
@@ -385,6 +397,7 @@ export class ChatChannelsService {
         slug: c.slug,
         topic: c.topic,
         visibility: c.visibility,
+        projectId: c.projectId ? String(c.projectId) : null,
         archived: c.archived,
         memberIds: (c.memberIds ?? []).map(String),
         isMember: (c.memberIds ?? []).some((m) => String(m) === String(userId)),

@@ -12,6 +12,7 @@ export const NOTIF_PREF_TYPES: NotifType[] = [
   'note_shared',
   'project_member',
   'due_soon',
+  'digest',
 ];
 
 export interface NotifPref {

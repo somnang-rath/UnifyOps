@@ -27,6 +27,8 @@ export const UpdateChannelSchema = z
     topic: z.string().max(500),
     visibility: z.enum(CHANNEL_VISIBILITIES),
     archived: z.boolean(),
+    /** Scopes the AI assistant in this channel's Telegram bridge (ADR 0015 §2.4). */
+    projectId: objectId.nullable(),
   })
   .partial();
 export type UpdateChannelDto = z.infer<typeof UpdateChannelSchema>;

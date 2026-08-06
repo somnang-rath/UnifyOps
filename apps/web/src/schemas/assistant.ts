@@ -89,12 +89,39 @@ export interface ToolStep {
   ok?: boolean;
 }
 
+/**
+ * A destructive action the assistant has *proposed* but not performed (ADR
+ * 0015 §2.2). Nothing has happened until the user presses confirm, which
+ * replays `confirm` as an ordinary authenticated API call — there is no token
+ * here, and the model cannot complete the action itself.
+ */
+export interface PendingAction {
+  kind: string;
+  summary: string;
+  items: { id: string; title: string }[];
+  /** Ids the tool could not resolve for this user; shown so nothing is silent. */
+  skipped?: string[];
+  confirm: { method: 'POST'; path: string; body: Record<string, unknown> };
+}
+
 /** Human-friendly labels for the agentic tools. */
 const TOOL_LABELS: Record<string, { running: string; done: string }> = {
   search_issues: { running: 'Searching issues…', done: 'Searched issues' },
   search_wiki: { running: 'Searching wiki…', done: 'Searched wiki' },
   get_wiki_page: { running: 'Reading wiki page…', done: 'Read wiki page' },
+  list_project_members: { running: 'Looking up members…', done: 'Read members' },
+  list_cycles: { running: 'Looking up cycles…', done: 'Read cycles' },
+  list_modules: { running: 'Looking up modules…', done: 'Read modules' },
   create_issue: { running: 'Creating issue…', done: 'Created issue' },
+  update_issue: { running: 'Updating issue…', done: 'Updated issue' },
+  assign_issue: { running: 'Assigning…', done: 'Assigned' },
+  move_to_cycle: { running: 'Moving to cycle…', done: 'Moved to cycle' },
+  move_to_module: { running: 'Moving to module…', done: 'Moved to module' },
+  create_cycle: { running: 'Creating cycle…', done: 'Created cycle' },
+  bulk_update: { running: 'Applying bulk edit…', done: 'Applied bulk edit' },
+  // Tier C never performs anything — the label must not imply otherwise.
+  delete_issue: { running: 'Preparing…', done: 'Proposed a deletion' },
+  bulk_delete: { running: 'Preparing…', done: 'Proposed a deletion' },
 };
 
 export function toolStepLabel(name: string, done: boolean): string {
@@ -113,7 +140,13 @@ export type ChatStreamEvent =
     }
   | { type: 'delta'; text: string }
   | { type: 'tool'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'tool_result'; id: string; ok: boolean }
+  | {
+      type: 'tool_result';
+      id: string;
+      ok: boolean;
+      /** Present only for Tier C tools, which propose instead of acting. */
+      pendingAction?: PendingAction;
+    }
   | {
       type: 'done';
       conversationId: string;

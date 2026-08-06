@@ -12,6 +12,7 @@ import type {
   ChatRequest,
   ChatStreamEvent,
   ConversationDetail,
+  PendingAction,
   ToolStep,
 } from '@/schemas/assistant';
 
@@ -179,6 +180,36 @@ async function streamChat(
  * persisted-message queries with local streaming state so the composer can show
  * the in-flight user turn and the assistant reply as it arrives.
  */
+/**
+ * Carry out a Tier C proposal (ADR 0015 §2.2).
+ *
+ * The assistant never performs a destructive action; it describes one, and
+ * this replays that description as a normal authenticated request through the
+ * same client every other mutation uses. The user's own permissions apply at
+ * the endpoint — confirming here grants nothing the model could not already
+ * have been refused.
+ */
+export function useConfirmPendingAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (action: PendingAction) =>
+      api
+        .post(action.confirm.path, action.confirm.body)
+        .then((r) => r.data as { deleted?: number; failed?: unknown[] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['issues'] });
+      const failed = data?.failed?.length ?? 0;
+      toast(
+        failed
+          ? `Deleted ${data.deleted ?? 0}, ${failed} could not be deleted`
+          : `Deleted ${data.deleted ?? 0} item(s)`,
+        failed ? 'error' : 'success',
+      );
+    },
+    onError: () => toast('Could not complete that action', 'error'),
+  });
+}
+
 export function useChat() {
   const qc = useQueryClient();
   const { activeConversationId, setActiveConversation, context } =
@@ -187,6 +218,7 @@ export function useChat() {
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [toolSteps, setToolSteps] = useState<ToolStep[]>([]);
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(
     null,
   );
@@ -208,6 +240,7 @@ export function useChat() {
       setStreaming(true);
       setStreamingText('');
       setToolSteps([]);
+      setPendingActions([]);
       setPendingUserMessage(text);
 
       let convId = activeConversationId;
@@ -234,6 +267,13 @@ export function useChat() {
               setToolSteps((prev) =>
                 prev.map((s) => (s.id === e.id ? { ...s, ok: e.ok } : s)),
               );
+              // A Tier C tool returns a proposal. It survives the end of the
+              // stream on purpose: the user has to be able to read the reply
+              // before deciding, so the card outlives the streaming state.
+              if (e.pendingAction) {
+                const action = e.pendingAction;
+                setPendingActions((prev) => [...prev, action]);
+              }
             } else if (e.type === 'error') {
               setError(e.message);
             }
@@ -268,12 +308,18 @@ export function useChat() {
     [activeConversationId, context, streaming, qc, setActiveConversation],
   );
 
+  const dismissPendingAction = useCallback((index: number) => {
+    setPendingActions((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   return {
     send,
     stop,
     streaming,
     streamingText,
     toolSteps,
+    pendingActions,
+    dismissPendingAction,
     pendingUserMessage,
     error,
   };

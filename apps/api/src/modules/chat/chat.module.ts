@@ -29,6 +29,7 @@ import { TelegramApiService } from './telegram/telegram-api.service';
 import { TelegramLinkService } from './telegram/telegram-link.service';
 import { TelegramIdentityService } from './telegram/telegram-identity.service';
 import { TelegramInboundService } from './telegram/telegram-inbound.service';
+import { TelegramAssistantService } from './telegram/telegram-assistant.service';
 import { TelegramOutboundService } from './telegram/telegram-outbound.service';
 import { TelegramTransportService } from './telegram/telegram-transport.service';
 import { TelegramWebhookController } from './telegram/telegram-webhook.controller';
@@ -36,6 +37,7 @@ import { ProjectAccessModule } from '../projects/access/project-access.module';
 import { UsersModule } from '../users/users.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { InstanceModule } from '../instance/instance.module';
+import { AssistantModule } from '../assistant/assistant.module';
 
 @Module({
   imports: [
@@ -58,6 +60,9 @@ import { InstanceModule } from '../instance/instance.module';
     UsersModule,
     WorkspacesModule,
     InstanceModule,
+    // `@prism …` in a bridged group runs the assistant as the *linked* sender,
+    // scoped to the channel's project (ADR 0015 §2.4).
+    AssistantModule,
   ],
   controllers: [ChatController, TelegramWebhookController],
   providers: [
@@ -69,6 +74,7 @@ import { InstanceModule } from '../instance/instance.module';
     TelegramLinkService,
     TelegramIdentityService,
     TelegramInboundService,
+    TelegramAssistantService,
     TelegramOutboundService,
     TelegramTransportService,
   ],

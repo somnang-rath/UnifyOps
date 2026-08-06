@@ -74,6 +74,11 @@ export const NOTIF_PREF_TYPES: {
     label: 'Due soon',
     hint: 'Daily reminder for issues due tomorrow',
   },
+  {
+    key: 'digest',
+    label: 'Weekly digest',
+    hint: 'A Friday summary of your open work and cycle progress',
+  },
 ];
 
 const svc = {
