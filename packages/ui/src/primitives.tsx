@@ -359,14 +359,17 @@ export function Separator({
 export function Spinner({
   size = 14,
   className,
+  label = 'Loading',
 }: {
   size?: number;
   className?: string;
+  /** English default, overridable by the app — see ADR 0016 §2.5. */
+  label?: string;
 }) {
   return (
     <span
       role="status"
-      aria-label="Loading"
+      aria-label={label}
       className={cn(
         'inline-block rounded-full border-2 border-current border-r-transparent animate-spin align-[-2px]',
         className,

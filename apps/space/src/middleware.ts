@@ -6,6 +6,7 @@ import {
   connectOrigins,
   generateNonce,
 } from '@prism/constants';
+import { LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from '@prism/i18n';
 import { PUBLIC_API_URL } from '@/lib/api-url';
 
 /**
@@ -52,6 +53,15 @@ export function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
   requestHeaders.set('Content-Security-Policy', csp);
+  // Locale resolution (ADR 0016 §2.2) — the chain itself lives in @prism/i18n
+  // so the three apps cannot drift. The root layout reads this header.
+  requestHeaders.set(
+    LOCALE_HEADER,
+    resolveLocale({
+      cookie: request.cookies.get(LOCALE_COOKIE)?.value,
+      acceptLanguage: request.headers.get('accept-language'),
+    }),
+  );
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);

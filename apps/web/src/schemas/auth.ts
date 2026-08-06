@@ -28,6 +28,8 @@ export interface AuthUser {
   accent: string;
   theme: 'dark' | 'light';
   density: 'comfy' | 'compact';
+  /** UI language, the cross-device default (ADR 0016 §2.1). */
+  locale?: 'en' | 'km';
   gender?: Gender | null;
   dateOfBirth?: string | null;
   nationality?: string | null;

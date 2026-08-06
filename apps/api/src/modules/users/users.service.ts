@@ -110,6 +110,7 @@ export class UsersService {
     if (dto.accent !== undefined) u.accent = dto.accent;
     if (dto.theme !== undefined) u.theme = dto.theme;
     if (dto.density !== undefined) u.density = dto.density;
+    if (dto.locale !== undefined) u.locale = dto.locale;
     if (dto.gender !== undefined) u.gender = dto.gender;
     if (dto.dateOfBirth !== undefined)
       u.dateOfBirth = dto.dateOfBirth ? new Date(dto.dateOfBirth) : null;
@@ -540,6 +541,7 @@ export class UsersService {
       accent: u.accent,
       theme: u.theme,
       density: u.density,
+      locale: u.locale ?? 'en',
       gender: u.gender ?? null,
       dateOfBirth: u.dateOfBirth ?? null,
       nationality: u.nationality ?? null,

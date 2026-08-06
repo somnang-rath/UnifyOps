@@ -12,12 +12,15 @@ import { cn } from './cn';
  */
 export function FilterBar({
   className,
+  // English default, overridable by the app (ADR 0016 §2.5): this package
+  // takes no i18n dependency, because three apps consume it.
+  'aria-label': ariaLabel = 'Filters',
   ...p
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       role="toolbar"
-      aria-label="Filters"
+      aria-label={ariaLabel}
       className={cn(
         'flex items-center gap-1.5 flex-wrap min-h-[34px] py-1',
         className,

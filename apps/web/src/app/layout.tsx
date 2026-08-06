@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Inter, JetBrains_Mono, Kantumruy_Pro, Koh_Santepheap } from 'next/font/google';
+import { LOCALE_HEADER, toLocale } from '@prism/i18n';
 import { ThemeBootScript } from '@/components/layout/theme-boot-script';
 import { Providers } from '@/components/providers';
 import '@/styles/globals.css';
@@ -36,13 +38,18 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Resolved once, in middleware (ADR 0016 §2.2). Reading it here rather than
+  // detecting on the client is what makes the first server-rendered HTML
+  // already correct — no flash of English, no hydration mismatch.
+  const locale = toLocale(headers().get(LOCALE_HEADER));
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <ThemeBootScript />
       </head>
       <body className={`${inter.variable} ${mono.variable} ${kantumruy.variable} ${kohSantepheap.variable} font-sans`}>
-        <Providers>{children}</Providers>
+        <Providers locale={locale}>{children}</Providers>
       </body>
     </html>
   );

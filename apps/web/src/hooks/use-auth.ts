@@ -14,6 +14,17 @@ const onAuthSuccess = (r: AuthResponse) => {
   hydratePrefs(r.user);
 };
 
+/**
+ * True when the just-signed-in user's language differs from the one this
+ * document was server-rendered in (ADR 0016 §2.1). The cookie is already
+ * written by then, so the fix is a *hard* navigation rather than a client
+ * transition: the root layout — `<html lang>` included — only re-renders on a
+ * real request.
+ */
+export const localeNeedsFullNavigation = (user: AuthResponse['user']): boolean =>
+  typeof document !== 'undefined' &&
+  document.documentElement.lang !== (user.locale ?? 'en');
+
 export function useLogin() {
   return useMutation({
     mutationFn: (i: LoginInput) =>

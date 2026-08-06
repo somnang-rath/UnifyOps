@@ -12,6 +12,7 @@ const nextConfig = {
   transpilePackages: [
     '@prism/constants',
     '@prism/editor',
+    '@prism/i18n',
     '@prism/services',
     '@prism/types',
     '@prism/ui',

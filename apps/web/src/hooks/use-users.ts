@@ -45,6 +45,7 @@ const usersService = {
         | 'accent'
         | 'theme'
         | 'density'
+        | 'locale'
         | 'gender'
         | 'dateOfBirth'
         | 'nationality'

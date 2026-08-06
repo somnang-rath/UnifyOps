@@ -12,11 +12,13 @@
     "test:csp": "node test/csp.browser.mjs",
     "test:cover": "node test/cover-picker.browser.mjs",
     "test:project-tabs": "node test/project-tabs.browser.mjs",
-    "test:intake": "node test/intake.browser.mjs"
+    "test:intake": "node test/intake.browser.mjs",
+    "test:i18n": "node test/i18n.browser.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
     "@prism/constants": "workspace:*",
+    "@prism/i18n": "workspace:*",
     "@prism/editor": "workspace:*",
     "@prism/services": "workspace:*",
     "@prism/types": "workspace:*",

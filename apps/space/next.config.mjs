@@ -24,7 +24,7 @@ const nextConfig = {
   // apps/web builds from NEXT_PUBLIC_SPACE_URL (ADR 0002 §5).
   basePath: '/spaces',
   // Shared packages ship as TypeScript source, so Next must compile them.
-  transpilePackages: ['@prism/constants', '@prism/types', '@prism/ui'],
+  transpilePackages: ['@prism/constants', '@prism/i18n', '@prism/types', '@prism/ui'],
   // Never advertise the framework version to anonymous visitors.
   poweredByHeader: false,
   experimental: {

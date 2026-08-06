@@ -6,6 +6,7 @@ import {
   connectOrigins,
   generateNonce,
 } from '@prism/constants';
+import { LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from '@prism/i18n';
 
 /**
  * Content Security Policy for apps/web (docs/plan/01-security-model.md §3.5).
@@ -53,6 +54,16 @@ export function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
   requestHeaders.set('Content-Security-Policy', csp);
+  // Locale resolution (ADR 0016 §2.2). The root layout reads this rather than
+  // parsing the cookie itself, so the chain lives in exactly one place — and so
+  // the server's first HTML is already in the right language.
+  requestHeaders.set(
+    LOCALE_HEADER,
+    resolveLocale({
+      cookie: request.cookies.get(LOCALE_COOKIE)?.value,
+      acceptLanguage: request.headers.get('accept-language'),
+    }),
+  );
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);

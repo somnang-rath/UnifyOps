@@ -10,7 +10,7 @@ const nextConfig = {
   // God Mode lives under /god-mode (see PLANE-CONVERSION-PLAN.md §4.2).
   basePath: '/god-mode',
   // Compile the shared TS-source packages.
-  transpilePackages: ['@prism/ui', '@prism/services', '@prism/types', '@prism/constants'],
+  transpilePackages: ['@prism/ui', '@prism/services', '@prism/types', '@prism/constants', '@prism/i18n'],
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
     optimizePackageImports: ['lucide-react'],

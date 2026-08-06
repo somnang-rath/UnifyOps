@@ -156,8 +156,23 @@ const preset = {
       },
 
       fontFamily: {
-        sans: ['var(--font-sans)', 'Inter', 'system-ui', 'sans-serif'],
-        mono: ['var(--font-mono)', '"JetBrains Mono"', 'monospace'],
+        /**
+         * One stack for both scripts, not a stack per locale (ADR 0016 §2.8).
+         * Inter has no Khmer glyphs, so Khmer text falls through to Kantumruy
+         * Pro — which all three root layouts already load as `--font-khmer` and
+         * which, until this line existed, nothing in the UI could reach.
+         * Mixed-script strings ("Sprint ១២ — Acme") are normal here; swapping
+         * whole stacks per locale would render those in two fonts.
+         */
+        sans: [
+          'var(--font-sans)',
+          'Inter',
+          'var(--font-khmer)',
+          '"Kantumruy Pro"',
+          'system-ui',
+          'sans-serif',
+        ],
+        mono: ['var(--font-mono)', '"JetBrains Mono"', 'var(--font-khmer)', 'monospace'],
       },
 
       transitionTimingFunction: {

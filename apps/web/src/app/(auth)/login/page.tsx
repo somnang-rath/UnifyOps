@@ -7,7 +7,7 @@ import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { LoginSchema, type LoginInput } from "@/schemas/auth";
-import { useLogin } from "@/hooks/use-auth";
+import { useLogin, localeNeedsFullNavigation } from "@/hooks/use-auth";
 import { AuthHead, FieldIcon } from "../_components/auth-tabs";
 import { OAuthButtons } from "../_components/oauth-buttons";
 
@@ -38,8 +38,11 @@ export default function LoginPage() {
   const onSubmit = handleSubmit(async (data) => {
     setServerError("");
     try {
-      await login.mutateAsync(data);
-      router.replace(next);
+      const res = await login.mutateAsync(data);
+      // A user whose account language differs from what this page was rendered
+      // in needs the server, not the client router — see the helper.
+      if (localeNeedsFullNavigation(res.user)) window.location.assign(next);
+      else router.replace(next);
     } catch (e: any) {
       setServerError(e?.response?.data?.message ?? "Invalid credentials");
     }

@@ -62,6 +62,14 @@ export class User {
   @Prop({ enum: ['comfy', 'compact'], default: 'compact' })
   density: 'comfy' | 'compact';
 
+  /**
+   * UI language (ADR 0016 §2.1). The *cross-device default*, not the answer for
+   * a given request — the `pr_locale` cookie wins there, and this is what a
+   * fresh browser falls back to. English default so existing rows are unchanged.
+   */
+  @Prop({ enum: ['en', 'km'], default: 'en' })
+  locale: 'en' | 'km';
+
   @Prop({ type: Object, default: {} })
   notifPrefs?: Record<string, { inApp?: boolean; email?: boolean }>;
 

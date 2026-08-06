@@ -23,6 +23,13 @@ import {
   Upload,
   User as UserIcon,
 } from 'lucide-react';
+import {
+  LOCALES,
+  persistLocale,
+  useLocale,
+  useT,
+  type Locale,
+} from '@prism/i18n';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -110,6 +117,8 @@ const MAX_PHOTO_BYTES = 1_500_000;
 
 export default function SettingsPage() {
   const me = useAuthStore((s) => s.user)!;
+  const t = useT();
+  const locale = useLocale();
   const { theme, accent, density, setTheme, setAccent, setDensity } =
     useThemeStore();
   const updateProfile = useUpdateProfile();
@@ -199,6 +208,23 @@ export default function SettingsPage() {
   const setDensityPersisted = (d: Density) => {
     setDensity(d);
     updateProfile.mutate({ density: d });
+  };
+  /**
+   * Two writes and a reload (ADR 0016 §2.1): the cookie is what the *next*
+   * request resolves from, the user record is the cross-device default, and the
+   * reload is not optional — every string on screen, `<html lang>`, and the RSC
+   * payload itself were produced by the server in the old locale.
+   *
+   * Reload after the mutation settles rather than beside it; navigating away
+   * mid-flight would cancel the request that makes the choice stick elsewhere.
+   */
+  const setLocalePersisted = (l: Locale) => {
+    if (l === locale) return;
+    persistLocale(l);
+    updateProfile.mutate(
+      { locale: l },
+      { onSettled: () => window.location.reload() },
+    );
   };
 
   return (
@@ -570,6 +596,32 @@ export default function SettingsPage() {
                       )}
                     >
                       {d}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+
+              <Card
+                title={t('settings.language.title')}
+                sub={t('settings.language.help')}
+              >
+                <div className="flex gap-2" data-testid="locale-switcher">
+                  {LOCALES.map((l) => (
+                    <button
+                      key={l}
+                      type="button"
+                      lang={l}
+                      data-locale={l}
+                      aria-pressed={locale === l}
+                      onClick={() => setLocalePersisted(l)}
+                      className={cn(
+                        'px-4 py-2 rounded-sm border-[1.5px] text-[13px] font-medium transition-colors',
+                        locale === l
+                          ? 'border-accent bg-accent-50 text-accent-700 dark:bg-[rgba(99,102,241,.12)] dark:text-[var(--a-200)]'
+                          : 'border-border text-text-sub hover:border-accent',
+                      )}
+                    >
+                      {t(l === 'km' ? 'settings.language.km' : 'settings.language.en')}
                     </button>
                   ))}
                 </div>

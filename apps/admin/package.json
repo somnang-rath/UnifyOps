@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@prism/constants": "workspace:*",
+    "@prism/i18n": "workspace:*",
     "@prism/services": "workspace:*",
     "@prism/types": "workspace:*",
     "@prism/ui": "workspace:*",

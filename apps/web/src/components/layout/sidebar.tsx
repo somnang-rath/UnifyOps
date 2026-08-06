@@ -38,6 +38,7 @@ import { useAssistantStore } from "@/stores/assistant-store"
 import { useAssistantConfig } from "@/hooks/use-assistant"
 import { useBadges } from "@/hooks/use-badges"
 import { useIsInstanceAdmin } from "@/hooks/use-instance-admin"
+import { useT, type MessageKey } from "@prism/i18n"
 import { cn } from "@/lib/utils"
 
 const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3001"
@@ -48,7 +49,8 @@ type BadgeKey = 'issues' | 'mywork' | 'approvals' | 'notifications' | 'chat'
 
 interface NavItem {
   href: string
-  label: string
+  /** A message key, resolved at render (ADR 0016). Never display text. */
+  label: MessageKey
   Icon: React.ComponentType<{ className?: string }>
   adminOnly?: boolean
   superAdminOnly?: boolean
@@ -64,47 +66,47 @@ interface NavItem {
   workspaceScoped?: boolean
 }
 
-const NAV: { section: string; items: NavItem[] }[] = [
+const NAV: { section: MessageKey; items: NavItem[] }[] = [
   {
-    section: "Workspace",
+    section: "nav.section.workspace",
     items: [
-      { href: "/home", label: "Home", Icon: Home },
-      { href: "/my-work", label: "My Work", Icon: CheckSquare, badge: "mywork" },
-      { href: "/projects", label: "Projects", Icon: Grid3x3, workspaceScoped: true },
-      { href: "/chat", label: "Chat", Icon: MessageSquare, badge: "chat", workspaceScoped: true },
+      { href: "/home", label: "nav.home", Icon: Home },
+      { href: "/my-work", label: "nav.myWork", Icon: CheckSquare, badge: "mywork" },
+      { href: "/projects", label: "nav.projects", Icon: Grid3x3, workspaceScoped: true },
+      { href: "/chat", label: "nav.chat", Icon: MessageSquare, badge: "chat", workspaceScoped: true },
     ],
   },
   {
-    section: "Plan & Track",
+    section: "nav.section.planTrack",
     items: [
-      { href: "/issues", label: "Tasks", Icon: AlertCircle, badge: "issues", workspaceScoped: true },
-      { href: "/kanban", label: "Board", Icon: Trello },
-      { href: "/calendar", label: "Calendar", Icon: Calendar, workspaceScoped: true },
-      { href: "/approvals", label: "Approvals", Icon: GitMerge, badge: "approvals" },
-      { href: "/intake", label: "Intake", Icon: Inbox, workspaceScoped: true },
-      { href: "/analytics", label: "Analytics", Icon: BarChart3, workspaceScoped: true },
+      { href: "/issues", label: "nav.tasks", Icon: AlertCircle, badge: "issues", workspaceScoped: true },
+      { href: "/kanban", label: "nav.board", Icon: Trello },
+      { href: "/calendar", label: "nav.calendar", Icon: Calendar, workspaceScoped: true },
+      { href: "/approvals", label: "nav.approvals", Icon: GitMerge, badge: "approvals" },
+      { href: "/intake", label: "nav.intake", Icon: Inbox, workspaceScoped: true },
+      { href: "/analytics", label: "nav.analytics", Icon: BarChart3, workspaceScoped: true },
     ],
   },
   {
-    section: "Knowledge",
+    section: "nav.section.knowledge",
     items: [
-      { href: "/files", label: "Storage", Icon: FileText },
-      { href: "/wiki", label: "Wiki", Icon: BookOpen, workspaceScoped: true },
-      { href: "/notes", label: "Notes", Icon: StickyNote },
-      { href: "/tables", label: "Tables", Icon: Database },
-      { href: "/reports", label: "Reports", Icon: FileBarChart2 },
-      { href: "/assistant", label: "Assistant", Icon: Sparkles, assistantOnly: true },
+      { href: "/files", label: "nav.storage", Icon: FileText },
+      { href: "/wiki", label: "nav.wiki", Icon: BookOpen, workspaceScoped: true },
+      { href: "/notes", label: "nav.notes", Icon: StickyNote },
+      { href: "/tables", label: "nav.tables", Icon: Database },
+      { href: "/reports", label: "nav.reports", Icon: FileBarChart2 },
+      { href: "/assistant", label: "nav.assistant", Icon: Sparkles, assistantOnly: true },
     ],
   },
   {
-    section: "People & Tools",
+    section: "nav.section.peopleTools",
     items: [
-      { href: "/notifications", label: "Notifications", Icon: Bell, badge: "notifications" },
-      { href: "/automations", label: "Automations", Icon: Zap },
-      { href: "/timeline", label: "Timeline", Icon: Activity, workspaceScoped: true },
-      { href: "/users", label: "People", Icon: Users, adminOnly: true },
-      { href: "/debug", label: "Debug & Errors", Icon: Bug, superAdminOnly: true },
-      { href: "/settings", label: "Settings", Icon: SettingsIcon },
+      { href: "/notifications", label: "nav.notifications", Icon: Bell, badge: "notifications" },
+      { href: "/automations", label: "nav.automations", Icon: Zap },
+      { href: "/timeline", label: "nav.timeline", Icon: Activity, workspaceScoped: true },
+      { href: "/users", label: "nav.people", Icon: Users, adminOnly: true },
+      { href: "/debug", label: "nav.debug", Icon: Bug, superAdminOnly: true },
+      { href: "/settings", label: "nav.settings", Icon: SettingsIcon },
     ],
   },
 ]
@@ -114,6 +116,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
  * transitions belong to the shared AppShell in the (app) layout.
  */
 export function Sidebar() {
+  const t = useT()
   const pathname = usePathname()
   const ws = useWorkspaceHref()
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
@@ -144,13 +147,13 @@ export function Sidebar() {
             >
              UnifyOps
             </span>
-            <span className="text-[11px] text-text-muted">Workspace</span>
+            <span className="text-[11px] text-text-muted">{t("chrome.workspace")}</span>
           </div>
         )}
         <button
           type="button"
           onClick={toggle}
-          title={collapsed ? "Expand" : "Collapse"}
+          title={collapsed ? t("nav.expand") : t("nav.collapse")}
           className={cn(
             "rounded-[4px] flex items-center justify-center text-text-muted transition-all duration-[var(--dur)] hover:bg-bg-hover hover:text-text",
             collapsed ? "w-8 h-8" : "w-6 h-6",
@@ -172,7 +175,7 @@ export function Sidebar() {
         )}
       >
         <Search className="w-3 h-3" />
-        {!collapsed && <span className="flex-1 text-left">Quick jump</span>}
+        {!collapsed && <span className="flex-1 text-left">{t("nav.quickJump")}</span>}
         {!collapsed && (
           <kbd className="font-mono text-[11px] bg-bg-hover border border-border rounded px-1.5 py-px text-text-muted">
             ⌘K
@@ -212,7 +215,7 @@ export function Sidebar() {
           )
           if (visible.length === 0) return null
           return (
-            <SidebarSection key={section} label={section} collapsed={collapsed}>
+            <SidebarSection key={section} label={t(section)} collapsed={collapsed}>
               {visible.map((item) => {
                 // Workspace-scoped items render as /[slug]/… , and must stay
                 // active on both that and the legacy flat path (which redirects).
@@ -229,7 +232,7 @@ export function Sidebar() {
                     as={Link}
                     href={href}
                     icon={<item.Icon className="w-4 h-4" />}
-                    label={item.label}
+                    label={t(item.label)}
                     active={!!active}
                     collapsed={collapsed}
                     badge={item.badge ? (badges?.[item.badge] ?? 0) : 0}
@@ -250,7 +253,7 @@ export function Sidebar() {
             rel="noopener noreferrer"
             title="God Mode — instance admin"
             icon={<ShieldCheck className="w-4 h-4" />}
-            label="God Mode"
+            label={t("nav.godMode")}
             collapsed={collapsed}
           />
         </div>

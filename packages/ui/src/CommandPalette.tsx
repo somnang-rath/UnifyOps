@@ -35,6 +35,12 @@ export interface CommandPaletteProps {
   onQueryChange: (query: string) => void;
   placeholder?: string;
   emptyText?: string;
+  /**
+   * Accessible names. English defaults, overridable by the app — this package
+   * takes no i18n dependency (ADR 0016 §2.5).
+   */
+  dialogLabel?: string;
+  listLabel?: string;
 }
 
 /** Binds ⌘K / Ctrl+K globally while mounted. */
@@ -59,6 +65,8 @@ export function CommandPalette({
   onQueryChange,
   placeholder = 'Type a command or search…',
   emptyText = 'No results',
+  dialogLabel = 'Command palette',
+  listLabel = 'Commands',
 }: CommandPaletteProps) {
   const [sel, setSel] = React.useState(0);
   const [mounted, setMounted] = React.useState(false);
@@ -117,7 +125,7 @@ export function CommandPalette({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Command palette"
+      aria-label={dialogLabel}
       className="fixed inset-0 z-50 flex items-start justify-center px-5 pt-[12vh] pb-5 bg-[var(--overlay,rgba(10,10,30,.45))] backdrop-blur-[2px] animate-fade-in"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -159,7 +167,7 @@ export function CommandPalette({
           ref={listRef}
           id={listId}
           role="listbox"
-          aria-label="Commands"
+          aria-label={listLabel}
           className="max-h-[400px] overflow-y-auto p-1.5"
         >
           {items.length === 0 ? (

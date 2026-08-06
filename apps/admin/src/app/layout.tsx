@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { Inter, JetBrains_Mono, Kantumruy_Pro, Koh_Santepheap } from 'next/font/google';
 import { NONCE_HEADER } from '@prism/constants';
+import { LOCALE_HEADER, toLocale } from '@prism/i18n';
 import './globals.css';
 import { Providers } from './providers';
 import { themeInitScript } from '@/components/theme';
@@ -42,9 +43,11 @@ export default function RootLayout({
   // Per-request CSP nonce from src/middleware.ts. The pre-paint theme script is
   // inline, so without this the policy blocks it and every load flashes.
   const nonce = headers().get(NONCE_HEADER) ?? undefined;
+  // Resolved in middleware (ADR 0016 §2.2), never detected on the client.
+  const locale = toLocale(headers().get(LOCALE_HEADER));
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         {/*
           suppressHydrationWarning: browsers hide the nonce content attribute
@@ -59,7 +62,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.variable} ${mono.variable} ${kantumruy.variable} ${kohSantepheap.variable} font-sans`}>
-        <Providers>{children}</Providers>
+        <Providers locale={locale}>{children}</Providers>
       </body>
     </html>
   );

@@ -15,6 +15,10 @@ export const UpdateProfileSchema = z.object({
   accent: z.string().min(1).max(20).optional(),
   theme: z.enum(['dark', 'light']).optional(),
   density: z.enum(['comfy', 'compact']).optional(),
+  // Kept in sync with LOCALES in @prism/i18n by hand: apps/api deliberately
+  // takes no dependency on a frontend package (ADR 0016 §2.6 — the API stores
+  // the preference, it does not translate).
+  locale: z.enum(['en', 'km']).optional(),
   gender: z.enum(['male', 'female', 'other']).nullable().optional(),
   dateOfBirth: z
     .string()
