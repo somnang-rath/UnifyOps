@@ -98,6 +98,22 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
   posts to the group but not back into the Prism channel; and the model round-trip is not
   exercised in CI (no key) — the suite proves the authorization layer.
 
+- **Workspace project-list leak** ✅ — closed 2026-08-06. `GET /projects?workspace=<id>`
+  filtered on `workspaceId` alone once `assertWorkspaceMember` passed, so every workspace
+  member saw every **private** project in it (name, colour, issue counts) while
+  `GET /projects/:id` on the same project 404'd correctly. `listInWorkspace` now applies
+  both rules — strict workspace match (ADR 0006) **and** `canRead` (ADR 0003). It had been
+  there since the list existed (`1f2a315`), and no amount of reading found it: it surfaced
+  because `test:phase7` **flaked**. The seeded projects share an `updatedAt`, the
+  `sort({updatedAt:-1})` tie-break is unstable, and the day it put a private project first
+  the suite wrote into it and reported a 404 that looked like a regression in new code.
+  Two lessons worth keeping: **a list endpoint and its detail route must agree** — the
+  cheap test for any scoped list is "does `GET /:id` accept everything the list returned"
+  (now asserted in `views-relations.e2e.mjs`); and **readable ≠ writable** — reading an
+  `internal` project needs only workspace membership, writing needs project membership, so
+  a test that picks any readable project to write into is a 403 waiting for the right sort
+  order.
+
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
 
 Known deferred work (verified against the code 2026-07-31 — the previous three entries
@@ -117,9 +133,13 @@ Dev DB is **`mongodb://localhost:27017/prism` only** — never point tooling at 
 Two seeds, both destructive (they wipe the DB — never run against data you care about):
 
 - `pnpm seed` → `src/seed/seed.ts` — **demo** fixture (`admin@demo.com`/`admin123`, …).
-- `pnpm --filter api exec ts-node -r tsconfig-paths/register src/seed/test-seed.ts` —
+- `pnpm --filter api exec ts-node --files -r tsconfig-paths/register src/seed/test-seed.ts` —
   **E2E** fixture: 10 `@test.com` users, 3 workspaces, password `test1234`. All E2E suites
-  assume this one. Roles matter: `admin@test.com` is the only instance admin but owns/joins
+  assume this one. `--files` is **not optional** (added 2026-08-06): the seed pulls in
+  `public.service.ts`, whose `markdown-it-task-lists` import only typechecks via the ambient
+  declaration, and ts-node drops ambient files without it — same reason `test:assistant-tools`
+  carries the flag. Without it the seed dies on TS7016 and pnpm reports the misleading
+  `Command "ts-node" not found`. Roles matter: `admin@test.com` is the only instance admin but owns/joins
   **zero** projects; `alice@test.com` owns workspace `acme` + a project.
 
 Commands: `pnpm dev` (all apps) · `pnpm dev:api|web|admin|space|live` · `pnpm -r build` ·
