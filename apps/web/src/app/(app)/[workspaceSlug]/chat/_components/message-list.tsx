@@ -7,6 +7,20 @@ import { MessageItem } from './message-item';
 import { TypingIndicator } from './typing-indicator';
 import type { MessageView } from '@/schemas/chat';
 
+/**
+ * Who a message is *from*, for grouping. Not `author._id`: a message relayed
+ * from Telegram has no Prism author at all, so comparing that id alone silently
+ * treats every unlinked sender — and the assistant's own reply — as one speaker,
+ * hiding the name row that says otherwise.
+ */
+function speakerKey(m: MessageView): string {
+  return [
+    m.kind,
+    m.source,
+    m.author?._id ?? m.externalAuthor?.name ?? 'unknown',
+  ].join(':');
+}
+
 export function MessageList({ channelId }: { channelId: string }) {
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useMessages(channelId);
@@ -96,8 +110,7 @@ export function MessageList({ channelId }: { channelId: string }) {
           // Group consecutive messages from the same author.
           grouped={
             i > 0 &&
-            messages[i - 1].author?._id === m.author?._id &&
-            m.source === messages[i - 1].source &&
+            speakerKey(messages[i - 1]) === speakerKey(m) &&
             new Date(m.createdAt).getTime() -
               new Date(messages[i - 1].createdAt).getTime() <
               5 * 60_000

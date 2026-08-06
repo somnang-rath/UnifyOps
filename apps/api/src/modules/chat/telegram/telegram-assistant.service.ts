@@ -8,6 +8,13 @@ import { UsersService } from '../../users/users.service';
 const MENTION = /^\s*@prism\b[:,]?\s*/i;
 
 /**
+ * Shown as the author of the assistant's reply once it is mirrored back into the
+ * Prism channel. Telegram gives a bot's posts no per-message sender identity, so
+ * the reply arrives with no Prism user behind it and needs a name of its own.
+ */
+export const ASSISTANT_AUTHOR_NAME = 'Prism assistant';
+
+/**
  * Said once, publicly, to an unlinked sender. It deliberately reveals nothing:
  * not whether the workspace exists, not what project the channel is about,
  * not who else is in it.

@@ -14,8 +14,15 @@ import { InstanceService } from '../../instance/instance.service';
 import { TelegramApiService, TelegramMessage, TelegramUpdate } from './telegram-api.service';
 import { TelegramLinkService } from './telegram-link.service';
 import { TelegramIdentityService } from './telegram-identity.service';
-import { TelegramAssistantService } from './telegram-assistant.service';
-import { fromTelegramText } from './telegram-format.util';
+import {
+  ASSISTANT_AUTHOR_NAME,
+  TelegramAssistantService,
+} from './telegram-assistant.service';
+import {
+  fromTelegramText,
+  splitForTelegram,
+  toTelegramHtml,
+} from './telegram-format.util';
 
 /**
  * The single entry point for every inbound Telegram update, whichever transport
@@ -101,8 +108,54 @@ export class TelegramInboundService {
       });
       if (answer) {
         const { botToken } = await this.instance.getTelegramConfig();
-        await this.reply(botToken, msg, answer);
+        const sent = await this.reply(botToken, msg, answer);
+        if (sent) await this.recordAssistantReply(channel, chatId, answer, sent);
       }
+    }
+  }
+
+  /**
+   * Mirror the assistant's reply back into the Prism channel, so the half of the
+   * conversation the bot spoke does not exist only in Telegram.
+   *
+   * It goes through `ingestFromTelegram` rather than the normal send path for two
+   * reasons: that path relays outward, which would post the reply to the group a
+   * second time; and recording the Telegram message id it was actually sent as
+   * puts it under the same unique {chatId, messageId} dedupe as any inbound
+   * message, so a redelivery can never double it. `kind: 'system'` is the
+   * structural belt to that braces — the outbound relay drops anything that is
+   * not a prism-origin `'user'` message.
+   */
+  private async recordAssistantReply(
+    channel: ChatChannelDocument,
+    chatId: string,
+    answer: string,
+    sent: TelegramMessage,
+  ): Promise<void> {
+    try {
+      await this.messages.ingestFromTelegram({
+        channel,
+        body: answer,
+        authorId: null,
+        externalAuthor: {
+          name: ASSISTANT_AUTHOR_NAME,
+          username: sent.from?.username,
+          // Required by the schema, and the bot is a real Telegram account —
+          // prefer the id Telegram just echoed over the cached one.
+          telegramUserId: String(sent.from?.id ?? (await this.botId()) ?? 'bot'),
+        },
+        kind: 'system',
+        telegram: {
+          chatId,
+          messageId: sent.message_id,
+          fromId: sent.from ? String(sent.from.id) : undefined,
+          fromUsername: sent.from?.username,
+        },
+      });
+    } catch (err) {
+      // The group already has the answer. Failing to mirror it is worth a log,
+      // never an exception that aborts handling the update.
+      this.logger.warn(`Failed to record assistant reply: ${String(err)}`);
     }
   }
 
@@ -177,18 +230,32 @@ export class TelegramInboundService {
     };
   }
 
+  /**
+   * Post one of the bot's own messages into the group it is replying in, and
+   * return the first message Telegram accepted (null if none was).
+   *
+   * Everything here is written as Prism's markdown subset and rendered through
+   * {@link toTelegramHtml}, because `sendMessage` runs with `parse_mode: HTML`:
+   * an unescaped `<` or `&` in an assistant answer — or in the literal
+   * `/verify <code>` of a usage hint — is a 400 that drops the message silently.
+   */
   private async reply(
     token: string,
     msg: TelegramMessage,
     text: string,
-  ): Promise<void> {
+  ): Promise<TelegramMessage | null> {
+    let first: TelegramMessage | null = null;
     try {
-      await this.api.sendMessage(token, String(msg.chat.id), text, {
-        messageThreadId: msg.message_thread_id,
-      });
+      for (const chunk of splitForTelegram(toTelegramHtml(text))) {
+        const sent = await this.api.sendMessage(token, String(msg.chat.id), chunk, {
+          messageThreadId: msg.message_thread_id,
+        });
+        first ??= sent;
+      }
     } catch (err) {
       this.logger.warn(`Failed to reply in group: ${String(err)}`);
     }
+    return first;
   }
 
   private async botId(): Promise<number | null> {

@@ -42,6 +42,9 @@ export function MessageItem({
   const displayName =
     message.author?.name ?? message.externalAuthor?.name ?? 'Unknown';
   const isTelegram = message.source === 'telegram';
+  // The assistant's `@prism` reply, mirrored back from the bridged group. It is
+  // authored by no Prism user, so the badge is what says it wasn't a person.
+  const isAssistant = message.kind === 'system';
 
   if (message.deleted) {
     return (
@@ -63,6 +66,11 @@ export function MessageItem({
         {!grouped && (
           <div className="flex items-baseline gap-2">
             <span className="text-[13px] font-semibold">{displayName}</span>
+            {isAssistant && (
+              <span className="text-[9px] font-bold text-accent px-1 rounded bg-accent/10">
+                assistant
+              </span>
+            )}
             {isTelegram && (
               <span className="text-[9px] font-bold text-[#229ED9] px-1 rounded bg-[#229ED9]/10">
                 via Telegram

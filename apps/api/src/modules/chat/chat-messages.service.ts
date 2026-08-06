@@ -15,6 +15,7 @@ import {
 import {
   ChatMessage,
   ChatMessageDocument,
+  MessageKind,
 } from './schemas/chat-message.schema';
 import {
   ChatReadState,
@@ -204,6 +205,13 @@ export class ChatMessagesService implements OnModuleInit {
     body: string;
     authorId: Types.ObjectId | null;
     externalAuthor?: { name: string; username?: string; telegramUserId: string };
+    /**
+     * `'system'` for the bot's own posts — today, the assistant's `@prism` reply.
+     * It is what keeps that reply out of the outbound relay (`enqueueSend` drops
+     * anything that isn't a prism-origin `'user'` message), so recording the
+     * reply here can never bounce it back into the group a second time.
+     */
+    kind?: MessageKind;
     telegram: {
       chatId: string;
       messageId: number;
@@ -219,7 +227,7 @@ export class ChatMessagesService implements OnModuleInit {
         authorId: input.authorId,
         externalAuthor: input.externalAuthor,
         body: input.body,
-        kind: 'user',
+        kind: input.kind ?? 'user',
         source: 'telegram',
         telegram: input.telegram,
       });
