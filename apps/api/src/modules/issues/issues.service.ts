@@ -433,6 +433,12 @@ export class IssuesService {
       authorId: String(issue.authorId),
       assigneeId: newAssignee ?? undefined,
       projectId: issue.projectId ? String(issue.projectId) : undefined,
+      // The pre-edit values, so an automation condition can express "moved *out
+      // of* review" or "was unassigned" — not just the resulting state. Without
+      // these, `issue.status_changed` is indistinguishable from "status is X"
+      // and half the rules anyone would want to write are unexpressible.
+      prevStatus,
+      prevAssigneeId: prevAssignee ?? undefined,
     };
 
     if (newAssignee && newAssignee !== prevAssignee) {

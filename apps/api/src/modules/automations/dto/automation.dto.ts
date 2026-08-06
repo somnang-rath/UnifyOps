@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ConditionSchema } from '../condition';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 
@@ -10,7 +11,12 @@ export const SaveAutomationSchema = z.object({
   workspaceId: objectId,
   name: z.string().min(1).max(120).trim(),
   trigger: z.string().min(1).max(80),
-  condition: z.record(z.unknown()).default({}),
+  /**
+   * Validated against the engine's own grammar (`../condition.ts`) so a rule
+   * that could never match is a 400 the author can fix, not a rule that sits
+   * enabled and silently does nothing. `{}` = always.
+   */
+  condition: ConditionSchema.default({}),
   action: z.record(z.unknown()).default({}),
   enabled: z.boolean().default(true),
 });

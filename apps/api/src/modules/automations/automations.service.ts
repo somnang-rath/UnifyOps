@@ -20,6 +20,7 @@ import {
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
 import { ProjectAccessService } from '../projects/access/project-access.service';
+import { evaluateCondition } from './condition';
 
 @Injectable()
 export class AutomationsService {
@@ -114,7 +115,11 @@ export class AutomationsService {
 
   /**
    * Called by other services (issues, MRs, projects, the scheduler) when an
-   * event occurs. Runs the enabled rules **of that event's workspace** —
+   * event occurs. Runs the enabled rules of that event's workspace **whose
+   * condition matches the payload** (`./condition.ts`); a rule whose condition
+   * cannot be evaluated is skipped and logged, never run.
+   *
+   * Scoped to the event's workspace —
    * previously it ran every enabled rule in the instance, so a rule written in
    * one workspace re-assigned issues and notified people in another.
    *
@@ -140,6 +145,36 @@ export class AutomationsService {
       .lean();
 
     for (const r of rules) {
+      // The "when". Until this was wired in, `condition` was stored and never
+      // read, so every enabled rule ran on every event of its trigger.
+      const verdict = evaluateCondition(r.condition, { ...payload, trigger });
+
+      if (!verdict.ok) {
+        // Fail closed: a condition we cannot understand must not be treated as
+        // "matches everything" — that is exactly the bug being fixed, and it
+        // would be silent. Logged (unlike a clean non-match) because a rule
+        // that can never fire is something its author needs to see.
+        this.logger.warn(
+          `Automation ${String(r._id)} (${r.name}): unusable condition — ${verdict.reason}`,
+        );
+        await this.logModel.create({
+          automationId: r._id,
+          trigger,
+          payload,
+          success: false,
+          matched: false,
+          error: `Condition not evaluated: ${verdict.reason}`,
+        });
+        continue;
+      }
+
+      if (!verdict.matched) {
+        // No log row on purpose. Every rule on a trigger is evaluated for every
+        // event, so logging clean non-matches would bury the rows that matter
+        // under noise proportional to traffic.
+        continue;
+      }
+
       let success = true;
       let errorMsg: string | undefined;
 
@@ -160,6 +195,7 @@ export class AutomationsService {
         trigger,
         payload,
         success,
+        matched: true,
         ...(errorMsg ? { error: errorMsg } : {}),
       });
     }

@@ -28,6 +28,12 @@ export class Automation {
   @Prop({ required: true })
   trigger: string;
 
+  /**
+   * The "when" — see `../condition.ts` for the grammar. `{}` (the default, and
+   * what every rule written before the evaluator existed holds) means "always".
+   * Validated on write by `ConditionSchema`; a stored value that still fails to
+   * evaluate makes the rule skip, never fire.
+   */
   @Prop({ type: Object, default: {} })
   condition: Record<string, unknown>;
 
@@ -63,6 +69,16 @@ export class AutomationLog {
 
   @Prop({ default: true })
   success: boolean;
+
+  /**
+   * Whether the rule's condition matched. Rows are only written for rules that
+   * matched (`true`) or whose condition could not be evaluated at all
+   * (`false` + `error`). A clean non-match writes nothing — every rule on a
+   * trigger is evaluated for every event, so logging those would scale the
+   * collection with traffic rather than with anything worth reading.
+   */
+  @Prop({ default: true })
+  matched: boolean;
 
   @Prop()
   error?: string;

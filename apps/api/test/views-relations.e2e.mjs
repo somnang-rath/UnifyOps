@@ -514,6 +514,159 @@ async function main() {
     assert.equal((await alice('GET', `/automations/${ruleId}`)).status, 404);
   });
 
+  // ── Rule conditions actually gate the action ─────────────────────
+  // Regression (06-differentiators.md §4c): `Automation.condition` was stored
+  // and never read, so every enabled rule ran on every event of its trigger.
+  // These reuse the acme fixture above; each creates its own rule and removes
+  // it, so nothing leaks into the checks that follow.
+  const condLabel = `au-cond-${Date.now()}`;
+
+  /** Poll for the probe label — fire() is not awaited by the create path. */
+  const labelledWith = async (issueId, label, tries = 20) => {
+    for (let i = 0; i < tries; i += 1) {
+      const got = await alice('GET', `/issues/${issueId}`);
+      if ((got.data?.labels ?? []).includes(label)) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  };
+
+  const withRule = async (condition, fn) => {
+    const made = await alice('POST', '/automations', {
+      workspaceId: acmeId,
+      name: 'E2E condition probe',
+      trigger: 'issue.created',
+      condition,
+      action: { type: 'add_label', value: condLabel },
+    });
+    assert.equal(made.status, 201, `rule create: ${JSON.stringify(made.data)}`);
+    try {
+      return await fn();
+    } finally {
+      await alice('DELETE', `/automations/${made.data._id}`);
+    }
+  };
+
+  await check('a condition that does not match blocks the action', async () => {
+    await withRule({ field: 'priority', op: 'eq', value: 'critical' }, async () => {
+      const issue = await alice('POST', '/issues', {
+        title: 'low priority — the rule must NOT label this',
+        projectId: acmeProjectId,
+        priority: 'low',
+      });
+      assert.equal(issue.status, 201, JSON.stringify(issue.data));
+      // Short poll: we are proving absence, and the matching case below proves
+      // the engine is alive at all, so a long wait buys nothing.
+      const hit = await labelledWith(issue.data._id, condLabel, 8);
+      assert.equal(hit, false, 'the action ran even though the condition did not match');
+      await alice('DELETE', `/issues/${issue.data._id}`);
+    });
+  });
+
+  await check('a condition that matches lets the action through', async () => {
+    await withRule({ field: 'priority', op: 'eq', value: 'critical' }, async () => {
+      const issue = await alice('POST', '/issues', {
+        title: 'critical — the rule SHOULD label this',
+        projectId: acmeProjectId,
+        priority: 'critical',
+      });
+      assert.equal(issue.status, 201, JSON.stringify(issue.data));
+      assert.ok(
+        await labelledWith(issue.data._id, condLabel),
+        'the action did not run even though the condition matched',
+      );
+      await alice('DELETE', `/issues/${issue.data._id}`);
+    });
+  });
+
+  await check('the { field: value } shorthand is honoured', async () => {
+    // What people actually write, and the shape conditions stored before the
+    // evaluator existed would have used.
+    await withRule({ priority: 'critical' }, async () => {
+      const issue = await alice('POST', '/issues', {
+        title: 'critical via shorthand',
+        projectId: acmeProjectId,
+        priority: 'critical',
+      });
+      assert.equal(issue.status, 201);
+      assert.ok(
+        await labelledWith(issue.data._id, condLabel),
+        'shorthand condition did not match',
+      );
+      await alice('DELETE', `/issues/${issue.data._id}`);
+    });
+  });
+
+  await check('all/any groups compose', async () => {
+    await withRule(
+      {
+        all: [
+          { field: 'priority', op: 'in', value: ['critical', 'high'] },
+          { field: 'title', op: 'contains', value: 'ship' },
+        ],
+      },
+      async () => {
+        const miss = await alice('POST', '/issues', {
+          title: 'critical but unrelated',
+          projectId: acmeProjectId,
+          priority: 'critical',
+        });
+        const hit = await alice('POST', '/issues', {
+          title: 'must ship today',
+          projectId: acmeProjectId,
+          priority: 'high',
+        });
+        assert.equal(hit.status, 201, JSON.stringify(hit.data));
+        assert.ok(await labelledWith(hit.data._id, condLabel), 'all[] did not match');
+        const missGot = await alice('GET', `/issues/${miss.data._id}`);
+        assert.ok(
+          !(missGot.data?.labels ?? []).includes(condLabel),
+          'all[] matched despite a failing clause',
+        );
+        await alice('DELETE', `/issues/${hit.data._id}`);
+        await alice('DELETE', `/issues/${miss.data._id}`);
+      },
+    );
+  });
+
+  await check('a malformed condition is rejected at write time (400)', async () => {
+    for (const bad of [
+      { field: 'priority', op: 'regex', value: '.*' }, // unknown operator
+      { field: 'priority', op: 'in', value: 'critical' }, // `in` needs an array
+      { field: '__proto__', op: 'eq', value: 'x' }, // not a plain payload key
+      { all: [] }, // empty group
+      { field: 'priority', op: 'eq', value: { nested: true } }, // non-scalar
+    ]) {
+      const res = await alice('POST', '/automations', {
+        workspaceId: acmeId,
+        name: 'should not be storable',
+        trigger: 'issue.created',
+        condition: bad,
+        action: { type: 'add_label', value: 'nope' },
+      });
+      assert.equal(
+        res.status,
+        400,
+        `condition ${JSON.stringify(bad)} stored with ${res.status}`,
+      );
+    }
+  });
+
+  await check('an empty condition still means "always" (existing rules)', async () => {
+    await withRule({}, async () => {
+      const issue = await alice('POST', '/issues', {
+        title: 'no condition at all',
+        projectId: acmeProjectId,
+      });
+      assert.equal(issue.status, 201);
+      assert.ok(
+        await labelledWith(issue.data._id, condLabel),
+        'a rule with {} stopped firing — existing rules would break',
+      );
+      await alice('DELETE', `/issues/${issue.data._id}`);
+    });
+  });
+
   // ── Bulk operations (Phase 7b; ADR 0011 §4 — body-only selection) ─
   let bulkA, bulkB;
   await check('bulk setup: two personal issues', async () => {
