@@ -28,6 +28,29 @@ const envSchema = z.object({
   LIVE_ALLOWED_ORIGINS: z
     .string()
     .default('http://localhost:3000,http://localhost:3002'),
+
+  // --- Abuse limits (docs/plan/01 §3.3) ---
+  // An authenticated client is still an untrusted one: without these, one
+  // session can send an unbounded frame or hold unbounded sockets on one doc.
+
+  /**
+   * Largest inbound WS frame, in bytes. Sized for Yjs sync — the biggest legit
+   * message is a client's full document state on reconnect, and the editor
+   * stores images as URLs (uploaded via the API), never base64, so documents
+   * stay text-sized. Raise this only if real docs start hitting it; `ws` closes
+   * an oversized frame with 1009 rather than buffering it.
+   */
+  LIVE_MAX_PAYLOAD_BYTES: z.coerce.number().int().min(64 * 1024).default(1024 * 1024),
+
+  /**
+   * Concurrent connections allowed on a single document. Generous for real
+   * co-editing (a person with three tabs open is three connections), tight
+   * enough that one account cannot pin a document's memory on its own.
+   */
+  LIVE_MAX_CONNECTIONS_PER_DOC: z.coerce.number().int().min(1).default(30),
+
+  /** Concurrent connections across the whole server; refused at upgrade time. */
+  LIVE_MAX_CONNECTIONS: z.coerce.number().int().min(1).default(500),
 });
 
 export type Env = z.infer<typeof envSchema> & {

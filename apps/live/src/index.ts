@@ -10,6 +10,7 @@ import { connectMongo, closeMongo, fetchState, storeState } from './db';
 import { makeOnAuthenticate } from './auth';
 import { makeOnStoreDocument } from './snapshot';
 import { startReauthSweeper } from './reauth';
+import { makeOnConnect, hasCapacity } from './limits';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
       }),
     ],
 
+    onConnect: makeOnConnect(env),
     onAuthenticate: makeOnAuthenticate(env),
     onStoreDocument: makeOnStoreDocument(env),
   });
@@ -48,10 +50,26 @@ async function main(): Promise<void> {
     res.end();
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  // maxPayload is enforced by `ws` itself: an oversized frame is closed with
+  // 1009 instead of being buffered, so it costs nothing to refuse (§3.3).
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: env.LIVE_MAX_PAYLOAD_BYTES,
+  });
 
   httpServer.on('upgrade', (request, socket, head) => {
     const origin = request.headers.origin;
+
+    // Capacity check first — it's the cheapest refusal available, and the
+    // point of it is to hold under load, including from valid sessions.
+    if (!hasCapacity(wss.clients.size, env)) {
+      console.warn(
+        `[live] rejected WS upgrade: at server connection limit (${wss.clients.size}/${env.LIVE_MAX_CONNECTIONS})`,
+      );
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 30\r\n\r\n');
+      socket.destroy();
+      return;
+    }
 
     // Enforce the allowlist for browser-originated upgrades. A present-but-
     // unlisted Origin is rejected outright. (Auth still gates every connection
@@ -64,6 +82,18 @@ async function main(): Promise<void> {
     }
 
     wss.handleUpgrade(request, socket, head, (ws) => {
+      // MUST be attached before Hocuspocus takes the socket. `ws` emits
+      // 'error' on a protocol violation — including the maxPayload refusal
+      // above — and Hocuspocus registers no 'error' listener of its own. In
+      // Node an unhandled 'error' event is a thrown exception, so without
+      // this a single oversized frame from any client takes the whole server
+      // down: a strictly worse DoS than the one maxPayload closes.
+      // `ws` has already closed the socket (1009) by this point; there is
+      // nothing to do but record it.
+      ws.on('error', (err) => {
+        console.warn(`[live] socket error (connection closed): ${err.message}`);
+      });
+
       server.handleConnection(ws, request);
     });
   });
@@ -76,6 +106,11 @@ async function main(): Promise<void> {
     console.log(`[live] Hocuspocus listening on :${env.PORT}`);
     console.log(
       `[live] allowed origins: ${[...env.allowedOrigins].join(', ') || '(none)'}`,
+    );
+    console.log(
+      `[live] limits: maxPayload=${env.LIVE_MAX_PAYLOAD_BYTES}B · ` +
+        `${env.LIVE_MAX_CONNECTIONS_PER_DOC} conns/doc · ` +
+        `${env.LIVE_MAX_CONNECTIONS} conns total`,
     );
   });
 

@@ -59,9 +59,10 @@
 
 ## 3. ការងារត្រូវធ្វើ
 
-> **ស្ថានភាព (ផ្ទៀងផ្ទាត់នឹងកូដ 2026-07-31)** — 20/23 រួច។ Phase 5 ត្រូវបានសម្គាល់ ✅
-> តាំងពីយូរមកហើយ តែ checkbox ខាងក្រោមមិនដែលបានគូស ដូច្នេះ "Phase 5 ✅" លាក់
-> **ចន្លោះពិត ៣**។ បញ្ជីនេះឥឡូវឆ្លុះបញ្ចាំងកូដមែនទែន មិនមែនចេតនាទេ។
+> **ស្ថានភាព (ផ្ទៀងផ្ទាត់នឹងកូដ 2026-07-31)** — **23/23 រួច**។ Phase 5 ត្រូវបានសម្គាល់ ✅
+> តាំងពីយូរមកហើយ តែ checkbox ខាងក្រោមមិនដែលបានគូស ដូច្នេះ "Phase 5 ✅" ធ្លាប់លាក់
+> **ចន្លោះពិត ៣** (live limits · web/admin CSP · per-page indexing)។ ទាំងបីបិទ
+> 2026-07-31 ហើយបញ្ជីនេះឆ្លុះបញ្ចាំងកូដមែនទែន មិនមែនចេតនាទេ។
 
 ### 3.1 Auth core (apps/api) — ✅ 10/10
 - [x] បន្ថែម `aud` ចូល JWT sign + verify; `JwtStrategy` ទទួល `audience` parameter
@@ -82,39 +83,121 @@
 - [x] admin login ដាច់ដោយឡែក → `aud=admin`; web "God Mode" link នាំទៅ admin login (មិន share token)
 - [x] `@prism/services` ត្រូវដឹង audience នៅពេល `createApiClient({ audience })`
 
-### 3.3 live — 🟡 2/3
+### 3.3 live — ✅ 3/3 (បិទ 2026-07-31)
 - [x] `onAuthenticate` verify `aud=collab` + `doc` claim ត្រូវនឹង documentName — `live/src/auth.ts`
 - [x] Periodic re-auth timer (5 នាទី) + disconnect ពេលបាត់សិទ្ធិ — `live/src/reauth.ts`
-- [ ] **Payload limit + connection limit ក្នុង 1 doc** — `new WebSocketServer({ noServer: true })`
-      ក្នុង `live/src/index.ts:51` គ្មាន `maxPayload` និងគ្មានដែនកំណត់ connection ទេ។
-      Client ដែល authenticate ហើយ អាចផ្ញើ frame ធំគ្មានដែន ឬបើក connection គ្មានដែន
-      លើ doc តែមួយ។ **នេះជាចន្លោះពិត — DoS surface, មិនមែន checkbox ភ្លេចគូសទេ។**
+- [x] **Payload limit + connection limit** — `live/src/limits.ts` + `live/src/index.ts`។
+      ដែនកំណត់បី ដាក់នៅបីស្រទាប់ខុសគ្នាដោយចេតនា (ទាំងអស់តាម env, default ក្នុង `env.ts`)៖
+      - `LIVE_MAX_PAYLOAD_BYTES` (1 MiB) — `ws` បិទ frame ធំ ដោយ close 1009 មុននឹង buffer។
+        ធំល្មមសម្រាប់ Yjs sync ព្រោះរូបភាពក្នុង editor ជា URL មិនមែន base64។
+      - `LIVE_MAX_CONNECTIONS` (500) — បដិសេធនៅ HTTP upgrade (503) មុន Hocuspocus
+        បម្រុងអ្វីទាំងអស់។ នេះជាដែនកំណត់ដែលទប់ client ដែលមិនដែល authenticate។
+      - `LIVE_MAX_CONNECTIONS_PER_DOC` (30) — ក្នុង `onConnect`, រាប់តែ connection ដែល
+        established (ត្រូវការ auth រួច) ដូច្នេះវាទប់អ្នកប្រើ authenticated ម្នាក់
+        មិនឲ្យបើក socket គ្មានដែនលើ doc តែមួយ។
 
-### 3.4 space — 🟡 2.5/3
+      **កំហុសពិតដែលរកឃើញពេលធ្វើតេស្ត៖** `maxPayload` តែម្នាក់ឯង ធ្វើឲ្យស្ថានការណ៍
+      *អាក្រក់ជាងមុន*។ `ws` បញ្ចេញ event `'error'` លើ socket ពេល frame ធំពេក ហើយ
+      Hocuspocus មិនដាក់ listener `'error'` ទេ — ក្នុង Node `'error'` ដែលគ្មាន listener
+      គឺ throw។ ដូច្នេះ frame ធំតែមួយពី client ណាមួយ សម្លាប់ server ទាំងមូល។
+      `index.ts` ឥឡូវដាក់ `ws.on('error', …)` **មុន** ប្រគល់ socket ទៅ Hocuspocus។
+      `test:limits` មាន check ដាច់ដោយឡែកសម្រាប់រឿងនេះ។
+
+      *ចំណាំ UX:* Hocuspocus រាយការណ៍ការ throw ក្នុង `onConnect` ទៅ client ជា
+      authentication failure ដូច្នេះការបដិសេធដោយ per-doc cap លេចឡើងក្នុង UI ជា
+      "token refused" (`useCollaborativeDoc.ts`)។ ទទួលយកបាន ព្រោះ 30/doc ខ្ពស់ជាង
+      ការប្រើប្រាស់ពិតច្រើន — តែបើថ្ងៃណាដាក់ cap ទាប ត្រូវបំបែក signal នេះជាមុនសិន។
+
+      Verify: `pnpm --filter live test:limits` (7 checks) — boot live ដាច់ដោយឡែក
+      លើ :3111 ជាមួយ limit តូច (4 conns · 2/doc · 64 KiB) ហើយពិត៖ close 1009,
+      server រស់, 503 នៅ upgrade, capacity ត្រឡប់មកវិញ, និង per-doc cap ជាមួយ
+      collab token ពិត។
+
+### 3.4 space — ✅ 3/3 (បិទ 2026-07-31)
 - [x] Sanitize ២ ជាន់ (API ពេល publish + space ពេល render)
-- [x] CSP តឹង (`default-src 'self'`, `script-src 'self'`, គ្មាន inline script) — `space/next.config.mjs`
-      + `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `Permissions-Policy`
-- [ ] `X-Robots-Tag` **តាម publish setting** (S9) — ឥឡូវមានតែ switch ថ្នាក់ instance
-      (`SPACE_INDEXING=off` ក្នុង `space/src/app/robots.ts`)។ ការគ្រប់គ្រងតាមទំព័រ
-      ត្រូវការ field ក្នុង `PublishSettings` របស់ API។ *ការពន្យារដោយចេតនា ហើយកូដសរសេរប្រាប់រួច។*
+- [x] CSP តឹង — ⚠️ **កែឡើងវិញ 2026-07-31**។ Policy ចាស់ក្នុង `space/next.config.mjs`
+      ប្រកាស `script-src 'self'` **គ្មាន nonce** ដែលមើលទៅតឹងជាងគេក្នុងបី app
+      តែតាមពិត**ខូចជាងគេ**៖ App Router ផ្ញើ RSC payload តាម inline `<script>`
+      ដូច្នេះ script ទាំង ៩ ត្រូវបាន block ហើយ **Space មិនដែល hydrate សោះ**។
+      គ្មានអ្នកកត់សម្គាល់ ព្រោះទំព័រ read-only មើលទៅដូចគ្នាទាំងពីរករណី —
+      រកឃើញជា console noise ក្នុង `test:browser-smoke`។
+      ឥឡូវ `space/src/middleware.ts` ប្រើ nonce តាម request ដូច web/admin
+      (policy រួមក្នុង `@prism/constants`)។ `frame-ancestors 'none'`,
+      `X-Frame-Options: DENY`, `Permissions-Policy` នៅដដែល។
+
+      **អន្ទាក់ពីរដែលរកឃើញពេលបើក app ពិត — មិនលេចក្នុង typecheck ឬ build៖**
+      (១) Next វិភាគ `config` ជា static; ទម្រង់ដែលវាអានមិនបាន **មិនមែន error**
+      ទេ — វា**បោះបង់ middleware ទាំងស្រុង** (`middleware: {}` ក្នុង manifest,
+      គ្មាន header ចេញសោះ)។ ដូច្នេះ matcher ត្រូវជា array នៃ string literal ធម្មតា។
+      (២) `(...)` ក្នុង matcher ជា *unnamed parameter* របស់ path-to-regexp
+      មិនមែន regex group ទេ ហើយវាទាមទារយ៉ាងតិច ១ តួ — ដូច្នេះ pattern
+      exclusion តែម្នាក់ឯង **មិនដែលផ្គូផ្គង root** ដែលក្រោម basePath គឺជា
+      landing page របស់ app ខ្លួនឯង (`/god-mode`, `/spaces`)។ ត្រូវដាក់ `'/'` ដាច់ដោយឡែក។
+- [x] **Indexing តាមទំព័រ** (S9) *(បិទ 2026-07-31)* — field ថ្មី `publicIndexing`
+      (default `true`) លើ `WikiPage` · `View` · `Project` ទាំងបី។ `POST /:id/publish`
+      ឥឡូវទទួល body ស្រេចចិត្ត `{ indexing?: boolean }` (schema រួម
+      `common/anchor.util.ts` — endpoint បីមិនត្រូវបែកជាបីរូបរាង)។ Public payload
+      មាន `indexable` ហើយ `apps/space` បំលែងវាជា `<meta name="robots">` តាមទំព័រ។
+
+      **ជម្រើសអនុវត្ត៖** `<meta robots>` មិនមែន header `X-Robots-Tag` — header ក្នុង
+      `next.config.mjs` ផ្គូផ្គងតាម path pattern ហើយ `[anchor]` ជាករណីដែល pattern
+      សម្រេចមិនបាន។ សម្រាប់ទំព័រ HTML ពីរនេះស្មើគ្នាចំពោះ crawler ទាំងអស់។
+      `SPACE_INDEXING=off` នៅតែជា override ថ្នាក់ instance — ខាងតឹងឈ្នះជានិច្ច។
+
+      ចំណុចពីរដែលងាយភ្លាត់៖ (១) `indexing` ដែលមិនបានផ្ញើ **មិនប្ដូរ**តម្លៃដែលរក្សាទុក
+      ព្រោះ publish ជា idempotent — ម្ចាស់ republish ដើម្បី refresh ហើយវាមិនត្រូវបើក
+      ទំព័រទៅ crawler ឡើងវិញដោយស្ងាត់; (២) document ចាស់គ្មាន key នេះសោះ
+      (Mongoose default អនុវត្តតែពេលសរសេរ) ដូច្នេះ public service ប្រើ `?? true`។
+
+      **នេះមិនមែន access control** — ទំព័រ noindex នៅតែអានបានដោយអ្នកកាន់ link។
+      Verify: `test:publish-space` 16→**21** + ពិនិត្យ meta ពិតលើ :3002
+      (`indexing=false` → `noindex, nofollow, noarchive, nocache`)។
 - [x] Public endpoint response គ្មាន `_id` ខាងក្នុង, email, member list
 
 ### 3.5 Infra — 🟡 2.5/3
 - [x] Secrets ទាំងអស់ចេញពី `.env` ទៅ env schema validation + កុំ log
-- [ ] `helmet` CSP តឹង**តាម app** — `apps/api` មាន helmet ហើយ `apps/space` មាន CSP ផ្ទាល់ខ្លួន,
-      តែ **`apps/web` និង `apps/admin` គ្មាន CSP header សោះ**។ ពួកវាជា authenticated app
-      ដែលដំណើរការកូដអ្នកប្រើ (Tiptap, markdown) — ត្រូវការ CSP ជាងគេ។ **ចន្លោះពិត។**
-- [x] Docker: live/api internal network តែប៉ុណ្ណោះ — service `live` គ្មាន `ports:` mapping
-      ក្នុង `docker-compose.yml` ដូច្នេះ :3100 មិនចេញក្រៅ
+- [x] `helmet` CSP តឹង**តាម app** (បិទ 2026-07-31) — `apps/web` និង `apps/admin`
+      ឥឡូវមាន CSP តាម request តាមរយៈ `src/middleware.ts` រៀងៗខ្លួន, ដោយ policy
+      រួមគ្នាក្នុង `@prism/constants/security-headers` (កុំឲ្យ app ពីរបែកគ្នា)។
+
+      **មិនអាចចម្លងលំនាំ `space/next.config.mjs` ត្រង់ៗបានទេ** ដូចដែល §3.6 ធ្លាប់
+      សរសេរ។ Space គេចផុតដោយ policy static ព្រោះវាគ្មាន inline script ផ្ទាល់ខ្លួន។
+      Web/admin មាន — theme boot script មុន first paint — ហើយ App Router ផ្ញើ RSC
+      payload តាម inline `<script>`។ `script-src 'self'` ទទេនឹងខ្ទេច hydration;
+      `'unsafe-inline'` នឹងអនុញ្ញាតឲ្យ `<script>` ដែលគេ inject ដំណើរការ ពោលគឺ
+      header ដែលមើលទៅដូច CSP តែពិតជាមិនការពារអ្វីទាល់តែសោះ។ ដូច្នេះ៖ **nonce
+      ថ្មីរាល់ request**, បញ្ជូនទៅ Next តាម CSP header របស់ request ខ្លួនឯង
+      និងទៅ inline script របស់យើងតាម `x-nonce`។
+      ថ្លៃដែលត្រូវបង់៖ `headers()` ក្នុង layout ធ្វើឲ្យ app ចេញពី static rendering —
+      គ្មានឥទ្ធិពលពិត ព្រោះគ្រប់ page សុទ្ធតែ per-user រួចហើយ។
+
+      Dev បន្ថែម `'unsafe-eval'` + `ws://localhost:*` (react-refresh, HMR) ប៉ុណ្ណោះ។
+      `connect-src` បង្កើតពី env ជា **គូ** http(s) + ws(s) ព្រោះ Socket.io ចាប់ផ្ដើម
+      ដោយ long-poll ទៅ host មុននឹង upgrade — អនុញ្ញាតតែមួយ បណ្ដាលឲ្យ fail មើលទៅ
+      ដូច server ដាច់។
+
+      Verify: `pnpm --filter web test:csp` (**24** checks លើ web + admin + space) —
+      មិនត្រឹមតែអាន header ទេ៖
+      អះអាងថា script គ្រប់ tag មាន nonce, nonce ប្ដូរតាម request, app ដំណើរការ
+      ពិត (hydration + collab socket) ក្រោម policy, violation សូន្យ, **និង**
+      `<script>` ដែល inject ចូល ពិតជាត្រូវបាន block។
+- [x] Docker: live/api internal network តែប៉ុណ្ណោះ — ⚠️ **សេចក្ដីអះអាងនេះខុស**
+      (រកឃើញ 2026-07-31)។ Service `live` **មាន** `ports: - "3100:3100"` ក្នុង
+      `docker-compose.yml`។ វាត្រូវតែមាន៖ browser តភ្ជាប់ទៅ live ដោយផ្ទាល់តាម
+      `NEXT_PUBLIC_LIVE_URL`, មិនឆ្លងកាត់ api ទេ — ដូច្នេះ :3100 **ត្រូវតែ**ចេញក្រៅ។
+      អ្វីដែលការពារ live មិនមែន network isolation ទេ គឺ Origin allowlist ពេល
+      upgrade + `onAuthenticate` + ដែនកំណត់ថ្មីក្នុង §3.3។ ទុក checkbox ជាគូស
+      ព្រោះលទ្ធផលសុវត្ថិភាពសម្រេចបាន តែ**ហេតុផលដែលសរសេរទុកខុស**។
 
 ### 3.6 នៅសល់ពី audit 2026-07-31
 
 តាមលំដាប់អាទិភាព៖
 
-1. **live: `maxPayload` + connection limit** (§3.3) — S, DoS surface ពិត
-2. **web/admin CSP** (§3.5) — S, ចម្លងលំនាំពី `space/next.config.mjs` រួចបន្ធូរឲ្យសម
-   នឹង dev (Next ត្រូវការ `'unsafe-eval'` ក្នុង dev)
-3. **per-page `X-Robots-Tag`** (§3.4) — S, តែត្រូវការ field ខាង API មុន
+1. ~~**live: `maxPayload` + connection limit** (§3.3)~~ — ✅ បិទ 2026-07-31
+2. ~~**web/admin CSP** (§3.5)~~ — ✅ បិទ 2026-07-31
+3. ~~**per-page `X-Robots-Tag`** (§3.4)~~ — ✅ បិទ 2026-07-31
+
+**Audit 2026-07-31 បិទទាំងបី។** គ្មានចន្លោះ "ពិត" នៅសល់ក្នុងឯកសារនេះទេ។
 
 ## 4. Definition of done
 E2E អះអាងបាន៖ web token មិនអាចហៅ `/instance/*` (403) · collab token មិនអាចហៅ REST API ·

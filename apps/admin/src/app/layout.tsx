@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Inter, JetBrains_Mono, Kantumruy_Pro, Koh_Santepheap } from 'next/font/google';
+import { NONCE_HEADER } from '@prism/constants';
 import './globals.css';
 import { Providers } from './providers';
 import { themeInitScript } from '@/components/theme';
@@ -37,10 +39,24 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Per-request CSP nonce from src/middleware.ts. The pre-paint theme script is
+  // inline, so without this the policy blocks it and every load flashes.
+  const nonce = headers().get(NONCE_HEADER) ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/*
+          suppressHydrationWarning: browsers hide the nonce content attribute
+          after parsing (it would otherwise be readable via CSS attribute
+          selectors and defeat the nonce), so React's hydration compare reads
+          "" off the DOM and warns about a mismatch that isn't one.
+        */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
       </head>
       <body className={`${inter.variable} ${mono.variable} ${kantumruy.variable} ${kohSantepheap.variable} font-sans`}>
         <Providers>{children}</Providers>

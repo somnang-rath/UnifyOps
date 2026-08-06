@@ -3,6 +3,9 @@
  * shared across web, admin, and space.
  */
 
+// CSP + security headers for the authenticated apps (docs/plan/01 §3.5).
+export * from './security-headers';
+
 /** App ports (see PLANE-CONVERSION-PLAN.md §2 Port map). */
 export const PORTS = {
   web: 3000,
