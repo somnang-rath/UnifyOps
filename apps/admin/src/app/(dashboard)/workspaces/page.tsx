@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Button, Skeleton, ErrorState, EmptyState } from '@prism/ui';
+import { useFormat } from '@prism/i18n';
 import { Trash2, Users, Grid3x3, Search } from 'lucide-react';
 import {
   useWorkspaces,
@@ -126,6 +127,7 @@ function WorkspaceItem({
   w: WorkspaceRow;
   onOpen: () => void;
 }) {
+  const f = useFormat();
   const del = useDeleteWorkspace();
   const [confirming, setConfirming] = useState(false);
 
@@ -159,7 +161,7 @@ function WorkspaceItem({
               <Grid3x3 size={12} />
               {w.projectCount}
             </span>
-            <span>{new Date(w.createdAt).toLocaleDateString()}</span>
+            <span>{f.date(w.createdAt)}</span>
           </div>
         </div>
       </button>

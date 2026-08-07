@@ -1,4 +1,5 @@
 import { Badge } from '@prism/ui';
+import type { Locale } from '@prism/i18n';
 import type { PublicIssue, PublicBoardColumn } from '@/lib/public-api';
 import { PriorityBadge, StatusMark, formatDue, statusLabel } from './issue-meta';
 
@@ -13,11 +14,13 @@ interface SpaceIssueListProps {
   issues: PublicIssue[];
   /** Column defs, used only to resolve display labels for custom statuses. */
   columns?: PublicBoardColumn[];
+  /** Resolved by the route; server components have no `useFormat()`. */
+  locale: Locale;
 }
 
 const MAX_LABELS = 2;
 
-export function SpaceIssueList({ issues, columns }: SpaceIssueListProps) {
+export function SpaceIssueList({ issues, columns, locale }: SpaceIssueListProps) {
   return (
     <ul className="divide-y divide-border border border-border rounded-lg bg-bg-card">
       {issues.map((issue, i) => (
@@ -50,7 +53,7 @@ export function SpaceIssueList({ issues, columns }: SpaceIssueListProps) {
               dateTime={issue.dueDate}
               className="hidden sm:block text-2xs text-text-muted tabular-nums"
             >
-              {formatDue(issue.dueDate)}
+              {formatDue(issue.dueDate, locale)}
             </time>
           )}
         </li>

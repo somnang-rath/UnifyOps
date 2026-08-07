@@ -1,4 +1,5 @@
 import { Badge } from '@prism/ui';
+import type { Locale } from '@prism/i18n';
 import type { PublicIssue, PublicBoardColumn } from '@/lib/public-api';
 import {
   PriorityBadge,
@@ -22,6 +23,8 @@ interface SpaceBoardProps {
   groupBy: string | null;
   /** Authoritative column order when present (status grouping). */
   columns?: PublicBoardColumn[];
+  /** Resolved by the route; server components have no `useFormat()`. */
+  locale: Locale;
 }
 
 interface Column {
@@ -83,7 +86,7 @@ function buildColumns(
   return columns;
 }
 
-export function SpaceBoard({ issues, groupBy, columns }: SpaceBoardProps) {
+export function SpaceBoard({ issues, groupBy, columns, locale }: SpaceBoardProps) {
   // Anything unsupported falls back to status (spec §3.3).
   const key = groupBy && SUPPORTED_GROUP_KEYS.has(groupBy) ? groupBy : 'status';
   const cols = buildColumns(issues, key, columns);
@@ -120,7 +123,7 @@ export function SpaceBoard({ issues, groupBy, columns }: SpaceBoardProps) {
                 // No public per-issue identity exists (ADR 0012 §5 omits _id);
                 // the render is static, so array index is a fine key.
                 <li key={i}>
-                  <SpaceIssueCard issue={issue} />
+                  <SpaceIssueCard issue={issue} locale={locale} />
                 </li>
               ))}
             </ul>
@@ -132,7 +135,13 @@ export function SpaceBoard({ issues, groupBy, columns }: SpaceBoardProps) {
 }
 
 /** One read-only card. Title is static text — there is no public detail page. */
-export function SpaceIssueCard({ issue }: { issue: PublicIssue }) {
+export function SpaceIssueCard({
+  issue,
+  locale,
+}: {
+  issue: PublicIssue;
+  locale: Locale;
+}) {
   return (
     <div className="bg-bg-card border border-border rounded-md px-3 py-2.5">
       <p className="text-[13px] font-medium leading-snug">{issue.title}</p>
@@ -150,7 +159,7 @@ export function SpaceIssueCard({ issue }: { issue: PublicIssue }) {
         ))}
         {issue.dueDate && (
           <time dateTime={issue.dueDate} className="text-2xs text-text-muted">
-            Due {formatDue(issue.dueDate)}
+            Due {formatDue(issue.dueDate, locale)}
           </time>
         )}
       </div>

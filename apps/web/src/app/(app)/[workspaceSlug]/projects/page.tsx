@@ -35,6 +35,7 @@ import { useUsers } from '@/hooks/use-users';
 import { useAuthStore } from '@/stores/auth-store';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { useFormat, useT } from '@prism/i18n';
 import type { Project } from '@/schemas/project';
 import { ProjectModal } from '@/components/feature/project/project-modal';
 
@@ -51,6 +52,8 @@ const VIS_CLS = {
 } as const;
 
 export default function ProjectsPage() {
+  const f = useFormat();
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   const wantNew = params.get('new') === '1';
@@ -94,26 +97,26 @@ export default function ProjectsPage() {
         (p.desc ?? '').toLowerCase().includes(needle),
     );
     return filtered.sort((a, b) => {
-      if (sort === 'name') return a.name.localeCompare(b.name);
+      if (sort === 'name') return f.compareNames(a.name, b.name);
       if (sort === 'issues')
         return (b.issueCount ?? 0) - (a.issueCount ?? 0);
       return b.updatedAt.localeCompare(a.updatedAt);
     });
-  }, [projects, q, sort]);
+  }, [projects, q, sort, f]);
 
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-[24px] font-bold tracking-[-.02em] leading-[1.2]">
-            Projects
+            {t('projects.title')}
           </h1>
           <p className="text-[13px] text-text-muted mt-1">
             Manage your workspace projects
           </p>
         </div>
         <Button variant="primary" onClick={() => setCreating(true)}>
-          <Plus className="w-3.5 h-3.5" /> New project
+          <Plus className="w-3.5 h-3.5" /> {t('projects.new')}
         </Button>
       </div>
 
@@ -122,8 +125,8 @@ export default function ProjectsPage() {
           icon={<Search />}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search projects…"
-          aria-label="Search projects"
+          placeholder={t('projects.search')}
+          aria-label={t('projects.searchAria')}
           className="w-[220px]"
         />
 
@@ -132,9 +135,9 @@ export default function ProjectsPage() {
           value={sort}
           onValueChange={setSort}
           options={[
-            { value: 'updated', label: 'Recently updated' },
-            { value: 'name', label: 'Alphabetical' },
-            { value: 'issues', label: 'Most active' },
+            { value: 'updated', label: t('projects.sort.recentlyUpdated') },
+            { value: 'name', label: t('projects.sort.alphabetical') },
+            { value: 'issues', label: t('projects.sort.mostActive') },
           ]}
         />
 
@@ -143,14 +146,14 @@ export default function ProjectsPage() {
           <SegBtn
             active={view === 'grid'}
             onClick={() => setView('grid')}
-            aria-label="Grid layout"
+            aria-label={t('projects.layout.grid')}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
           </SegBtn>
           <SegBtn
             active={view === 'list'}
             onClick={() => setView('list')}
-            aria-label="List layout"
+            aria-label={t('projects.layout.list')}
           >
             <Layers className="w-3.5 h-3.5" />
           </SegBtn>
@@ -158,7 +161,7 @@ export default function ProjectsPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-text-muted text-[13px]">Loading…</div>
+        <div className="text-text-muted text-[13px]">{t('chrome.loading')}</div>
       ) : list.length === 0 ? (
         q.trim() ? (
           <NoMatches onClear={() => setQ('')} />
@@ -265,7 +268,7 @@ export default function ProjectsPage() {
                       : 'mb-3.5 line-clamp-2',
                   )}
                 >
-                  {p.desc || 'No description'}
+                  {p.desc || t('projects.noDescription')}
                 </p>
 
                 {view === 'grid' && (
@@ -379,14 +382,15 @@ function SegBtn({
 }
 
 function Empty({ onCreate }: { onCreate: () => void }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center text-center gap-3 py-16">
       <div className="w-14 h-14 rounded-full flex items-center justify-center bg-[color:color-mix(in_srgb,var(--a)_10%,transparent)]">
         <Grid3x3 className="w-7 h-7 text-accent" />
       </div>
-      <h3 className="text-[16px] font-semibold">No projects yet</h3>
+      <h3 className="text-[16px] font-semibold">{t('projects.empty')}</h3>
       <p className="text-[13px] text-text-muted max-w-[340px]">
-        Start your first project to organize your work.
+        {t('projects.emptyHint')}
       </p>
       <Button variant="primary" onClick={onCreate}>
         <Plus className="w-3.5 h-3.5" /> Create project
@@ -396,14 +400,15 @@ function Empty({ onCreate }: { onCreate: () => void }) {
 }
 
 function NoMatches({ onClear }: { onClear: () => void }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center text-center gap-3 py-16">
       <div className="w-14 h-14 rounded-full flex items-center justify-center bg-bg-subtle border border-border">
         <SearchX className="w-7 h-7 text-text-muted" />
       </div>
-      <h3 className="text-[16px] font-semibold">No projects match your search</h3>
+      <h3 className="text-[16px] font-semibold">{t('projects.emptySearch')}</h3>
       <p className="text-[13px] text-text-muted max-w-[340px]">
-        Try a different keyword, or clear the filter.
+        {t('projects.emptySearchHint')}
       </p>
       <Button variant="outline" onClick={onClear}>
         Clear search

@@ -9,10 +9,18 @@ import {
 import {
   compareNames,
   formatDate,
+  formatDateLong,
   formatDateShort,
   formatDateTime,
+  formatDateWithWeekday,
+  formatMonthShort,
+  formatMonthYear,
   formatNumber,
+  formatRelativeTime,
   formatTime,
+  formatTimeWithSeconds,
+  formatWeekdayDay,
+  weekdayNames,
 } from './format';
 
 /**
@@ -47,6 +55,13 @@ export function useT(): Translator {
 }
 
 /**
+ * The shape {@link useFormat} returns. Exported because a component sometimes
+ * has to hand it to a plain helper — a `groupByDay(items, f)` that formats day
+ * headings is still locale-dependent even though it is not a hook.
+ */
+export type Formatters = ReturnType<typeof useFormat>;
+
+/**
  * Locale-bound formatters, so a component never has to thread the locale into
  * every call site (and never has a reason to reach for `toLocaleDateString`).
  */
@@ -57,8 +72,18 @@ export function useFormat() {
       locale,
       date: (v: Date | string | number) => formatDate(v, locale),
       dateShort: (v: Date | string | number) => formatDateShort(v, locale),
+      dateLong: (v: Date | string | number) => formatDateLong(v, locale),
+      dateWithWeekday: (v: Date | string | number) =>
+        formatDateWithWeekday(v, locale),
+      monthYear: (v: Date | string | number) => formatMonthYear(v, locale),
+      monthShort: (v: Date | string | number) => formatMonthShort(v, locale),
+      weekdayDay: (v: Date | string | number) => formatWeekdayDay(v, locale),
       time: (v: Date | string | number) => formatTime(v, locale),
+      timeWithSeconds: (v: Date | string | number) =>
+        formatTimeWithSeconds(v, locale),
       dateTime: (v: Date | string | number) => formatDateTime(v, locale),
+      relative: (v: Date | string | number) => formatRelativeTime(v, locale),
+      weekdays: (w?: 'short' | 'narrow' | 'long') => weekdayNames(locale, w),
       number: (v: number, o?: Intl.NumberFormatOptions) =>
         formatNumber(v, locale, o),
       compareNames: (a: string, b: string) => compareNames(a, b, locale),

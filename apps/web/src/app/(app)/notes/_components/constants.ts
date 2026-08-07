@@ -1,3 +1,4 @@
+import type { Formatters } from '@prism/i18n';
 import type { NoteBlock } from '@/schemas/note';
 
 export const EMOJIS = [
@@ -15,14 +16,14 @@ export interface NoteTemplate {
   caption: string;
 }
 
-const today = () =>
-  new Date().toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-
-export const TEMPLATES: NoteTemplate[] = [
+/**
+ * A function rather than a `const` because one template's title carries today's
+ * date, and a date is locale-dependent (ADR 0016 §2.7). Evaluated at module
+ * load it would also have frozen "today" at the moment the tab was opened.
+ */
+export function buildTemplates(f: Formatters): NoteTemplate[] {
+  const today = () => f.date(Date.now());
+  return [
   {
     key: 'lesson',
     title: 'Lesson notes',
@@ -94,7 +95,8 @@ export const TEMPLATES: NoteTemplate[] = [
       { type: 'text', value: '' },
     ],
   },
-];
+  ];
+}
 
 export const AUTOSAVE_MS = 800;
 

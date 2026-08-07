@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { CheckCircle2, ChevronLeft, ChevronRight, Eye, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import type { ErrorLog, ErrorLogListResult, ErrorLogQuery } from '@/schemas/error-log';
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -37,11 +38,6 @@ interface ErrorTableProps {
   deleting: Set<string>;
 }
 
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
 export function ErrorTable({
   result,
   selected,
@@ -54,6 +50,8 @@ export function ErrorTable({
   resolving,
   deleting,
 }: ErrorTableProps) {
+  const f = useFormat();
+  const fmtDate = (iso: string) => `${f.date(iso)} ${f.time(iso)}`;
   const allSelected = result.items.length > 0 && result.items.every((i) => selected.has(i._id));
 
   return (
@@ -179,9 +177,9 @@ export function ErrorTable({
       {result.totalPages > 1 && (
         <div className="flex items-center justify-between px-4 py-2.5 border-t border-border text-[12px] text-text-muted">
           <span>
-            {((result.page - 1) * result.limit + 1).toLocaleString()}–
-            {Math.min(result.page * result.limit, result.total).toLocaleString()} of{' '}
-            {result.total.toLocaleString()} logs
+            {f.number((result.page - 1) * result.limit + 1)}–
+            {f.number(Math.min(result.page * result.limit, result.total))} of{' '}
+            {f.number(result.total)} logs
           </span>
           <div className="flex items-center gap-1">
             <button

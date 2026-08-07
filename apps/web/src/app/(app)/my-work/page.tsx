@@ -10,7 +10,8 @@ import { useIssues, useIssueMutations } from '@/hooks/use-issues';
 import { useProjects } from '@/hooks/use-projects';
 import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { StatusPill } from '@/components/feature/issue/pills';
-import { fmtDateShort, today as todayIso } from '@/lib/format';
+import { today as todayIso } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import type { Issue } from '@/schemas/issue';
 
@@ -241,6 +242,7 @@ function TaskRow({
   onOpen: () => void;
   onDone: () => void;
 }) {
+  const f = useFormat();
   const d = issue.dueDate?.slice(0, 10);
   let dueCls = '';
   let dueLabel = '';
@@ -261,7 +263,7 @@ function TaskRow({
         days <= 3
           ? 'bg-[color:color-mix(in_srgb,var(--amber)_12%,transparent)] text-amber'
           : 'bg-bg-hover text-text-muted';
-      dueLabel = fmtDateShort(d);
+      dueLabel = f.dateShort(d);
     }
   }
 

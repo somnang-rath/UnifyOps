@@ -2,13 +2,14 @@
 import { useParams, useRouter } from 'next/navigation';
 import { PriorityPill, StatusPill } from '@/components/feature/issue/pills';
 import { Avatar } from '@/components/ui/avatar';
-import { fmtDateShort } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import { dueClass, type ViewProps } from './shared';
 
 export function TableView({ issues, userMap }: ViewProps) {
   const router = useRouter();
   const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
+  const f = useFormat();
 
   if (issues.length === 0) {
     return (
@@ -62,7 +63,7 @@ export function TableView({ issues, userMap }: ViewProps) {
                     dueClass(i.dueDate, i.status),
                   )}
                 >
-                  {i.dueDate ? fmtDateShort(i.dueDate) : '—'}
+                  {i.dueDate ? f.dateShort(i.dueDate) : '—'}
                 </td>
               </tr>
             );

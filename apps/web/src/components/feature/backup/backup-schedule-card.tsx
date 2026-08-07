@@ -6,6 +6,7 @@ import { Field, Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Confirm } from '@/components/ui/confirm';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import {
   ALL_BACKUP_SCOPES,
   BACKUP_SCOPE_LABELS,
@@ -47,6 +48,7 @@ const TZ_OPTS = (() => {
 })();
 
 export function BackupScheduleCard() {
+  const f = useFormat();
   const { data: schedule, isLoading } = useBackupSchedule();
   const { upsertSchedule, deleteSchedule } = useBackupMutations();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -92,8 +94,7 @@ export function BackupScheduleCard() {
     });
   };
 
-  const fmtDate = (iso?: string) =>
-    iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  const fmtDate = (iso?: string) => (iso ? f.dateTime(iso) : '—');
 
   return (
     <>

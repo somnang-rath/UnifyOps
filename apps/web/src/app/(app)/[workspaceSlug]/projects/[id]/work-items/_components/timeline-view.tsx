@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { fmtDateShort } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { STATUS_DOT, STATUS_ORDER, type StatusId, type ViewProps } from './shared';
 
 const DAY = 86_400_000;
@@ -10,6 +10,7 @@ const DAY = 86_400_000;
 export function TimelineView({ issues }: ViewProps) {
   const router = useRouter();
   const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
+  const f = useFormat();
 
   const model = useMemo(() => {
     const rows = issues
@@ -37,13 +38,13 @@ export function TimelineView({ issues }: ViewProps) {
     while (d.getTime() <= max) {
       ticks.push({
         left: ((d.getTime() - min) / span) * 100,
-        label: d.toLocaleDateString(undefined, { month: 'short' }),
+        label: f.monthShort(d),
       });
       d.setMonth(d.getMonth() + 1);
     }
 
     return { rows, min, span, ticks };
-  }, [issues]);
+  }, [issues, f]);
 
   if (!model) {
     return (
@@ -98,7 +99,7 @@ export function TimelineView({ issues }: ViewProps) {
                 className="absolute top-1/2 -translate-y-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover:opacity-100"
                 style={{ left: `calc(${left}% + ${width}% + 6px)` }}
               >
-                {issue.dueDate ? fmtDateShort(issue.dueDate) : ''}
+                {issue.dueDate ? f.dateShort(issue.dueDate) : ''}
               </span>
             </button>
           );

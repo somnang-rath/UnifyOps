@@ -1,6 +1,7 @@
 'use client';
 import { AlertCircle, AlertTriangle, Bug, CheckCircle2, Globe, Monitor, Server } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import type { ErrorLogStats } from '@/schemas/error-log';
 
 interface StatCardProps {
@@ -11,13 +12,14 @@ interface StatCardProps {
 }
 
 function StatCard({ label, value, icon, color }: StatCardProps) {
+  const f = useFormat();
   return (
     <div className={cn('rounded-lg border border-border bg-bg-card p-4 flex items-center gap-3')}>
       <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', color)}>
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-2xl font-bold text-text tabular-nums">{value.toLocaleString()}</div>
+        <div className="text-2xl font-bold text-text tabular-nums">{f.number(value)}</div>
         <div className="text-xs text-text-muted mt-0.5 truncate">{label}</div>
       </div>
     </div>

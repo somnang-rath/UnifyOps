@@ -7,6 +7,7 @@ import {
   useState,
 } from "react"
 import { AxiosError } from "axios"
+import { useFormat } from "@prism/i18n"
 import {
   BookOpen,
   Check,
@@ -59,7 +60,7 @@ import type { AuthUser } from "@/schemas/auth"
 import type { Note, NoteFolder } from "@/schemas/note"
 import { NoteTree } from "./note-tree"
 import { TextPrompt } from "./text-prompt"
-import { AUTOSAVE_MS, EMOJIS, TEMPLATES, readTime } from "./constants"
+import { AUTOSAVE_MS, EMOJIS, buildTemplates, readTime } from "./constants"
 import { LUCIDE_ICONS, NoteIcon, lucideValue } from "./note-icon"
 
 /**
@@ -153,6 +154,8 @@ const initialCollabUi = (): CollabUi => ({
  * export lets the split-editor embed Notes natively via `embedded`.
  */
 export function NotesView({ embedded = false }: { embedded?: boolean }) {
+  const f = useFormat()
+  const templates = useMemo(() => buildTemplates(f), [f])
   const me = useAuthStore((s) => s.user)
   const { data: folders = [] } = useNoteFolders()
   const m = useNoteMutations()
@@ -353,7 +356,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
   }
 
   const createNote = (folderId: string | null, fromTpl?: string) => {
-    const tpl = fromTpl ? TEMPLATES.find((t) => t.key === fromTpl) : null
+    const tpl = fromTpl ? templates.find((t) => t.key === fromTpl) : null
     // Template creation still POSTs blocks[] — the API's lazy migration
     // converts them to contentHTML on first open (spec §4).
     const body = tpl
@@ -604,7 +607,7 @@ export function NotesView({ embedded = false }: { embedded?: boolean }) {
                   <div className="px-3 py-1.5 text-[10.5px] uppercase tracking-[.06em] font-bold text-text-muted border-b border-border">
                     Templates
                   </div>
-                  {TEMPLATES.map((t) => {
+                  {templates.map((t) => {
                     const Icon = TEMPLATE_ICONS[t.key] || Sparkles
                     return (
                       <button

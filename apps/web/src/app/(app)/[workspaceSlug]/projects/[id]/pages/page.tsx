@@ -14,7 +14,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspaces';
 import { useWikiList, useWikiMutations } from '@/hooks/use-wiki';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useAuthStore } from '@/stores/auth-store';
-import { relTime } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import type { WikiPageMeta } from '@/schemas/wiki';
 
 /**
@@ -30,6 +30,7 @@ import type { WikiPageMeta } from '@/schemas/wiki';
  * `?project=&page=` and leaves editing where it already works.
  */
 export default function ProjectPagesPage() {
+  const f = useFormat();
   const { id: projectId } = useParams<{ id: string }>();
   const ws = useWorkspaceHref();
   const router = useRouter();
@@ -131,7 +132,7 @@ export default function ProjectPagesPage() {
                   {page.title || 'Untitled page'}
                 </Link>
                 <span className="text-[11.5px] text-text-muted flex-shrink-0 hidden sm:inline">
-                  {author?.name ?? 'Unknown'} · {relTime(page.updatedAt)}
+                  {author?.name ?? 'Unknown'} · {f.relative(page.updatedAt)}
                 </span>
                 {canWrite && (
                   <IconButton

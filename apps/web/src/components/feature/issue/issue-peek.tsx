@@ -41,7 +41,7 @@ import {
   SectionLabel,
   SidebarRow,
 } from '@/components/feature/issue/detail-sections';
-import { relTime, fmtDate } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { toast } from '@/stores/toast-store';
 
@@ -73,6 +73,7 @@ export function IssuePeek({
   prevId,
   nextId,
 }: IssuePeekProps) {
+  const f = useFormat();
   const me = useAuthStore((s) => s.user);
   const titleId = 'issue-peek-title';
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -257,7 +258,7 @@ export function IssuePeek({
                   <StatusPill status={issue.status} />
                   <PriorityPill priority={issue.priority} />
                   <span>
-                    opened {relTime(issue.createdAt)} by {author?.name ?? '?'}
+                    opened {f.relative(issue.createdAt)} by {author?.name ?? '?'}
                   </span>
                 </div>
               </div>
@@ -298,7 +299,7 @@ export function IssuePeek({
               </SidebarRow>
               <SidebarRow icon={<Calendar className="w-3.5 h-3.5" />} label="Due date">
                 {issue.dueDate ? (
-                  <span className="text-[13px] text-text">{fmtDate(issue.dueDate)}</span>
+                  <span className="text-[13px] text-text">{f.date(issue.dueDate)}</span>
                 ) : (
                   <span className="text-[13px] text-text-muted">Not set</span>
                 )}

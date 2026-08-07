@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/input';
 import { Confirm } from '@/components/ui/confirm';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import {
   ALL_BACKUP_SCOPES,
   BACKUP_SCOPE_LABELS,
@@ -39,6 +40,7 @@ async function readFileMeta(file: File): Promise<BackupFilePreview> {
 }
 
 export function BackupImportCard() {
+  const f = useFormat();
   const { importBackup } = useBackupMutations();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -175,7 +177,7 @@ export function BackupImportCard() {
             <p>
               <span className="text-text-muted">Date:</span>{' '}
               <span className="font-medium">
-                {new Date(meta.exportedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                {f.dateTime(meta.exportedAt)}
               </span>
             </p>
             <p>

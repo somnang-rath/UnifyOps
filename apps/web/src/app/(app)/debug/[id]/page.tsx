@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useErrorLogById, useErrorLogMutations } from '@/hooks/use-error-logs';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import type { ErrorLog } from '@/schemas/error-log';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -52,12 +53,13 @@ const DEVICE_ICONS = {
   unknown: Monitor,
 } as const;
 
-function fmtDate(iso?: string) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
+/**
+ * Error logs are read against a clock — the second matters — so this is the one
+ * screen that pairs the locale's date with a seconds-precision time.
+ */
+function useFmtDate() {
+  const f = useFormat();
+  return (iso?: string) => (iso ? `${f.date(iso)}, ${f.timeWithSeconds(iso)}` : '—');
 }
 
 // ── UI primitives ──────────────────────────────────────────────────────────
@@ -124,6 +126,7 @@ function StatusBadge({ resolved }: { resolved: boolean }) {
 // ── Timeline ───────────────────────────────────────────────────────────────
 
 function Timeline({ log }: { log: ErrorLog }) {
+  const fmtDate = useFmtDate();
   const events: { label: string; date?: string; icon: React.ReactNode; active?: boolean }[] = [
     {
       label: 'Error occurred',
@@ -181,6 +184,7 @@ export default function ErrorDetailPage({
   params: { id: string };
 }) {
   const { id } = params;
+  const fmtDate = useFmtDate();
   const router = useRouter();
   const { data: log, isLoading } = useErrorLogById(id);
   const { resolve, remove } = useErrorLogMutations();

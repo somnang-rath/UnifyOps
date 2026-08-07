@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { X, Printer, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CellStyle, NamedRange, Sheet, SheetRange } from '@/schemas/workbook';
+import { useFormat } from '@prism/i18n';
 import { colA1, a1Col } from '@/lib/sheets/a1';
 import { computeSheet } from '@/lib/sheets/formula';
 import { evaluateCondFmt } from '@/lib/sheets/cond-fmt';
@@ -219,11 +220,9 @@ export function PrintPreviewModal({
     });
   };
 
-  const dateStr = useMemo(() => new Date().toLocaleDateString(), []);
-  const timeStr = useMemo(
-    () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    [],
-  );
+  const f = useFormat();
+  const dateStr = useMemo(() => f.date(Date.now()), [f]);
+  const timeStr = useMemo(() => f.time(Date.now()), [f]);
 
   const collectPagesHtml = (): string => {
     const node = printRef.current;

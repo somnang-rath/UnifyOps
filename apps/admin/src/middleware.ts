@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   NONCE_HEADER,
-  STATIC_SECURITY_HEADERS,
   buildCsp,
   connectOrigins,
   generateNonce,
+  staticSecurityHeaders,
 } from '@prism/constants';
 import { LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from '@prism/i18n';
 
@@ -20,6 +20,9 @@ import { LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from '@prism/i18n';
  * - The stakes are higher. This app holds an `aud=admin` token that can act on
  *   the whole instance, and it is the app where a script injected into an
  *   admin's session would be worth the most.
+ * - Framing stays fully denied. apps/web relaxed `frame-ancestors` to `'self'`
+ *   for its split-pane editor; God Mode has no such surface and renders no
+ *   iframes at all, so it keeps the defaults on both directives.
  *
  * `basePath: '/god-mode'` does not appear in the matcher: `nextUrl.pathname` is
  * already basePath-stripped when middleware runs. It does mean the app's
@@ -50,7 +53,7 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);
-  for (const [key, value] of Object.entries(STATIC_SECURITY_HEADERS)) {
+  for (const [key, value] of Object.entries(staticSecurityHeaders())) {
     response.headers.set(key, value);
   }
 

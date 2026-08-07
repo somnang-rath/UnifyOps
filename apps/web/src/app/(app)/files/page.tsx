@@ -30,7 +30,8 @@ import {
   useFolders,
 } from "@/hooks/use-files"
 import { useDebounce } from "@/hooks/use-debounce"
-import { fmtBytes, relTime } from "@/lib/format"
+import { fmtBytes } from "@/lib/format"
+import { useFormat } from "@prism/i18n"
 import { cn } from "@/lib/utils"
 import { toast } from "@/stores/toast-store"
 import { useAuthStore } from "@/stores/auth-store"
@@ -94,6 +95,9 @@ export default function FilesPage() {
 
   const fileInput = useRef<HTMLInputElement>(null)
 
+  // Khmer does not sort like Latin text, so folder/file names go through
+  // Intl.Collator for the active locale rather than a bare localeCompare.
+  const { compareNames: cmpNames } = useFormat()
   const me = useAuthStore((s) => s.user)
   const { data: folders = [] } = useFolders()
   const { data: files = [], isLoading } = useFiles(folderId, debouncedQ)
@@ -117,8 +121,8 @@ export default function FilesPage() {
         return f.parentId === folderId
       })
       .filter((f) => (q ? f.name.toLowerCase().includes(q) : true))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [folders, folderId, debouncedQ])
+      .sort((a, b) => cmpNames(a.name, b.name))
+  }, [folders, folderId, debouncedQ, cmpNames])
 
   const canUploadHere =
     currentAccess === "owner" ||
@@ -725,6 +729,7 @@ function FileListRow({
   onDelete: (f: FileItem) => void
   onMove: (f: FileItem) => void
 }) {
+  const fmt = useFormat()
   const Icon = CategoryIcon(file.category)
   const iconSrc = file.category !== "image" ? fileIconFor(file.name) : null
   const canMutate = canMutateFile(folderAccess, isMyFile)
@@ -759,7 +764,7 @@ function FileListRow({
         {file.category === "link" ? "—" : fmtBytes(file.size)}
       </span>
       <span className="text-[11.5px] text-text-muted">
-        {relTime(file.updatedAt)}
+        {fmt.relative(file.updatedAt)}
       </span>
       <Actions
         file={file}
@@ -786,6 +791,7 @@ function FolderListRow({
   onRename: (f: Folder) => void
   onDelete: (f: Folder) => void
 }) {
+  const fmt = useFormat()
   const isOwner = folder._access === "owner"
   const badge = accessBadge(folder._access)
   return (
@@ -806,7 +812,7 @@ function FolderListRow({
         </span>
       )}
       <span className="text-[11.5px] text-text-muted">
-        {relTime(folder.updatedAt)}
+        {fmt.relative(folder.updatedAt)}
       </span>
       <FolderActions
         folder={folder}

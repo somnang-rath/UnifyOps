@@ -72,6 +72,7 @@ import {
   setSoundEnabled,
 } from '@/lib/notification-sound';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import type { NotifType } from '@/schemas/notification';
 
 type Pane = 'profile' | 'appearance' | 'notifications' | 'security' | 'data';
@@ -1047,6 +1048,7 @@ function TwoFACard() {
 }
 
 function ApiTokensCard() {
+  const f = useFormat();
   const { data: tokens, isLoading } = useApiTokens();
   const create = useCreateApiToken();
   const revoke = useRevokeApiToken();
@@ -1150,7 +1152,7 @@ function ApiTokensCard() {
                 {t.prefix}…
               </code>
               <span className="text-[11px] text-text-muted whitespace-nowrap">
-                {new Date(t.createdAt).toLocaleDateString()}
+                {f.date(t.createdAt)}
               </span>
               <button
                 type="button"

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Check, Mail, RefreshCw, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label, PriorityPill } from '@/components/feature/issue/pills';
-import { relTime } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import type { Issue } from '@/schemas/issue';
 import type { IntakeStatus, IntakeSubmission } from '@/hooks/use-intake';
@@ -43,6 +43,7 @@ export function SubmissionCard({
   onDecline: () => void;
   onSuggest: () => void;
 }) {
+  const f = useFormat();
   const pending = sub.status === 'pending';
   const s = sub.suggestion;
 
@@ -59,7 +60,7 @@ export function SubmissionCard({
             {sub.title}
           </h3>
           <div className="flex items-center gap-2 mt-1 text-[11.5px] text-text-muted flex-wrap">
-            <span>{relTime(sub.createdAt)}</span>
+            <span>{f.relative(sub.createdAt)}</span>
             {sub.submitterEmail && (
               <a
                 href={`mailto:${sub.submitterEmail}`}

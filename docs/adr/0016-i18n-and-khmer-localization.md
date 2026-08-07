@@ -294,3 +294,75 @@ Khmer key and watching the build fail. Three notes for whoever picks up 3b:
 - **The font check earns its place.** Everything else can pass while Khmer
   renders in an arbitrary OS fallback, which is precisely the state the app was
   in before this change (§1.3).
+
+### 5.2 Result — 3b/3c/3d closed 2026-08-06
+
+Path B is complete. What landed, and the four things worth carrying forward:
+
+**3d — the formatting seam.** `apps/web/src/lib/format.ts` lost `fmtDate`,
+`fmtDateShort`, `monthLabel` and `relTime` outright rather than keeping them as
+wrappers: a date helper with no locale argument can only ever render English,
+and leaving the names in place would have let all 93 of their call sites keep
+compiling while quietly staying English. Deleting them turned the compiler into
+the migration checklist. `@prism/i18n` gained the shapes the real call sites
+needed (`formatMonthYear`, `formatMonthShort`, `formatDateLong`,
+`formatWeekdayDay`, `formatDateWithWeekday`, `formatTimeWithSeconds`,
+`weekdayNames`, `formatRelativeTime`) plus `dateKey`.
+
+**Not every `toLocale*` is a locale call, and the ESLint rule had to learn the
+difference.** Three families are exempt in `apps/web/.eslintrc.js` (converted
+from JSON so the exemptions can explain themselves): spreadsheet number formats
+and the formula engine, because a cell its author formatted as `1,234.56` must
+look identical to every viewer or two people reading one workbook see two
+different numbers; report `element-*` renderers, because they carry an
+author-chosen format code into a document that gets exported and emailed; and
+the kiosk report display, which is deliberately single-locale with hardcoded
+Khmer labels. A fourth case was not an exemption but a bug: `timeline/page.tsx`
+used `toLocaleDateString('en-CA')` seven times as a **grouping key**, an idiom
+that reads like formatting and would have been "migrated" into a translated
+string by the next person. That is what `dateKey()` is for.
+
+**The finding that matters: Chromium ships no `km` locale data.**
+`Intl.DateTimeFormat.supportedLocalesOf(['km'])` is empty and `km-KH` silently
+resolves to `en-US`, so every date on a Khmer screen rendered "Aug 6, 2026".
+Thai, French, Japanese and Vietnamese all resolve correctly — Khmer
+specifically is absent. **Node's full-ICU build does have it**, which is exactly
+why nothing caught this: §2.4's "the platform already ships
+`Intl.DateTimeFormat`" is true, and false for the one runtime that matters. Any
+server-side or unit test would have printed perfect Khmer and proved nothing.
+`@prism/i18n` now carries twelve month names and seven weekday names of its own
+and uses them only when the runtime has no Khmer data — the whole dataset a
+Gregorian calendar needs, and cheaper than the `@formatjs` polyfill this ADR
+went out of its way to avoid. `Intl.RelativeTimeFormat` has the same gap and the
+same treatment. **`Intl.Collator('km')` is also affected** and is *not* patched:
+it degrades to root collation, which orders Khmer imperfectly rather than
+wrongly, and a hand-rolled Khmer collation is a much larger commitment than
+nineteen nouns.
+
+**§2.7's premise about name sorting was wrong.** It says "member lists, assignee
+pickers and mention menus all sort with default `localeCompare` today". They do
+not sort *at all* — the project member list renders in the order people were
+added. `compareNames` is now applied there and to the display-name sorts that
+did exist (files, folders, notes, projects). Nothing was sorting Khmer badly;
+nothing was sorting it.
+
+**3c — holidays.** `packages/constants/src/khmer-holidays.ts` is a year-keyed
+table with a `status` per year, because half of Cambodia's holidays follow the
+lunar calendar and are set annually by sub-decree — there is no formula. Every
+consumer receives the confidence alongside the number: `workingDaysBetween`
+returns `{ workingDays, calendarDays, holidaysLost, status }`, and an unmapped
+year reports `'unknown'` rather than a confident count, because silently
+treating "no data" as "no days off" over-commits a team by up to three weeks a
+year. A range spanning a known and an unknown year takes the weakest status, not
+an average. 2026 ships as `provisional`: its fixed dates are certain, its lunar
+dates need reconciling against the sub-decree before anyone plans a delivery
+around them. The motivating case is asserted: a two-week sprint over Khmer New
+Year is **7 working days, not 10**.
+
+**Verification.** `pnpm --filter web test:i18n` 9 → **14** (3b screens, a
+formatted date, ICU-or-fallback weekday headers, a marked holiday) and a new
+`pnpm --filter @prism/constants test` (11 checks, pure functions, no browser or
+database). One test lesson: the first version of the date check asserted "Khmer
+appears on the calendar page", which passed while every date on it was English —
+the nav was already Khmer. Asserting on the specific element is what found the
+missing ICU data.

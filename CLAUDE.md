@@ -21,9 +21,16 @@ The rules files above cover the root scripts (`pnpm dev`, `dev:<app>`, `-r build
 | `api` | `pnpm --filter api build` (nest build — this *is* the typecheck) | same | `lint` / `lint:fix` |
 | `web` `admin` `space` | `pnpm --filter <app> typecheck` | `next build` | `next lint` |
 | `live` | `pnpm --filter live typecheck` | `tsc -p tsconfig.json` | none — `pnpm -r lint` silently skips it |
+| `packages/*` | `pnpm --filter @prism/<pkg> typecheck` | none — see below | none |
 
-Two traps worth knowing before you run something:
+Three traps worth knowing before you run something:
 
+- **`packages/*` are never built.** Every one of them points `main`/`exports` at
+  `./src/index.ts`, so consumers compile the TypeScript source themselves — that is what
+  `transpilePackages` is for, and why `packages/editor`'s `build` script is `tsc --noEmit`.
+  So `pnpm -r build` and `pnpm -r lint` pass over them entirely: a package can be broken
+  while both are green, and the app that imports it is where it surfaces. Their real check
+  is the consuming app's `typecheck` (plus `pnpm --filter @prism/constants test`).
 - **ESLint is deliberately split**: `api` is on ESLint 9 flat config, the Next apps are
   pinned to ESLint 8 by `eslint-config-next@14`. Don't unify them before Next 15.
 - **Three seed scripts exist and are not interchangeable** — `seed.ts` (demo, `pnpm seed`),
@@ -57,6 +64,28 @@ Facts that no single file makes obvious, and that most bugs in this repo come fr
   refreshes. `X-CSRF-Token` must stay in the CORS `allowedHeaders` or every cross-origin
   mutation dies at preflight.
 
+## The Next middlewares are load-bearing
+
+All three Next apps run one (`src/middleware.ts`), and each request depends on it for two
+things that are invisible in the component tree: the per-request **CSP nonce** (Next reads
+it back off the request's own CSP header and stamps every `<script>` with it) and the
+resolved **locale** (`x-locale`, which the root layout reads). Neither has a fallback — if
+the middleware doesn't run, the app ships with no policy and the wrong language.
+
+The policy body is shared in `@prism/constants/security-headers`, and its directives decide
+what the *browser* will let a feature do, which is the part no typecheck can see:
+
+- **A new off-origin fetch or socket needs `connect-src`**, a new `<iframe>` needs
+  `frame-src`, an embed host needs adding in both places it is named. A directive that
+  falls back to `default-src 'self'` blocks the feature silently — the page renders fine
+  and the request simply never happens.
+- **`X-Frame-Options` and `frame-ancestors` must agree.** They are independent headers, so
+  either one can block a frame alone. Only apps/web relaxes them (`'self'`/`SAMEORIGIN`),
+  because its split-pane editor frames its own routes; admin and space stay `'none'`/`DENY`.
+- Browsers report a refused frame as *"localhost refused to connect"* — a symptom that
+  points at a dead port, not at a header. `pnpm --filter web test:csp` is what proves any
+  of this; a CSP is one of the few things that cannot be verified by reading it.
+
 ## Frontend data layer
 
 - **Components never call axios.** The path is `src/lib/api.ts` (app-local client, sets the
@@ -69,3 +98,10 @@ Facts that no single file makes obvious, and that most bugs in this repo come fr
 - Anything rendered by more than one frontend belongs in `packages/ui`; the shared editor
   (Tiptap + Yjs) belongs in `packages/editor`. Copy-pasting across web/admin/space is the
   failure mode this conversion is most prone to.
+- **But `packages/*` are frontend-only.** `apps/api` and `apps/live` import zero `@prism/*`
+  and don't even list them as dependencies — the two things they do share are hand-copied
+  on purpose: the API's locale list is kept in sync with `@prism/i18n` by hand, and live
+  owns its own copy of the Tiptap schema because it is a CommonJS server and
+  `@prism/editor`'s Tiptap deps are ESM-only (ADR 0001 §5). Both copies carry a comment
+  naming the canonical definition. "Just share it properly" is the obvious fix here and it
+  breaks the build — look for that comment before moving anything into `packages/`.

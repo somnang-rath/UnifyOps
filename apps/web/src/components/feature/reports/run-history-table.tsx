@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 
 /* ── status config ───────────────────────────────────────────── */
 const STATUS_CONFIG = {
@@ -25,19 +26,17 @@ const DELIVERY_STATUS_CFG = {
 } as const;
 
 /* ── helpers ─────────────────────────────────────────────────── */
-function relTime(iso: string) {
-  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 1)  return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+/**
+ * Both of these were locale-blind: a hand-rolled English "5m ago" ladder and a
+ * `toLocaleString` with no locale. They are hooks now because the answer
+ * depends on the signed-in user's language (ADR 0016 §2.7).
+ */
+function useRunFormatters() {
+  const f = useFormat();
+  return {
+    relTime: (iso: string) => f.relative(iso),
+    fmtDate: (iso: string) => f.dateTime(iso),
+  };
 }
 
 /* ── DeliveryCountsCell ──────────────────────────────────────── */
@@ -88,6 +87,7 @@ function DeliveryCountsCell({ run }: { run: ReportRun }) {
 const PAGE_SIZE = 50;
 
 function DeliveryRow({ entry }: { entry: ReportDeliveryLogEntry }) {
+  const { fmtDate } = useRunFormatters();
   const cfg = DELIVERY_STATUS_CFG[entry.status] ?? DELIVERY_STATUS_CFG.failed;
   const Icon = cfg.icon;
   return (
@@ -119,6 +119,7 @@ function DeliveryDrawer({
   templateId: string;
   onClose: () => void;
 }) {
+  const { fmtDate, relTime } = useRunFormatters();
   const [page, setPage] = useState(0);
   const { data, isLoading } = useRunDeliveries(templateId, run._id, page, PAGE_SIZE);
 
@@ -242,6 +243,7 @@ interface Props {
 }
 
 export function RunHistoryTable({ runs, templateId }: Props) {
+  const { fmtDate, relTime } = useRunFormatters();
   const [selectedRun, setSelectedRun] = useState<ReportRun | null>(null);
 
   if (!runs.length) {

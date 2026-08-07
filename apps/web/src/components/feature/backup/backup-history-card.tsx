@@ -4,6 +4,7 @@ import { CalendarClock, Download, HardDrive, Trash2, UserRound } from 'lucide-re
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import { BACKUP_SCOPE_LABELS, type BackupFile, type BackupScope } from '@/schemas/backup';
 import { useBackupFiles, useBackupMutations, downloadStoredBackup } from '@/hooks/use-backup';
 import { useAuthStore } from '@/stores/auth-store';
@@ -15,11 +16,10 @@ function fmtBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-
 export function BackupHistoryCard() {
+  // `fmt`, not `f` — the rows below are `files.map((f) => …)`.
+  const fmt = useFormat();
+  const fmtDate = (iso: string) => fmt.dateTime(iso);
   const { data: files, isLoading } = useBackupFiles();
   const { deleteFile } = useBackupMutations();
   const [deletingId, setDeletingId] = useState<string | null>(null);

@@ -10,7 +10,8 @@ import {
   X,
 } from 'lucide-react';
 import { filesService } from '@/hooks/use-files';
-import { fmtBytes, relTime } from '@/lib/format';
+import { fmtBytes } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import type { FileItem } from '@/schemas/file';
 
@@ -25,6 +26,7 @@ export function FileViewer({
   onIndexChange: (i: number) => void;
   onClose: () => void;
 }) {
+  const f = useFormat();
   const file = index !== null ? files[index] ?? null : null;
   const hasPrev = index !== null && index > 0;
   const hasNext = index !== null && index < files.length - 1;
@@ -58,7 +60,7 @@ export function FileViewer({
           </strong>
           <span className="block text-[11.5px] text-white/60 tabular-nums">
             {file.category !== 'link' && `${fmtBytes(file.size)} · `}
-            {relTime(file.updatedAt)}
+            {f.relative(file.updatedAt)}
           </span>
         </div>
         {file.category !== 'link' && (

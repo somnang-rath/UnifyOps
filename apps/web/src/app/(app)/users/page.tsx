@@ -29,7 +29,7 @@ import {
 import { useRoleMutations, useRoles } from '@/hooks/use-roles';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useAuthStore } from '@/stores/auth-store';
-import { fmtDate } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import { ROLE_COLORS, ROLE_PILL, type Role } from '@/schemas/role';
 import type { DirectoryUser } from '@/schemas/user';
@@ -579,6 +579,7 @@ function Td({
 /* ── Page ────────────────────────────────────────────────── */
 
 export default function UsersPage() {
+  const f = useFormat();
   const me = useAuthStore((s) => s.user);
   const { data: users = [], isLoading } = useUsers();
   const { data: roles = [] } = useRoles();
@@ -789,7 +790,7 @@ export default function UsersPage() {
                       )}
                     </Td>
 
-                    <Td className="text-text-muted">{fmtDate(u.createdAt)}</Td>
+                    <Td className="text-text-muted">{f.date(u.createdAt)}</Td>
 
                     <Td align="right">
                       <ActionsDropdown

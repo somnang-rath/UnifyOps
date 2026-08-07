@@ -1,3 +1,4 @@
+import { formatDate, type Locale } from '@prism/i18n';
 import type { PublicWikiPage } from '@/lib/public-api';
 import { sanitizeContent } from '@/lib/public-api';
 import { SpaceCover } from './space-cover';
@@ -8,13 +9,15 @@ import { WikiToc } from './wiki-toc';
  * verbatim so the route can branch on payload type. Do not restyle: the wiki
  * path is explicitly unchanged (ADR 0012 scope).
  */
-export function WikiArticle({ page }: { page: PublicWikiPage }) {
+export function WikiArticle({
+  page,
+  locale,
+}: {
+  page: PublicWikiPage;
+  locale: Locale;
+}) {
   const html = sanitizeContent(page.contentHTML);
-  const updated = new Date(page.updatedAt).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  const updated = formatDate(page.updatedAt, locale);
 
   return (
     <main className="min-h-screen">

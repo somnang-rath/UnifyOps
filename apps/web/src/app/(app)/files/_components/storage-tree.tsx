@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { useFolders } from "@/hooks/use-files"
 import { cn } from "@/lib/utils"
+import { useFormat } from "@prism/i18n"
 import type { AccessLevel, Folder } from "@/schemas/file"
 
 interface Props {
@@ -38,6 +39,9 @@ export function StorageTree({
   onDelete,
   onNewFolder,
 }: Props) {
+  // Khmer does not sort like Latin text, so folder/file names go through
+  // Intl.Collator for the active locale rather than a bare localeCompare.
+  const { compareNames: cmpNames } = useFormat()
   const { data: folders = [] } = useFolders()
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -65,8 +69,8 @@ export function StorageTree({
     const needle = q.toLowerCase()
     return folders
       .filter((f) => f.name.toLowerCase().includes(needle))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [q, folders, searching])
+      .sort((a, b) => cmpNames(a.name, b.name))
+  }, [q, folders, searching, cmpNames])
 
   const renderTree = (
     parentId: string | null,
@@ -81,7 +85,7 @@ export function StorageTree({
         }
         return f.parentId === parentId
       })
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => cmpNames(a.name, b.name))
 
     const out: React.ReactNode[] = []
     for (const f of childFolders) {

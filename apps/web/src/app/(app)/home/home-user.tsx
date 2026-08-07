@@ -21,7 +21,8 @@ import { Button } from '@/components/ui/button';
 import { KpiCard } from '@/components/feature/dashboard/kpi-card';
 import { Panel } from '@/components/feature/dashboard/panel';
 import { StatusPill } from '@/components/feature/issue/pills';
-import { initials, greetingTod, fmtDateShort, relTime } from '@/lib/format';
+import { initials, greetingTod } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -47,6 +48,7 @@ function TaskRow({
   projectById: Map<string, { _id: string; name: string; color: string }>;
   onQuickDone: (id: string) => void;
 }) {
+  const f = useFormat();
   const proj = projectById.get(issue.projectId);
   const today = todayIso();
   let dueLabel: string | null = null;
@@ -60,7 +62,7 @@ function TaskRow({
       dueLabel = 'Today';
       dueCls = 'text-amber bg-[rgba(245,158,11,.12)] border-[rgba(245,158,11,.25)]';
     } else {
-      dueLabel = fmtDateShort(issue.dueDate);
+      dueLabel = f.dateShort(issue.dueDate);
     }
   }
   return (
@@ -220,6 +222,7 @@ interface Props {
 }
 
 export function UserDashboard({ user, overview, isLoading, projectById, onQuickDone }: Props) {
+  const f = useFormat();
   const router = useRouter();
   // Tier W list routes go straight to the slugged URL (ADR 0011). Entity
   // links (`/issues/<id>`) stay flat on purpose — the dashboard spans all
@@ -361,7 +364,7 @@ export function UserDashboard({ user, overview, isLoading, projectById, onQuickD
                 const chipTxt =
                   daysLeft === 0 ? 'Today'
                   : daysLeft === 1 ? 'Tmrw'
-                  : fmtDateShort(i.dueDate!);
+                  : f.dateShort(i.dueDate!);
                 return (
                   <Link
                     key={i._id}
@@ -424,7 +427,7 @@ export function UserDashboard({ user, overview, isLoading, projectById, onQuickD
                       <span className="text-text-muted">{a.action}</span>{' '}
                       <span className="text-text">{a.title}</span>
                     </div>
-                    <div className="text-[10.5px] text-text-muted mt-0.5">{relTime(a.createdAt)}</div>
+                    <div className="text-[10.5px] text-text-muted mt-0.5">{f.relative(a.createdAt)}</div>
                   </div>
                 </>
               );

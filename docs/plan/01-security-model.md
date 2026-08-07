@@ -125,6 +125,20 @@
       (policy រួមក្នុង `@prism/constants`)។ `frame-ancestors 'none'`,
       `X-Frame-Options: DENY`, `Permissions-Policy` នៅដដែល។
 
+      ⚠️ **កែសម្រាប់ apps/web 2026-08-07** — `frame-ancestors 'none'` +
+      `X-Frame-Options: DENY` ខុសសម្រាប់ web៖ split-pane editor បង្ហាញ route
+      ជិតខាងក្នុង `<iframe>` **same-origin** (`?chrome=0`) ដូច្នេះ browser
+      បដិសេធ frame នោះ ហើយគូរ error page ខ្លួនឯង — pane អានថា
+      "localhost refused to connect" ដែលមើលទៅដូច server ស្លាប់ ជាជាង header។
+      ឥឡូវ web ប្រើ `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN`
+      (cross-origin នៅតែបដិសេធ ដែលជាករណី clickjacking ពិត); admin និង space
+      នៅ `'none'`/`DENY` ដដែល ព្រោះវាគ្មាន iframe សោះ។ ចំណុចពីរបន្ថែម៖
+      `STATIC_SECURITY_HEADERS` ក្លាយជា function `staticSecurityHeaders({...})`
+      ព្រោះ `X-Frame-Options` ត្រូវតែស្របនឹង `frame-ancestors` — DENY ដែលភ្លេច
+      ទុក block frame ដោយខ្លួនឯង ទោះ CSP ត្រឹមត្រូវ; ហើយ `frame-src` ត្រូវ
+      ប្រកាសច្បាស់ ព្រោះវាធ្លាក់ទៅ `default-src 'self'` ដែល block PDF preview
+      (API origin / `blob:`) និង video embed (YouTube/Vimeo) ស្ងាត់ៗ។
+
       **អន្ទាក់ពីរដែលរកឃើញពេលបើក app ពិត — មិនលេចក្នុង typecheck ឬ build៖**
       (១) Next វិភាគ `config` ជា static; ទម្រង់ដែលវាអានមិនបាន **មិនមែន error**
       ទេ — វា**បោះបង់ middleware ទាំងស្រុង** (`middleware: {}` ក្នុង manifest,

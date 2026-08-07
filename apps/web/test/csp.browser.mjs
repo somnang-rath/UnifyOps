@@ -171,7 +171,9 @@ async function run() {
     const expected = {
       'object-src': "'none'",
       'base-uri': "'self'",
-      'frame-ancestors': "'none'",
+      // 'self', not 'none': the split-pane editor frames web's own routes.
+      // Cross-origin framers are still refused, which is the clickjacking case.
+      'frame-ancestors': "'self'",
       'form-action': "'self'",
     };
     for (const [directive, value] of Object.entries(expected)) {
@@ -179,6 +181,18 @@ async function run() {
       if (actual !== value) {
         throw new Error(`${directive} is "${actual}", expected "${value}"`);
       }
+    }
+  });
+
+  await check('web: X-Frame-Options agrees with frame-ancestors', async () => {
+    // The two are independent headers and browsers that honour XFO apply it
+    // regardless of the CSP. A leftover DENY here blocks the panes on its own,
+    // and the browser renders that as "localhost refused to connect" — a
+    // symptom that reads like a dead server, not a header.
+    const res = await web.goto(`${WEB}/login`, { waitUntil: 'domcontentloaded' });
+    const xfo = (await res.allHeaders())['x-frame-options'];
+    if (xfo !== 'SAMEORIGIN') {
+      throw new Error(`X-Frame-Options is "${xfo}", expected SAMEORIGIN`);
     }
   });
 
@@ -224,6 +238,40 @@ async function run() {
     // The inline pre-paint script sets data-theme. Blocked ⇒ attribute absent.
     const theme = await web.evaluate(() => document.documentElement.getAttribute('data-theme'));
     if (!theme) throw new Error('data-theme not set — the inline theme script was blocked');
+  });
+
+  await check('web: a same-origin route loads in an iframe (split panes work)', async () => {
+    // The split-pane editor renders any unregistered route as an <iframe> of
+    // itself with `?chrome=0`. Under `frame-ancestors 'none'` + XFO DENY the
+    // browser refuses that frame and paints its own error page, so the pane
+    // reads as "localhost refused to connect" with a perfectly healthy server.
+    // Framed by the page itself, exactly as the product does it, and framing
+    // the route it is already on: `next dev` compiles lazily, so a cold route
+    // here would time out on compilation and read as a framing failure.
+    const loaded = await web.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const frame = document.createElement('iframe');
+          frame.src = `${location.pathname}?chrome=0`;
+          const done = (value) => {
+            frame.remove();
+            resolve(value);
+          };
+          frame.onload = () => {
+            // A blocked frame still fires load, but commits an error page: no
+            // document we can read, and certainly none of Next's scripts.
+            try {
+              const doc = frame.contentDocument;
+              done(!!doc && doc.querySelectorAll('script').length > 0);
+            } catch {
+              done(false);
+            }
+          };
+          document.body.appendChild(frame);
+          setTimeout(() => done(false), 15000);
+        }),
+    );
+    if (!loaded) throw new Error('same-origin iframe did not load — framing is blocked');
   });
 
   await check('web: notes route loads its collab editor (live WS allowed)', async () => {

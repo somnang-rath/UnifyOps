@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronRight, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { Avatar, Badge, type BadgeProps } from '@prism/ui';
+import { useFormat, useT, type MessageKey } from '@prism/i18n';
 import { Button, IconButton } from '@/components/ui/button';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { ProgressBar } from '@/components/feature/planning/progress-bar';
@@ -15,23 +16,15 @@ import { cn } from '@/lib/utils';
 
 const STATUS_BADGE: Record<
   ModuleStatus,
-  { label: string; variant: NonNullable<BadgeProps['variant']> }
+  { labelKey: MessageKey; variant: NonNullable<BadgeProps['variant']> }
 > = {
-  backlog: { label: 'Backlog', variant: 'neutral' },
-  planned: { label: 'Planned', variant: 'outline' },
-  in_progress: { label: 'In progress', variant: 'accent' },
-  paused: { label: 'Paused', variant: 'warning' },
-  completed: { label: 'Completed', variant: 'success' },
-  cancelled: { label: 'Cancelled', variant: 'danger' },
+  backlog: { labelKey: 'modules.status.backlog', variant: 'neutral' },
+  planned: { labelKey: 'modules.status.planned', variant: 'outline' },
+  in_progress: { labelKey: 'modules.status.inProgress', variant: 'accent' },
+  paused: { labelKey: 'modules.status.paused', variant: 'warning' },
+  completed: { labelKey: 'modules.status.completed', variant: 'success' },
+  cancelled: { labelKey: 'modules.status.cancelled', variant: 'danger' },
 };
-
-const fmt = (iso: string | null) =>
-  iso
-    ? new Date(iso).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-      })
-    : null;
 
 interface Props {
   module: FeatureModule;
@@ -54,6 +47,9 @@ export function ModuleCard({
   onAddItems,
   onRemoveItem,
 }: Props) {
+  const f = useFormat();
+  const t = useT();
+  const fmt = (iso: string | null) => (iso ? f.dateShort(iso) : null);
   const [open, setOpen] = useState(false);
   // Fetch a module's items only once expanded — otherwise a project with many
   // modules fires one request per card on mount.
@@ -67,8 +63,8 @@ export function ModuleCard({
   // Either date can stand alone here, so build the label from what exists
   // rather than assuming a range.
   const dates = [
-    module.startDate && `From ${fmt(module.startDate)}`,
-    module.targetDate && `Target ${fmt(module.targetDate)}`,
+    module.startDate && t('modules.from', { date: fmt(module.startDate)! }),
+    module.targetDate && t('modules.target', { date: fmt(module.targetDate)! }),
   ].filter(Boolean) as string[];
 
   return (
@@ -92,7 +88,7 @@ export function ModuleCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-[14px] font-semibold truncate">{module.name}</h3>
-            <Badge variant={badge.variant}>{badge.label}</Badge>
+            <Badge variant={badge.variant}>{t(badge.labelKey)}</Badge>
           </div>
 
           {module.description && (
@@ -115,7 +111,7 @@ export function ModuleCard({
               </span>
             )}
             <span>
-              {completed}/{total} done
+              {t('cycles.done', { completed, total })}
             </span>
           </div>
 
@@ -140,7 +136,7 @@ export function ModuleCard({
             <SkeletonText lines={3} />
           ) : issues.length === 0 ? (
             <p className="text-[12.5px] text-text-muted py-2">
-              No work items in this module yet.
+              {t('modules.noItems')}
             </p>
           ) : (
             <ul className="flex flex-col gap-px mb-2">

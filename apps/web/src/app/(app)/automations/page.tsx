@@ -18,7 +18,7 @@ import { Select } from '@/components/ui/select';
 import { useAutomations, useAutomationMutations } from '@/hooks/use-automations';
 import { AU_TRIGGERS, AU_ACTIONS } from '@/schemas/automation';
 import type { Automation } from '@/schemas/automation';
-import { relTime } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 
 /* ── helpers ─────────────────────────────────────────────── */
@@ -290,6 +290,7 @@ function AutomationRow({
   onDelete: () => void;
   onToggle: () => void;
 }) {
+  const f = useFormat();
   return (
     <div
       className={cn(
@@ -347,7 +348,7 @@ function AutomationRow({
           {a.lastFired && (
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              {relTime(a.lastFired)}
+              {f.relative(a.lastFired)}
             </span>
           )}
         </div>
@@ -400,7 +401,7 @@ function AutomationRow({
             <Detail label="Times fired" value={String(a.timesFired)} />
             <Detail
               label="Last fired"
-              value={a.lastFired ? relTime(a.lastFired) : 'Never'}
+              value={a.lastFired ? f.relative(a.lastFired) : 'Never'}
             />
           </div>
         </div>

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Send, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { useUsers } from '@/hooks/use-users';
 import { useCommentMutations } from '@/hooks/use-workbook-comments';
@@ -29,6 +30,7 @@ export function CommentsPopover({
   y,
   onClose,
 }: Props) {
+  const formatTime = useFormatTime();
   const ref = useRef<HTMLDivElement>(null);
   const me = useAuthStore((s) => s.user);
   const { data: users = [] } = useUsers();
@@ -260,16 +262,19 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const now = Date.now();
-    const diff = (now - d.getTime()) / 1000;
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return d.toLocaleDateString();
-  } catch {
-    return '';
-  }
+/**
+ * Was a hand-written English ladder ('just now' / '5m ago' / a bare date).
+ * `Intl.RelativeTimeFormat` covers the whole range in every locale, so the
+ * date branch is gone too — a comment from last March now reads "8 mo. ago"
+ * rather than switching format partway down the thread.
+ */
+function useFormatTime(): (iso: string) => string {
+  const f = useFormat();
+  return (iso: string) => {
+    try {
+      return f.relative(iso);
+    } catch {
+      return '';
+    }
+  };
 }

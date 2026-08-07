@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, RefreshCcw } from 'lucide-react';
 import { EmptyState } from '@prism/ui';
+import { useT, type MessageKey } from '@prism/i18n';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
 import { SkeletonText } from '@/components/ui/skeleton';
@@ -24,14 +25,15 @@ import { useAuthStore } from '@/stores/auth-store';
  * then unscheduled ideas, and history last — `completed` only ever grows, so
  * anywhere else it would push the live cycle off-screen as the project ages.
  */
-const SECTIONS: { status: CycleStatus; label: string }[] = [
-  { status: 'current', label: 'Active' },
-  { status: 'upcoming', label: 'Upcoming' },
-  { status: 'draft', label: 'Drafts' },
-  { status: 'completed', label: 'Completed' },
+const SECTIONS: { status: CycleStatus; labelKey: MessageKey }[] = [
+  { status: 'current', labelKey: 'cycles.group.active' },
+  { status: 'upcoming', labelKey: 'cycles.group.upcoming' },
+  { status: 'draft', labelKey: 'cycles.group.drafts' },
+  { status: 'completed', labelKey: 'cycles.group.completed' },
 ];
 
 export default function ProjectCyclesPage() {
+  const t = useT();
   const { id: projectId } = useParams<{ id: string }>();
   const ws = useWorkspaceHref();
   const me = useAuthStore((s) => s.user);
@@ -90,7 +92,7 @@ export default function ProjectCyclesPage() {
       ) : cycles.length === 0 ? (
         <EmptyState
           icon={<RefreshCcw />}
-          label="No cycles yet"
+          label={t('cycles.empty')}
           hint="Create a cycle to time-box a set of work items and track progress against a start and end date."
           action={
             canWrite ? (
@@ -103,13 +105,13 @@ export default function ProjectCyclesPage() {
         />
       ) : (
         <div className="flex flex-col gap-6">
-          {SECTIONS.map(({ status, label }) => {
+          {SECTIONS.map(({ status, labelKey }) => {
             const list = grouped.get(status) ?? [];
             if (list.length === 0) return null;
             return (
               <section key={status}>
                 <h2 className="text-[11px] uppercase tracking-wide font-semibold text-text-muted mb-2">
-                  {label}
+                  {t(labelKey)}
                   <span className="ml-1.5 font-normal">{list.length}</span>
                 </h2>
                 <div className="flex flex-col gap-2">

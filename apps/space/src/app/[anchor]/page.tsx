@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
+import { LOCALE_HEADER, toLocale } from '@prism/i18n';
 import { getPublicPayload } from '@/lib/public-api';
 import { WikiArticle } from '@/components/wiki-article';
 import { SpaceIssuesPage } from '@/components/space-issues-page';
@@ -100,14 +102,20 @@ export default async function PublicPage({ params }: Params) {
   const payload = await getPublicPayload(params.anchor);
   if (!payload) notFound();
 
+  // These are server components, so there is no `useFormat()` to reach for —
+  // the locale the middleware resolved is threaded down as a prop instead. The
+  // *chrome* around the content is what gets localized; the published content
+  // itself is whatever language its author wrote it in (ADR 0016 §3.1).
+  const locale = toLocale(headers().get(LOCALE_HEADER));
+
   // Branch on the discriminated union (ADR 0012 §6). Unknown types → 404, so
   // an older space build degrades to "not found", never to a crash.
   switch (payload.type) {
     case 'wiki':
-      return <WikiArticle page={payload} />;
+      return <WikiArticle page={payload} locale={locale} />;
     case 'view':
     case 'project':
-      return <SpaceIssuesPage payload={payload} />;
+      return <SpaceIssuesPage payload={payload} locale={locale} />;
     default:
       notFound();
   }

@@ -3,7 +3,7 @@ import { CheckSquare, MessageSquare } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { MarkdownView } from '@/components/feature/issue/markdown-view';
-import { relTime } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@prism/ui/cn';
 import type { Issue, IssueTodo } from '@/schemas/issue';
 import type { DirectoryUser } from '@/schemas/user';
@@ -192,6 +192,7 @@ export function CommentThread({
   comments: NonNullable<Issue['comments']>;
   users: DirectoryUser[];
 }) {
+  const f = useFormat();
   if (comments.length === 0) {
     return (
       <div className="flex flex-col items-center py-8 gap-2 text-center">
@@ -220,7 +221,7 @@ export function CommentThread({
                     {u?.name ?? '?'}
                   </span>
                   <span className="text-[11px] text-text-muted">
-                    {relTime(c.createdAt)}
+                    {f.relative(c.createdAt)}
                   </span>
                 </div>
                 <div className="text-[13px]">

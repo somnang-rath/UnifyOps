@@ -22,7 +22,7 @@ import {
   useRenameConversation,
 } from '@/hooks/use-assistant';
 import { useAssistantStore } from '@/stores/assistant-store';
-import { relTime } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 
 const QUICK_PROMPTS = [
@@ -262,6 +262,7 @@ function ConversationList({
   activeId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const f = useFormat();
   const { data: conversations, isLoading } = useConversations();
   const rename = useRenameConversation();
   const del = useDeleteConversation();
@@ -327,7 +328,7 @@ function ConversationList({
                   {c.title}
                 </span>
                 <span className="block text-[10.5px] text-text-muted">
-                  {relTime(c.updatedAt)}
+                  {f.relative(c.updatedAt)}
                 </span>
               </button>
             )}

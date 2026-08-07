@@ -2,7 +2,7 @@
 
 > **Status: កំពុងអនុវត្ត។** (បន្ទាត់នេះធ្លាប់សរសេរថា "DRAFT — មិនទាន់សរសេរកូដទេ"
 > រហូតដល់ 2026-08-06 ខណៈ Tier 0 ទាំង ៤ និង Tier 1 ផ្លូវ A បានបិទរួចហើយ។)
-> Tier 0 ✅ · Tier 1 ផ្លូវ A (AI) ✅ · Tier 1 ផ្លូវ B (ខ្មែរ): 3a ✅, នៅសល់ 3b/3c/3d។
+> Tier 0 ✅ · Tier 1 ផ្លូវ A (AI) ✅ · Tier 1 ផ្លូវ B (ខ្មែរ) ✅ — 3a/3b/3c/3d បិទទាំងអស់ 2026-08-06។
 > ឯកសារ 03 សួរថា *"ខ្វះអ្វីធៀបនឹង Plane?"* — ឯកសារនេះសួរសំណួរផ្សេង៖
 > *"ហេតុអ្វីគេត្រូវជ្រើស Prism ជំនួស Plane/Linear/Jira/ClickUp?"*
 
@@ -298,9 +298,9 @@ summarise តែ payload ដែល scoped រួច មិន call tool។ (៦)
 | # | អ្វី | ចំណាំ | Effort |
 | - | ---- | ----- | ------ |
 | 3a | ✅ **បិទ 2026-08-06** — `packages/i18n` + locale switch + persist | មើល §3.5 | M |
-| 3b | បកប្រែ navigation + screen ចម្បង (issues/projects/cycles) | បកបន្តិចម្ដងៗបាន។ **កែ**: `packages/ui` មិនត្រូវការបកប្រែទេ — វាទទួល text ជា props រួចហើយ (ADR 0016 §2.5) | L |
-| 3c | ថ្ងៃឈប់សម្រាកខ្មែរក្នុង calendar + cycle capacity | ប៉ះពាល់ `cycles` rollup + `/[workspaceSlug]/calendar` | S |
-| 3d | ទម្រង់កាលបរិច្ឆេទ/លេខខ្មែរ, តម្រៀបឈ្មោះខ្មែរ | `apps/space` មាន font ខ្មែរពិតរួចហើយ (មើល memory: public wiki render) | S |
+| 3b | ✅ **បិទ 2026-08-06** — បកប្រែ nav + issues/projects/cycles/modules | មើល §3.6 | L |
+| 3c | ✅ **បិទ 2026-08-06** — ថ្ងៃឈប់សម្រាកខ្មែរ + cycle capacity | មើល §3.6 | S |
+| 3d | ✅ **បិទ 2026-08-06** — seed ទម្រង់ + តម្រៀបឈ្មោះ + ESLint guard | មើល §3.6 | S |
 
 ### 3.4 ត្រូវការ ADR — ✅ **សរសេររួច 2026-08-06**: `docs/adr/0016-i18n-and-khmer-localization.md`
 
@@ -335,6 +335,52 @@ Suite ថ្មី `pnpm --filter web test:i18n` **9/9** (cookie ឆ្លង re
 ពី server · computed font-family · device ថ្មីទទួល `User.locale` · space គោរព cookie)។
 `km` ខ្វះ key = **compile error** (បញ្ជាក់ដោយលុប key មួយមើល)។
 
+### 3.6 អ្វីដែលបានសាងពិត (3b/3c/3d, 2026-08-06)
+
+**3d — seed ទម្រង់។** `apps/web/src/lib/format.ts` **លុបចោល** `fmtDate` ·
+`fmtDateShort` · `monthLabel` · `relTime` មិនទុកជា wrapper ទេ — helper កាលបរិច្ឆេទ
+ដែលគ្មាន argument locale អាច render បានតែអង់គ្លេស ហើយបើទុកឈ្មោះទាំងនោះ call site
+ទាំង ៩៣ នឹង compile ដដែល តែនៅជាអង់គ្លេសស្ងាត់ៗ។ លុបចោល = compiler ក្លាយជាបញ្ជីការងារ។
+
+**មិនមែន `toLocale*` គ្រប់កន្លែងជា locale call ទេ។** ESLint rule ថ្មីលើកលែង ៣ ក្រុម
+(`apps/web/.eslintrc.js`, ប្ដូរពី JSON ដើម្បីឲ្យការលើកលែងពន្យល់ខ្លួនឯងបាន)៖ ទម្រង់លេខ
+spreadsheet + formula engine (cell ដែលម្ចាស់កំណត់ `1,234.56` ត្រូវដូចគ្នាសម្រាប់អ្នកមើល
+គ្រប់រូប) · report `element-*` (កាន់ format code ចូល document ដែល export/email) ·
+kiosk report display (ខ្មែរដោយចេតនា)។ ករណីទី ៤ មិនមែនលើកលែងទេ — ជា **bug**៖
+`timeline/page.tsx` ប្រើ `toLocaleDateString('en-CA')` ៧ ដង ជា **grouping key**។
+`dateKey()` មានសម្រាប់រឿងនេះ។
+
+**រកឃើញសំខាន់បំផុត៖ Chromium គ្មានទិន្នន័យ locale `km` ទេ។**
+`Intl.DateTimeFormat.supportedLocalesOf(['km'])` ទទេ ហើយ `km-KH` ធ្លាក់ទៅ `en-US`
+ស្ងាត់ៗ — រាល់កាលបរិច្ឆេទលើអេក្រង់ខ្មែរ render ជា "Aug 6, 2026"។ ថៃ/បារាំង/ជប៉ុន/វៀតណាម
+ដំណើរការទាំងអស់; មានតែខ្មែរទេដែលអត់។ **Node (full ICU) វិញមាន** — ហេតុនេះទើបគ្មានអ្វី
+ចាប់បានៈ test ខាង server ឬ unit test នឹងបោះពុម្ពខ្មែរល្អឥតខ្ចោះ ហើយបញ្ជាក់អ្វីមិនបាន។
+`@prism/i18n` ឥឡូវកាន់ឈ្មោះខែ ១២ + ឈ្មោះថ្ងៃ ៧ ដោយខ្លួនឯង ប្រើតែពេល runtime គ្មាន
+ទិន្នន័យខ្មែរ — ថោកជាង polyfill `@formatjs` ដែល ADR ចង់ជៀស។ `Intl.Collator('km')`
+ក៏រងផលដែរ តែ **មិនបានជួសទេ**: វាធ្លាក់ទៅ root collation ដែលតម្រៀបខ្មែរមិនល្អឥតខ្ចោះ
+ជាជាងខុស ហើយសរសេរ collation ខ្មែរដោយដៃជាការប្ដេជ្ញាធំជាងនាម ១៩ ពាក្យឆ្ងាយ។
+
+**ការសន្មតរបស់ §2.7 អំពីតម្រៀបឈ្មោះខុស។** វាថា member list / assignee picker /
+mention menu "តម្រៀបដោយ `localeCompare` ធម្មតា"។ តាមពិត **វាមិនតម្រៀបសោះ** — បញ្ជី
+សមាជិកគម្រោង render តាមលំដាប់ដែលគេត្រូវបានបន្ថែម។ `compareNames` ឥឡូវប្រើនៅទីនោះ
+និងនៅកន្លែងតម្រៀបឈ្មោះដែលមានស្រាប់ (files · folders · notes · projects)។
+
+**3c — ថ្ងៃឈប់សម្រាក។** `packages/constants/src/khmer-holidays.ts` ជាតារាង keyed
+តាមឆ្នាំ មាន `status` ក្នុងមួយឆ្នាំ ព្រោះពាក់កណ្ដាលនៃថ្ងៃឈប់សម្រាកកម្ពុជាតាមចន្ទគតិ
+ហើយកំណត់ដោយអនុក្រឹត្យប្រចាំឆ្នាំ — គ្មានរូបមន្តទេ។ `workingDaysBetween` ត្រឡប់
+`{ workingDays, calendarDays, holidaysLost, status }` ហើយឆ្នាំដែលគ្មានក្នុងតារាង
+រាយការណ៍ `'unknown'` ជំនួសលេខដែលមើលទៅច្បាស់ — ព្រោះចាត់ទុក "គ្មានទិន្នន័យ" ជា
+"គ្មានថ្ងៃឈប់" ធ្វើឲ្យក្រុមប្ដេជ្ញាលើសរហូតដល់ ៣ សប្ដាហ៍ក្នុងមួយឆ្នាំ។ ជួរដែលឆ្លងឆ្នាំដឹង
+និងឆ្នាំមិនដឹង យក status ខ្សោយជាងគេ មិនមែនមធ្យមភាគ។ ២០២៦ ជា `provisional`៖
+កាលបរិច្ឆេទថេរច្បាស់ តែកាលបរិច្ឆេទចន្ទគតិត្រូវផ្ទៀងនឹងអនុក្រឹត្យសិន។ ករណីជម្រុញត្រូវបាន
+assert៖ sprint ២ សប្ដាហ៍ឆ្លងចូលឆ្នាំខ្មែរ = **៧ ថ្ងៃធ្វើការ មិនមែន ១០**។
+
+**Suite ថ្មី/ពង្រីក។** `pnpm --filter web test:i18n` 9 → **14** ·
+`pnpm --filter @prism/constants test` **11** (pure function, គ្មាន browser/DB)។
+មេរៀន test មួយ៖ ជំនាន់ដំបូងនៃ check កាលបរិច្ឆេទ assert ថា "ខ្មែរលេចលើទំព័រប្រតិទិន"
+ដែល**ជាប់** ខណៈរាល់កាលបរិច្ឆេទនៅជាអង់គ្លេស — ព្រោះ nav ជាខ្មែររួចហើយ។ Assert លើ
+element ជាក់លាក់ទើបរកឃើញ ICU ខ្វះ។
+
 ---
 
 ## 4. Tier 2 — តម្លៃច្បាស់ តែមិនមែន moat
@@ -363,7 +409,7 @@ Tier 0 ────────────────────────�
 
 Tier 1 ────────────────────────────────  ផ្លូវ A ចប់ហើយ
   ផ្លូវ A (AI):     ADR 0015 → 2c → 2d → 2a → 2b  ✅ បិទ 2026-07-31 (18/18)
-  ផ្លូវ B (ខ្មែរ):   ADR 0016 ✅ → 3a ✅ (2026-08-06) → 3d → 3c → 3b  ← កំពុងធ្វើ
+  ផ្លូវ B (ខ្មែរ):   ADR 0016 ✅ → 3a ✅ → 3d ✅ → 3c ✅ → 3b ✅ (ទាំងអស់ 2026-08-06)
 
 Tier 2 ────────────────────────────────  ក្រោយពេល moat មួយចប់ពិត
   4a → 4f → 4c → 4b → 4d → 4e

@@ -20,6 +20,7 @@ import {
 } from "@/hooks/use-notes"
 import { Confirm } from "@/components/ui/confirm"
 import { cn } from "@/lib/utils"
+import { useFormat } from "@prism/i18n"
 import { useAuthStore } from "@/stores/auth-store"
 import type { AccessLevel, Note, NoteFolder } from "@/schemas/note"
 import { TextPrompt } from "./text-prompt"
@@ -56,6 +57,9 @@ const descendantFolderIds = (folders: NoteFolder[], rootId: string) => {
 }
 
 export function NoteTree({ activeId, onPick, onNewNote, onNewFolder }: Props) {
+  // Khmer does not sort like Latin text, so folder/file names go through
+  // Intl.Collator for the active locale rather than a bare localeCompare.
+  const { compareNames: cmpNames } = useFormat()
   const { data: notes = [] } = useNotesList()
   const { data: folders = [] } = useNoteFolders()
   const m = useNoteMutations()
@@ -148,7 +152,7 @@ export function NoteTree({ activeId, onPick, onNewNote, onNewFolder }: Props) {
         }
         return f.parentId === parentId
       })
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => cmpNames(a.name, b.name))
     const childNotes =
       parentId === null
         ? notes

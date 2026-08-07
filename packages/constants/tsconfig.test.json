@@ -1,0 +1,15 @@
+{
+  // The package's own tsconfig targets a bundler (`module: esnext`,
+  // `moduleResolution: bundler`) because that is how web/admin/space consume
+  // it. `ts-node` runs under Node's CommonJS loader and cannot use that, so the
+  // test suite gets its own config rather than the app-facing one being bent to
+  // suit it — bending it would change how three Next apps resolve this package.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "isolatedModules": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

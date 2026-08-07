@@ -16,7 +16,7 @@ import { useProjects } from '@/hooks/use-projects';
 import { useUsers } from '@/hooks/use-users';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
-import { fmtDate, relTime } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { BranchChip } from '@/components/feature/mr/branch-chip';
 import { MRStatusPill } from '@/components/feature/issue/pills';
 import { MRFormSchema, type MergeRequest, type MRFormInput } from '@/schemas/mr';
@@ -30,6 +30,7 @@ const ICO = {
 } as const;
 
 export default function ApprovalsPage() {
+  const f = useFormat();
   const router = useRouter();
   const params = useSearchParams();
 
@@ -176,7 +177,7 @@ export default function ApprovalsPage() {
                     <Sep />
                     by {author?.name ?? '?'}
                     <Sep />
-                    {relTime(mr.createdAt)}
+                    {f.relative(mr.createdAt)}
                   </div>
                 </div>
                 <div
@@ -373,6 +374,7 @@ function DetailMRModal({
   mr: MergeRequest | null;
   onClose: () => void;
 }) {
+  const f = useFormat();
   const me = useAuthStore((s) => s.user);
   const { data: users = [] } = useUsers();
   const { data: projects = [] } = useProjects();
@@ -471,9 +473,9 @@ function DetailMRModal({
               <span className="text-text-muted">None</span>
             )}
           </Side>
-          <Side label="Opened">{fmtDate(mr.createdAt)}</Side>
+          <Side label="Opened">{f.date(mr.createdAt)}</Side>
           {mr.decidedAt && (
-            <Side label="Decided">{fmtDate(mr.decidedAt)}</Side>
+            <Side label="Decided">{f.date(mr.decidedAt)}</Side>
           )}
         </aside>
       </div>

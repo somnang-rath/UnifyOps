@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
+  Briefcase,
   CalendarDays,
   ChevronRight,
   Pencil,
@@ -10,6 +11,15 @@ import {
   X,
 } from 'lucide-react';
 import { Badge } from '@prism/ui';
+import {
+  useFormat,
+  useLocale,
+  useT,
+  type Locale,
+  type MessageKey,
+  type Translator,
+} from '@prism/i18n';
+import { workingDaysBetween, type WorkingDaysResult } from '@prism/constants';
 import { Button, IconButton } from '@/components/ui/button';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { ProgressBar } from '@/components/feature/planning/progress-bar';
@@ -18,21 +28,37 @@ import { cn } from '@/lib/utils';
 
 const STATUS_BADGE: Record<
   CycleStatus,
-  { label: string; variant: 'neutral' | 'accent' | 'success' | 'warning' }
+  { labelKey: MessageKey; variant: 'neutral' | 'accent' | 'success' | 'warning' }
 > = {
-  draft: { label: 'Draft', variant: 'neutral' },
-  upcoming: { label: 'Upcoming', variant: 'warning' },
-  current: { label: 'Active', variant: 'accent' },
-  completed: { label: 'Completed', variant: 'success' },
+  draft: { labelKey: 'cycles.status.draft', variant: 'neutral' },
+  upcoming: { labelKey: 'cycles.status.upcoming', variant: 'warning' },
+  current: { labelKey: 'cycles.status.current', variant: 'accent' },
+  completed: { labelKey: 'cycles.status.completed', variant: 'success' },
 };
 
-const fmt = (iso: string | null) =>
-  iso
-    ? new Date(iso).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-      })
-    : null;
+/**
+ * Tooltip for the capacity chip — the place the *reason* lives.
+ *
+ * An `unknown` year is the case worth wording carefully: the number shown is
+ * not merely unverified, it is knowably too high, and a planner needs to hear
+ * that rather than "data missing".
+ */
+function capacityTitle(
+  c: WorkingDaysResult,
+  t: Translator,
+  locale: Locale,
+): string {
+  // Holiday names come from the table in the reader's language, not from a
+  // message file — they are data, and `km` is the primary spelling.
+  const names = c.holidaysLost.map((h) => h[locale]).join(', ');
+  const parts = [
+    t('capacity.detail', { working: c.workingDays, calendar: c.calendarDays }),
+  ];
+  if (names) parts.push(t('capacity.detail.holidays', { names }));
+  if (c.status === 'unknown') parts.push(t('capacity.detail.unknownYear'));
+  if (c.status === 'provisional') parts.push(t('capacity.detail.provisional'));
+  return parts.join('. ');
+}
 
 /** Whole days from today to `iso`, floor'd. Negative once the date has passed. */
 const daysUntil = (iso: string) =>
@@ -58,6 +84,10 @@ export function CycleCard({
   onAddItems,
   onRemoveItem,
 }: Props) {
+  const f = useFormat();
+  const t = useT();
+  const locale = useLocale();
+  const fmt = (iso: string | null) => (iso ? f.dateShort(iso) : null);
   const [open, setOpen] = useState(false);
   // Only fetch a cycle's items once it has actually been expanded — a project
   // with twenty sprints would otherwise fire twenty requests on mount.
@@ -68,11 +98,31 @@ export function CycleCard({
   const range =
     cycle.startDate && cycle.endDate
       ? `${fmt(cycle.startDate)} – ${fmt(cycle.endDate)}`
-      : 'Not scheduled';
+      : t('cycles.notScheduled');
 
   // Only worth saying while the clock is actually running on the cycle.
   const remaining =
     cycle.status === 'current' && cycle.endDate ? daysUntil(cycle.endDate) : null;
+
+  /**
+   * Real capacity: weekdays in the cycle, minus Cambodian public holidays
+   * (ADR 0016 §2.7). A two-week sprint over Khmer New Year has seven working
+   * days, not ten, and a team that plans against ten will miss.
+   *
+   * `status` is carried through deliberately. When the holiday table has no
+   * entry for the year the cycle falls in, `workingDays` is an *over-estimate*,
+   * and the honest thing is to say so rather than print a confident number.
+   */
+  const capacity = useMemo(
+    () =>
+      cycle.startDate && cycle.endDate
+        ? workingDaysBetween(
+            cycle.startDate.slice(0, 10),
+            cycle.endDate.slice(0, 10),
+          )
+        : null,
+    [cycle.startDate, cycle.endDate],
+  );
 
   return (
     <div className="border border-border rounded-sm bg-bg overflow-hidden">
@@ -95,7 +145,7 @@ export function CycleCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-[14px] font-semibold truncate">{cycle.name}</h3>
-            <Badge variant={badge.variant}>{badge.label}</Badge>
+            <Badge variant={badge.variant}>{t(badge.labelKey)}</Badge>
           </div>
 
           {cycle.description && (
@@ -112,13 +162,28 @@ export function CycleCard({
             {remaining !== null && (
               <span>
                 {remaining <= 0
-                  ? 'Ends today'
-                  : `${remaining} day${remaining === 1 ? '' : 's'} left`}
+                  ? t('cycles.endsToday')
+                  : t('cycles.daysLeft', { count: remaining })}
               </span>
             )}
-            <span>
-              {completed}/{total} done
-            </span>
+            <span>{t('cycles.done', { completed, total })}</span>
+            {capacity && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1',
+                  capacity.status !== 'official' && 'text-amber',
+                )}
+                title={capacityTitle(capacity, t, locale)}
+              >
+                <Briefcase className="w-3 h-3" />
+                {t('capacity.workingDays', { count: capacity.workingDays })}
+                {capacity.status === 'unknown' && ` (${t('capacity.approx')})`}
+                {capacity.holidaysLost.length > 0 &&
+                  ` · ${t('capacity.holidaysLost', {
+                    count: capacity.holidaysLost.length,
+                  })}`}
+              </span>
+            )}
           </div>
 
           <ProgressBar completed={completed} total={total} className="mt-2" />
@@ -142,7 +207,7 @@ export function CycleCard({
             <SkeletonText lines={3} />
           ) : issues.length === 0 ? (
             <p className="text-[12.5px] text-text-muted py-2">
-              No work items in this cycle yet.
+              {t('cycles.noItems')}
             </p>
           ) : (
             <ul className="flex flex-col gap-px mb-2">

@@ -12,7 +12,7 @@ import {
   useWorkbookMutations,
   useWorkbooks,
 } from '@/hooks/use-workbooks';
-import { fmtDate } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import type { WorkbookSummary } from '@/schemas/workbook';
 
@@ -314,6 +314,7 @@ function WorkbookGrid({
   onDownload: (w: WorkbookSummary) => void;
   isOwned: boolean;
 }) {
+  const f = useFormat();
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -347,7 +348,7 @@ function WorkbookGrid({
               <div className="flex items-start justify-between mb-2">
                 <FileSpreadsheet className="w-5 h-5 text-[#0f9d58]" />
                 <span className="text-[10px] text-text-muted">
-                  {fmtDate(w.updatedAt)}
+                  {f.date(w.updatedAt)}
                 </span>
               </div>
             </button>

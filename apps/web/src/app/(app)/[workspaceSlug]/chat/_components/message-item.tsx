@@ -9,16 +9,10 @@ import {
 } from '@/hooks/use-chat';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import type { MessageView } from '@/schemas/chat';
 
 const QUICK_EMOJI = ['👍', '❤️', '😄', '🎉', '👀'];
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export function MessageItem({
   message,
@@ -29,6 +23,7 @@ export function MessageItem({
   channelId: string;
   grouped: boolean;
 }) {
+  const f = useFormat();
   const meId = useAuthStore((s) => s.user?.id);
   const edit = useEditMessage(channelId);
   const del = useDeleteMessage(channelId);
@@ -77,7 +72,7 @@ export function MessageItem({
               </span>
             )}
             <span className="text-[11px] text-text-muted">
-              {fmtTime(message.createdAt)}
+              {f.time(message.createdAt)}
             </span>
           </div>
         )}

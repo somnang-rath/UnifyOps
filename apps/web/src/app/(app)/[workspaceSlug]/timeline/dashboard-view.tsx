@@ -1,6 +1,7 @@
 'use client';
 import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import { Avatar } from '@/components/ui/avatar';
 import type { Project } from '@/schemas/project';
 import type { ActivityItem, ActivityActor } from '@/hooks/use-activity';
@@ -38,11 +39,6 @@ const projAccent = (hex?: string) => hex ?? '#6366f1';
 
 // ─── SVG utilities ────────────────────────────────────────────────────────────
 
-function fmtDateShort(ms: number) {
-  const d = new Date(ms);
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`;
-}
-
 // ─── Chart card wrapper ───────────────────────────────────────────────────────
 
 function ChartCard({ title, children, className }: {
@@ -63,6 +59,8 @@ function ChartCard({ title, children, className }: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function GanttTimeline({ stats }: { stats: ProjectStat[] }) {
+  // Was a hardcoded MM/DD/YY — American order, in an app whose market is not.
+  const f = useFormat();
   const valid = stats.filter((s) => s.firstMs !== null && s.lastMs !== null);
   if (valid.length === 0) return <EmptyChart label="No timeline data" />;
 
@@ -106,7 +104,7 @@ function GanttTimeline({ stats }: { stats: ProjectStat[] }) {
       {ticks.map((t, i) => (
         <text key={i} x={t.x} y={TICK_H - 6} textAnchor="middle"
           fontSize={9} fill="var(--text-muted)" fontFamily="monospace">
-          {fmtDateShort(t.ms)}
+          {f.dateShort(t.ms)}
         </text>
       ))}
 

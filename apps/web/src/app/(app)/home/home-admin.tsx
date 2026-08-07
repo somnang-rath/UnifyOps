@@ -16,7 +16,8 @@ import type { AuthUser } from '@/schemas/auth';
 import type { AdminTeamStat, DashboardOverview } from '@/schemas/dashboard';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { initials, greetingTod, relTime } from '@/lib/format';
+import { initials, greetingTod } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 
 // ── System KPI card ───────────────────────────────────────────────────────────
@@ -237,6 +238,7 @@ interface Props {
 
 export function AdminDashboard({ user, overview, isLoading }: Props) {
   const router = useRouter();
+  const f = useFormat();
 
   if (isLoading && !overview) return <PageSkeleton />;
 
@@ -424,7 +426,7 @@ export function AdminDashboard({ user, overview, isLoading }: Props) {
                       <span className="text-text-muted">{a.action}</span>{' '}
                       <span className="text-text">{a.title}</span>
                     </div>
-                    <div className="text-[10.5px] text-text-muted mt-0.5">{relTime(a.createdAt)}</div>
+                    <div className="text-[10.5px] text-text-muted mt-0.5">{f.relative(a.createdAt)}</div>
                   </div>
                 </>
               );

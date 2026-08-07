@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { fmtDateShort } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 
 interface TrendChartProps {
   data: { weekStart: string; created: number; completed: number }[];
@@ -26,10 +26,6 @@ const TT_STYLE = {
   boxShadow: '0 4px 12px rgba(0,0,0,.08)',
 };
 
-const fmtWeek = (iso: string) => fmtDateShort(iso);
-const fmtWeekLong = (label: React.ReactNode) =>
-  typeof label === 'string' ? `Week of ${fmtDateShort(label)}` : label;
-
 /**
  * Grouped weekly created-vs-completed bars — the only recharts on the page.
  * Bars, not lines: they stay legible with 1–2 data points.
@@ -44,6 +40,13 @@ function TrendChartInner({ data }: TrendChartProps) {
   // All-zero trend: pin a floor domain so the chart doesn't collapse onto the
   // axis, and caption it — the zero baseline itself is the information.
   const allZero = data.every((w) => w.created === 0 && w.completed === 0);
+
+  // Bound to the locale, so these have to live inside the component rather than
+  // as the module-level consts they used to be.
+  const f = useFormat();
+  const fmtWeek = (iso: string) => f.dateShort(iso);
+  const fmtWeekLong = (label: React.ReactNode) =>
+    typeof label === 'string' ? `Week of ${f.dateShort(label)}` : label;
 
   return (
     <div>

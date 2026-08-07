@@ -33,39 +33,44 @@ import {
   ISSUE_TYPES,
   type Issue,
 } from '@/schemas/issue';
-import { fmtDateShort, relTime } from '@/lib/format';
+import { useFormat, useT, type MessageKey, type Translator } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import { BulkBar } from './_components/bulk-bar';
 import { ViewsBar } from './_components/views-bar';
 import { useView, type SavedView } from '@/hooks/use-views';
 
 type Tab = 'open' | 'closed' | 'all';
-const TYPE_OPTS = [
-  { value: '', label: 'All types' },
-  ...ISSUE_TYPES.map((t) => ({
-    value: t,
-    label: t[0].toUpperCase() + t.slice(1),
+/*
+ * These were module-level consts with English labels baked in. They are built
+ * from the translator now, which means they have to be built *inside* the
+ * component — a `const` evaluated at import time cannot see the locale.
+ */
+const typeOpts = (t: Translator) => [
+  { value: '', label: t('issues.filter.allTypes') },
+  ...ISSUE_TYPES.map((ty) => ({
+    value: ty,
+    label: t(`issue.type.${ty}` as MessageKey),
   })),
 ];
-const PRIO_OPTS = [
-  { value: '', label: 'Any priority' },
+const prioOpts = (t: Translator) => [
+  { value: '', label: t('issues.filter.anyPriority') },
   ...ISSUE_PRIORITIES.map((p) => ({
     value: p,
-    label: p[0].toUpperCase() + p.slice(1),
+    label: t(`issue.priority.${p}` as MessageKey),
   })),
 ];
-const SORT_OPTS = [
-  { value: 'created:desc', label: 'Newest' },
-  { value: 'created:asc', label: 'Oldest' },
-  { value: 'priority:desc', label: 'Priority' },
-  { value: 'dueDate:asc', label: 'Due date' },
+const sortOpts = (t: Translator) => [
+  { value: 'created:desc', label: t('issues.sort.newest') },
+  { value: 'created:asc', label: t('issues.sort.oldest') },
+  { value: 'priority:desc', label: t('issues.group.priority') },
+  { value: 'dueDate:asc', label: t('issues.sort.dueDate') },
 ];
-const GROUP_OPTS = [
-  { value: '', label: 'No grouping' },
-  { value: 'status', label: 'Group: status' },
-  { value: 'priority', label: 'Group: priority' },
-  { value: 'project', label: 'Group: project' },
-  { value: 'assignee', label: 'Group: assignee' },
+const groupOpts = (t: Translator) => [
+  { value: '', label: t('issues.group.none') },
+  { value: 'status', label: t('issues.group.status') },
+  { value: 'priority', label: t('issues.group.priorityBy') },
+  { value: 'project', label: t('issues.group.project') },
+  { value: 'assignee', label: t('issues.group.assignee') },
 ];
 const PRIORITY_ORDER: Record<string, number> = {
   critical: 0,
@@ -75,6 +80,8 @@ const PRIORITY_ORDER: Record<string, number> = {
 };
 
 export default function IssuesPage() {
+  const f = useFormat();
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   // Peek/modal URL writes are relative to the current pathname, never a
@@ -111,17 +118,21 @@ export default function IssuesPage() {
   const applyView = (v: SavedView) => {
     // filters can be absent: Mongoose `minimize` drops an empty {} at save,
     // so an API-created view with no filters loads without the field.
-    const f = (v.filters ?? {}) as {
+    const filters = (v.filters ?? {}) as {
       status?: string;
       type?: string;
       priority?: string;
       q?: string;
     };
-    const t = f.status;
-    setTab(t === 'open' || t === 'closed' || t === 'all' ? t : 'open');
-    setType(f.type ?? '');
-    setPriority(f.priority ?? '');
-    setQ(f.q ?? '');
+    const status = filters.status;
+    setTab(
+      status === 'open' || status === 'closed' || status === 'all'
+        ? status
+        : 'open',
+    );
+    setType(filters.type ?? '');
+    setPriority(filters.priority ?? '');
+    setQ(filters.q ?? '');
     setProjectId(v.projectId ?? '');
     setSortBy(v.sortBy || 'created:desc');
     setGroupBy(v.groupBy ?? '');
@@ -230,12 +241,12 @@ export default function IssuesPage() {
           return i.priority;
         case 'project':
           return i.projectId
-            ? (projectMap.get(i.projectId)?.name ?? 'Unknown project')
-            : 'No project';
+            ? (projectMap.get(i.projectId)?.name ?? t('issues.unknownProject'))
+            : t('issues.noProject');
         case 'assignee':
           return i.assigneeId
-            ? (userMap.get(i.assigneeId)?.name ?? 'Unknown')
-            : 'Unassigned';
+            ? (userMap.get(i.assigneeId)?.name ?? t('issues.unknownUser'))
+            : t('issues.unassigned');
         default:
           return 'All';
       }
@@ -324,7 +335,7 @@ export default function IssuesPage() {
       <div className="flex items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-[24px] font-bold tracking-[-.02em] leading-[1.2]">
-            Tasks
+            {t('issues.title')}
           </h1>
           <p className="text-[13px] text-text-muted mt-1">
             Track bugs, tasks, and features
@@ -334,13 +345,13 @@ export default function IssuesPage() {
           <Button
             variant="outline"
             onClick={() => setImporting(true)}
-            aria-label="Import work items from CSV"
+            aria-label={t('issues.importAria')}
           >
             <Upload className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Import</span>
+            <span className="hidden md:inline">{t('issues.import')}</span>
           </Button>
           <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus className="w-3.5 h-3.5" /> New task
+            <Plus className="w-3.5 h-3.5" /> {t('issues.newTask')}
           </Button>
         </div>
       </div>
@@ -356,9 +367,9 @@ export default function IssuesPage() {
           value={tab}
           onChange={touched(setTab)}
           items={[
-            { value: 'open', label: 'Open', count: data?.totals.open },
-            { value: 'closed', label: 'Closed', count: data?.totals.closed },
-            { value: 'all', label: 'All', count: data?.totals.all },
+            { value: 'open', label: t('issues.filter.open'), count: data?.totals.open },
+            { value: 'closed', label: t('issues.filter.closed'), count: data?.totals.closed },
+            { value: 'all', label: t('issues.tab.all'), count: data?.totals.all },
           ]}
         />
         <FilterSpacer />
@@ -367,8 +378,8 @@ export default function IssuesPage() {
           icon={<Search />}
           value={q}
           onChange={(e) => touched(setQ)(e.target.value)}
-          placeholder="Search…"
-          aria-label="Search tasks"
+          placeholder={t('issues.search')}
+          aria-label={t('issues.searchAria')}
           className="w-[220px]"
         />
 
@@ -377,7 +388,7 @@ export default function IssuesPage() {
           value={projectId}
           onValueChange={touched(setProjectId)}
           options={[
-            { value: '', label: 'All projects' },
+            { value: '', label: t('issues.filter.allProjects') },
             ...projects.map((p) => ({ value: p._id, label: p.name })),
           ]}
         />
@@ -385,32 +396,32 @@ export default function IssuesPage() {
           inline
           value={type}
           onValueChange={touched(setType)}
-          options={TYPE_OPTS}
+          options={typeOpts(t)}
         />
         <Select
           inline
           value={priority}
           onValueChange={touched(setPriority)}
-          options={PRIO_OPTS}
+          options={prioOpts(t)}
         />
         <Select
           inline
           value={sortBy}
           onValueChange={touched(setSortBy)}
-          options={SORT_OPTS}
-          aria-label="Sort"
+          options={sortOpts(t)}
+          aria-label={t('issues.sort.aria')}
         />
         <Select
           inline
           value={groupBy}
           onValueChange={touched(setGroupBy)}
-          options={GROUP_OPTS}
-          aria-label="Group"
+          options={groupOpts(t)}
+          aria-label={t('issues.group.aria')}
         />
       </FilterBar>
 
       {isLoading && !data ? (
-        <div className="text-text-muted text-[13px]">Loading…</div>
+        <div className="text-text-muted text-[13px]">{t('chrome.loading')}</div>
       ) : !data || data.items.length === 0 ? (
         <Empty onCreate={() => setCreating(true)} />
       ) : (
@@ -426,7 +437,7 @@ export default function IssuesPage() {
                   el.indeterminate = selected.size > 0 && !allSelected;
               }}
               onChange={toggleAll}
-              aria-label="Select all tasks"
+              aria-label={t('issues.selectAll')}
               className="h-4 w-4 shrink-0 cursor-pointer accent-[--a]"
             />
             <span className="text-[12px] text-text-muted">
@@ -557,7 +568,10 @@ export default function IssuesPage() {
                       </>
                     )}
                     <Sep />
-                    opened {relTime(i.createdAt)} by {author?.name ?? '?'}
+                    {t('issues.openedBy', {
+                      when: f.relative(i.createdAt),
+                      name: author?.name ?? '?',
+                    })}
                     {labels.length > 0 && (
                       <>
                         <Sep />
@@ -569,7 +583,7 @@ export default function IssuesPage() {
                     {i.dueDate && (
                       <>
                         <Sep />
-                        Due {fmtDateShort(i.dueDate)}
+                        {t('issues.due', { date: f.dateShort(i.dueDate) })}
                       </>
                     )}
                   </div>
@@ -588,17 +602,18 @@ export default function IssuesPage() {
 const Sep = () => <span className="opacity-40">·</span>;
 
 function Empty({ onCreate }: { onCreate: () => void }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center text-center gap-3 py-16 bg-bg-card border border-border rounded-lg">
       <div className="w-14 h-14 rounded-full flex items-center justify-center bg-[color:color-mix(in_srgb,var(--a)_10%,transparent)]">
         <AlertCircle className="w-7 h-7 text-accent" />
       </div>
-      <h3 className="text-[16px] font-semibold">No tasks found</h3>
+      <h3 className="text-[16px] font-semibold">{t('issues.empty')}</h3>
       <p className="text-[13px] text-text-muted max-w-[340px]">
-        Try adjusting your filters or create a new one.
+        {t('issues.emptyHint')}
       </p>
       <Button variant="primary" onClick={onCreate}>
-        <Plus className="w-3.5 h-3.5" /> New task
+        <Plus className="w-3.5 h-3.5" /> {t('issues.newTask')}
       </Button>
     </div>
   );

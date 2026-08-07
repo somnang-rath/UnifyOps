@@ -2,7 +2,8 @@
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { isoDay, monthLabel } from '@/lib/format';
+import { isoDay } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import { STATUS_DOT, STATUS_ORDER, type StatusId, type ViewProps } from './shared';
 
@@ -11,6 +12,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function CalendarView({ issues }: ViewProps) {
   const router = useRouter();
   const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
+  const f = useFormat();
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -43,7 +45,7 @@ export function CalendarView({ issues }: ViewProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[14px] font-semibold">{monthLabel(cursor)}</h3>
+        <h3 className="text-[14px] font-semibold">{f.monthYear(cursor)}</h3>
         <div className="flex items-center gap-1">
           <NavBtn
             onClick={() =>

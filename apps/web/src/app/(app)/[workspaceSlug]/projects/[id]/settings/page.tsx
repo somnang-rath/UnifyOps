@@ -11,11 +11,12 @@ import { CoverImagePicker } from '@/components/feature/cover/cover-image-picker'
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
-import { fmtDate } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { PublishSection } from './_components/publish-section';
 import { TemplatesSection } from './_components/templates-section';
 
 export default function ProjectSettingsPage() {
+  const f = useFormat();
   const id = useParams<{ id: string }>().id;
   const router = useRouter();
   const ws = useWorkspaceHref();
@@ -170,6 +171,12 @@ export default function ProjectSettingsPage() {
 
           {project.members
             .filter((mid) => mid !== project.ownerId)
+            // Was raw array order — i.e. the order people happened to be added.
+            // ADR 0016 §2.7 assumed this list sorted by name; it did not sort
+            // at all, which is why nobody noticed Khmer names were unordered.
+            .sort((a, b) =>
+              f.compareNames(userMap.get(a)?.name ?? '', userMap.get(b)?.name ?? ''),
+            )
             .map((memberId) => {
               const u = userMap.get(memberId);
               if (!u) return null;
@@ -273,7 +280,7 @@ export default function ProjectSettingsPage() {
           )}
         </div>
         <p className="text-[11px] text-text-muted mt-2">
-          Created {fmtDate(project.createdAt)}
+          Created {f.date(project.createdAt)}
         </p>
       </section>
 

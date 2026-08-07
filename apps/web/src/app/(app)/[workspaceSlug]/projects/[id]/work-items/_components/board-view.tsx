@@ -15,7 +15,7 @@ import { PriorityPill } from '@/components/feature/issue/pills';
 import { useIssueMutations } from '@/hooks/use-issues';
 import { useBoardMutations, useProject } from '@/hooks/use-projects';
 import { Confirm } from '@/components/ui/confirm';
-import { fmtDateShort } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import type { BoardList } from '@/schemas/project';
 import type { Issue } from '@/schemas/issue';
@@ -461,6 +461,7 @@ function Card({
   onDragEnd: () => void;
   onClick: () => void;
 }) {
+  const f = useFormat();
   return (
     <div
       draggable
@@ -480,7 +481,7 @@ function Card({
             )}
           >
             <Clock className="w-3 h-3" />
-            {fmtDateShort(issue.dueDate)}
+            {f.dateShort(issue.dueDate)}
           </span>
         )}
         <span className="ml-auto">

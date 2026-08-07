@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ChevronDown, ChevronRight, Clock, Plus } from 'lucide-react';
 import { PriorityPill } from '@/components/feature/issue/pills';
-import { fmtDateShort } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import {
   AssigneeAvatar,
@@ -21,6 +21,7 @@ export function ListView({ projectId, issues, userMap }: ViewProps) {
   // This view only renders under /[workspaceSlug]/projects/[id] — issue links
   // stay inside the workspace instead of bouncing through the flat shim.
   const slug = useParams<{ workspaceSlug: string }>().workspaceSlug;
+  const f = useFormat();
   const groups = groupByStatus(issues);
   const [collapsed, setCollapsed] = useState<Set<StatusId>>(new Set());
 
@@ -86,7 +87,7 @@ export function ListView({ projectId, issues, userMap }: ViewProps) {
                           )}
                         >
                           <Clock className="w-3 h-3" />
-                          {fmtDateShort(i.dueDate)}
+                          {f.dateShort(i.dueDate)}
                         </span>
                       )}
                       <PriorityPill priority={i.priority} />

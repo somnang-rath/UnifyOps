@@ -10,21 +10,17 @@ export const daysBetween = (a: string, b: string) =>
     (new Date(a).getTime() - new Date(b).getTime()) / 86_400_000,
   );
 
-export const fmtDate = (iso: string | Date) =>
-  new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-
-export const fmtDateShort = (iso: string | Date) =>
-  new Date(iso).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-
-export const monthLabel = (d: Date) =>
-  d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+/*
+ * `fmtDate`, `fmtDateShort`, `monthLabel` and `relTime` used to live here as
+ * locale-blind helpers. They are gone on purpose (ADR 0016 §2.7): a date helper
+ * with no locale argument is a helper that can only ever render English, and
+ * keeping the names as thin wrappers would have let every one of their 93 call
+ * sites keep compiling while quietly staying English.
+ *
+ * The replacement is `useFormat()` from `@prism/i18n` — `f.date`, `f.dateShort`,
+ * `f.monthYear`, `f.relative`. Everything still here is genuinely locale-free:
+ * ISO keys, arithmetic, initials, byte sizes, and the calendar grid builders.
+ */
 
 export const initials = (s: string) =>
   s
@@ -38,14 +34,6 @@ export const initials = (s: string) =>
 export const greetingTod = () => {
   const h = new Date().getHours();
   return h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
-};
-
-export const relTime = (iso: string | Date) => {
-  const d = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (d < 60) return 'just now';
-  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
-  if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
-  return `${Math.floor(d / 86400)}d ago`;
 };
 
 export const fmtBytes = (n: number) => {

@@ -28,6 +28,17 @@
 /** Request header carrying the per-request nonce from middleware to the layout. */
 export const NONCE_HEADER = 'x-nonce';
 
+/**
+ * Who is allowed to put this app in a frame.
+ *
+ * `'none'` is the default and the right answer for an app that never frames
+ * itself. `'self'` exists for apps/web, whose split-pane editor renders a
+ * sibling route in a same-origin `<iframe>` (`?chrome=0`) — see
+ * `apps/web/src/components/editor/pane-content.tsx`. It still refuses every
+ * cross-origin framer, which is the clickjacking case that matters.
+ */
+export type FrameAncestors = "'none'" | "'self'";
+
 export interface CspOptions {
   /** Per-request nonce, base64. Generate with {@link generateNonce}. */
   nonce: string;
@@ -44,6 +55,14 @@ export interface CspOptions {
    * Values may be full URLs; only the origin is used. See {@link connectOrigins}.
    */
   connectSrc?: string[];
+  /**
+   * Extra sources allowed in an `<iframe>`, beyond `'self'`. `frame-src` has no
+   * default of its own, so without this it falls back to `default-src 'self'`
+   * and every off-origin embed is blocked. Pass origins, `blob:`, etc.
+   */
+  frameSrc?: string[];
+  /** Who may frame this app. Defaults to `'none'`. */
+  frameAncestors?: FrameAncestors;
 }
 
 /**
@@ -56,6 +75,32 @@ export function generateNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return btoa(String.fromCharCode(...bytes));
 }
+
+/**
+ * The origin of a configured URL, or null if it is missing or unparseable.
+ *
+ * A missing NEXT_PUBLIC_* var must never take the app down at request time, so
+ * every caller here drops bad entries rather than throwing.
+ */
+export function toOrigin(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Third-party players the project-overview block editor embeds (`videoEmbedURL`
+ * in `projects/[id]/overview/_components/slash-options.ts`). Named here so the
+ * policy and the embed builder cannot drift apart silently — a host in one and
+ * not the other is an empty box in the page with no error anywhere.
+ */
+export const EMBED_FRAME_ORIGINS = [
+  'https://www.youtube.com',
+  'https://player.vimeo.com',
+] as const;
 
 /**
  * Expand configured URLs into the origins a browser will actually be asked to
@@ -73,21 +118,13 @@ export function connectOrigins(urls: (string | undefined)[]): string[] {
   const out = new Set<string>();
 
   for (const url of urls) {
-    if (!url) continue;
-    let origin: string;
-    let protocol: string;
-    try {
-      const parsed = new URL(url);
-      origin = parsed.origin;
-      protocol = parsed.protocol;
-    } catch {
-      continue;
-    }
+    const origin = toOrigin(url);
+    if (!origin) continue;
 
     out.add(origin);
 
     // ws://host ⇄ http://host, wss://host ⇄ https://host.
-    const secure = protocol === 'https:' || protocol === 'wss:';
+    const secure = origin.startsWith('https:') || origin.startsWith('wss:');
     const host = origin.replace(/^[a-z]+:\/\//, '');
     out.add(`${secure ? 'https' : 'http'}://${host}`);
     out.add(`${secure ? 'wss' : 'ws'}://${host}`);
@@ -111,12 +148,23 @@ export function connectOrigins(urls: (string | undefined)[]): string[] {
  *   arbitrary remote URLs. `blob:` covers client-side previews before upload.
  * - `font-src 'self'` is enough: `next/font/google` self-hosts at build time,
  *   so nothing is fetched from fonts.gstatic.com at runtime.
- * - `frame-ancestors 'none'` — neither app is ever meant to be framed, which
- *   is also what makes clickjacking a session-holding UI a non-issue.
+ * - `frame-ancestors` defaults to `'none'`; apps/web passes `'self'` because it
+ *   frames its own routes (see {@link FrameAncestors}). Cross-origin framing is
+ *   refused either way, so the clickjacking story is unchanged.
+ * - `frame-src` is `'self'` plus whatever the app declares. It has no default of
+ *   its own and falls back to `default-src`, which is how three same-policy
+ *   embeds (the split panes, the API-hosted PDF preview, the video blocks) can
+ *   all break from one line nobody wrote about them.
  * - `object-src 'none'`, `base-uri 'self'` — plugin execution and `<base>`
  *   hijacking, both pure downside.
  */
-export function buildCsp({ nonce, dev = false, connectSrc = [] }: CspOptions): string {
+export function buildCsp({
+  nonce,
+  dev = false,
+  connectSrc = [],
+  frameSrc = [],
+  frameAncestors = "'none'",
+}: CspOptions): string {
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
@@ -140,24 +188,34 @@ export function buildCsp({ nonce, dev = false, connectSrc = [] }: CspOptions): s
     "img-src 'self' https: data: blob:",
     "font-src 'self' data:",
     `connect-src ${connect.join(' ')}`,
+    `frame-src ${["'self'", ...frameSrc].join(' ')}`,
     "media-src 'self' https: blob:",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     "form-action 'self'",
     "base-uri 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${frameAncestors}`,
     "object-src 'none'",
   ].join('; ');
 }
 
 /**
- * The headers that carry no per-request state, so they read the same on every
- * response. `X-Frame-Options` duplicates `frame-ancestors` for the sake of
- * anything that predates CSP Level 2.
+ * The headers that carry no per-request state.
+ *
+ * `X-Frame-Options` duplicates `frame-ancestors` for anything predating CSP
+ * Level 2, which is why this is a function and not a constant: the two must
+ * agree. A `DENY` left behind next to `frame-ancestors 'self'` blocks the frame
+ * on its own in every browser that still honours it, and the symptom — a pane
+ * showing "localhost refused to connect" — points at a dead server rather than
+ * at a header.
  */
-export const STATIC_SECURITY_HEADERS: Readonly<Record<string, string>> = {
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
-};
+export function staticSecurityHeaders({
+  frameAncestors = "'none'",
+}: { frameAncestors?: FrameAncestors } = {}): Readonly<Record<string, string>> {
+  return {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': frameAncestors === "'self'" ? 'SAMEORIGIN' : 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+  };
+}

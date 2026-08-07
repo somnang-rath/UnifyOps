@@ -1,4 +1,5 @@
 import { Badge, StateIcon, type WorkItemState } from '@prism/ui';
+import { formatDateShort, type Locale } from '@prism/i18n';
 import type { PublicIssue, PublicBoardColumn } from '@/lib/public-api';
 
 /**
@@ -93,9 +94,6 @@ export function StatusMark({
   );
 }
 
-export function formatDue(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
+export function formatDue(iso: string, locale: Locale): string {
+  return formatDateShort(iso, locale);
 }

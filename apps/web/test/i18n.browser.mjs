@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Browser E2E for the locale machinery (ADR 0016 §5, items 1–5).
+ * Browser E2E for the locale machinery (ADR 0016 §5, items 1–5) plus the
+ * 3b/3c/3d slices: translated screens, Khmer public holidays, and the
+ * formatting seam.
  *
  * Drives a RUNNING dev stack (web :3000, space :3002, api :4000) with headless
  * Chromium. Never builds or starts anything itself.
@@ -42,6 +44,9 @@ const COOLDOWN = Number(process.env.E2E_COOLDOWN_MS ?? 65_000);
 
 /** One Khmer nav label — enough to tell a translated shell from a stale one. */
 const KM_HOME = 'ទំព័រដើម';
+
+/** The Khmer block. Used where the exact wording is ICU's choice, not ours. */
+const KHMER = /[ក-៿]/;
 
 let pass = 0;
 let fail = 0;
@@ -162,6 +167,77 @@ async function run() {
     await check('no console errors or hydration warnings during the switch', async () => {
       if (badResponses.length) throw new Error(`bad responses: ${badResponses.join(' | ')}`);
       if (consoleErrors.length) throw new Error(consoleErrors.slice(0, 2).join(' | '));
+    });
+
+    // ── 3b: the screens themselves, not just the shell ────────────────────
+    await check('3b — the issues screen renders its chrome in Khmer', async () => {
+      // `/issues` is the permanent flat shim; it redirects to /<slug>/issues.
+      await page.goto(`${WEB}/issues`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('h1', { timeout: TIMEOUT });
+      const h1 = (await page.locator('h1').first().innerText()).trim();
+      if (h1 !== 'កិច្ចការ') throw new Error(`h1 is "${h1}", expected Khmer`);
+      const ph = await page
+        .locator('input[aria-label="ស្វែងរកកិច្ចការ"]')
+        .count();
+      if (ph === 0) throw new Error('the search box kept its English aria-label');
+    });
+
+    await check('3b — the projects screen renders its chrome in Khmer', async () => {
+      await page.goto(`${WEB}/projects`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('h1', { timeout: TIMEOUT });
+      const h1 = (await page.locator('h1').first().innerText()).trim();
+      if (h1 !== 'គម្រោង') throw new Error(`h1 is "${h1}", expected Khmer`);
+    });
+
+    // ── 3d: the formatter seam, end to end ────────────────────────────────
+    await check('3d — a formatted date renders in Khmer, not English', async () => {
+      // The calendar's month header is the one date in the product that renders
+      // with no fixture data at all, so it is the only locale-dependent date
+      // this suite can assert on unconditionally.
+      //
+      // Asserting on *this element* rather than "Khmer appears on the page"
+      // matters: the nav is already Khmer, so a page-wide check passes while
+      // every date on it is still English — which is exactly the state this
+      // found. Chromium ships no `km` locale data, so `Intl` silently answers
+      // in English and `@prism/i18n` has to fall back to its own month names.
+      await page.goto(`${WEB}/calendar`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.cal-nav-label', { timeout: TIMEOUT });
+      const header = (await page.locator('.cal-nav-label').first().innerText()).trim();
+      if (!KHMER.test(header)) {
+        throw new Error(`month header is not Khmer: "${header}"`);
+      }
+    });
+
+    await check('3d — calendar weekday headers are Khmer, not a hardcoded array', async () => {
+      // These were `['Sun','Mon',…]` in the source. If they are still Latin
+      // while `lang="km"`, `weekdayNames()` is not wired up — which is how the
+      // missing Chromium `km` data was found: the wiring was right and the
+      // platform answered in English anyway.
+      const heads = await page.locator('.cal-head-cell').allInnerTexts();
+      if (heads.length !== 7) throw new Error(`${heads.length} weekday cells`);
+      if (!heads.every((h) => KHMER.test(h))) {
+        throw new Error(`weekday headers are not Khmer: ${heads.join(' ')}`);
+      }
+    });
+
+    // ── 3c: Khmer public holidays on the calendar ─────────────────────────
+    await check('3c — a Khmer public holiday is marked on the calendar', async () => {
+      // Step forward month by month rather than hardcoding one: "today" moves,
+      // and a test pinned to a month stops proving anything next year.
+      let found = false;
+      for (let i = 0; i < 14 && !found; i++) {
+        if ((await page.locator('.cal-holiday').count()) > 0) {
+          found = true;
+          break;
+        }
+        await page.locator('.cal-nav-btn').last().click();
+        await page.waitForTimeout(120);
+      }
+      if (!found) throw new Error('no .cal-holiday found in 14 months of stepping');
+      const label = await page.locator('.cal-holiday').first().innerText();
+      if (!KHMER.test(label)) {
+        throw new Error(`holiday name is not Khmer: ${label}`);
+      }
     });
 
     await check('apps/space honours the cookie and defaults for anonymous visitors', async () => {

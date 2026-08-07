@@ -38,6 +38,7 @@ import { KB_COLORS, colorHex, type BoardColumn } from '@/schemas/kanban';
 import { IssueTypeIcon } from '@/components/feature/issue/icons';
 import { IssueModal } from '@/components/feature/issue/issue-modal';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import type { Issue } from '@/schemas/issue';
 
 // Fallback labels (mirrors app.js `labelFor` cross-role fallback list)
@@ -1554,6 +1555,7 @@ function KbCard({
   onMenu: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onClick: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }) {
+  const f = useFormat();
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
   const labels = (i.labels ?? []).slice(0, 2);
@@ -1729,7 +1731,7 @@ function KbCard({
           : isToday
             ? '#f59e0b'
             : 'var(--text-muted)';
-        const label = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const label = f.dateShort(due);
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
             <CalendarDays size={11} style={{ color, flexShrink: 0 }} />

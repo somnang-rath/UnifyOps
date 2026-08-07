@@ -1,6 +1,7 @@
 'use client';
 import { CheckCircle2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import type { ErrorLog } from '@/schemas/error-log';
 
 interface ErrorDetailDrawerProps {
@@ -49,10 +50,10 @@ function JsonBlock({ label, data }: { label: string; data?: Record<string, unkno
 }
 
 export function ErrorDetailDrawer({ log, onClose, onResolve, resolving }: ErrorDetailDrawerProps) {
-  if (!log) return null;
+  const f = useFormat();
+  const fmtDate = (iso?: string) => (iso ? f.dateTime(iso) : '—');
 
-  const fmtDate = (iso?: string) =>
-    iso ? new Date(iso).toLocaleString() : '—';
+  if (!log) return null;
 
   return (
     <>

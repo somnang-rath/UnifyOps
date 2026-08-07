@@ -40,11 +40,12 @@ import {
   IssueChecklist,
   SidebarRow,
 } from '@/components/feature/issue/detail-sections';
-import { relTime, fmtDate } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { IssueDetailSkeleton } from '@/components/ui/skeleton';
 
 export default function IssueDetailPage() {
+  const f = useFormat();
   const { id, workspaceSlug } = useParams<{
     id: string;
     workspaceSlug: string;
@@ -144,7 +145,7 @@ export default function IssueDetailPage() {
                 #{issue._id.slice(-6)}
               </span>
               <span className="text-[12px] text-text-muted">
-                opened {relTime(issue.createdAt)} by{' '}
+                opened {f.relative(issue.createdAt)} by{' '}
                 <span className="text-text font-medium">{author?.name ?? '?'}</span>
               </span>
               {(issue.labels ?? []).length > 0 && (
@@ -266,7 +267,7 @@ export default function IssueDetailPage() {
               </SidebarRow>
               <SidebarRow icon={<Calendar className="w-3.5 h-3.5" />} label="Due date">
                 {issue.dueDate ? (
-                  <span className="text-[13px] text-text">{fmtDate(issue.dueDate)}</span>
+                  <span className="text-[13px] text-text">{f.date(issue.dueDate)}</span>
                 ) : (
                   <span className="text-[13px] text-text-muted">Not set</span>
                 )}
@@ -327,6 +328,7 @@ function TimelineItem({
   date: string;
   last?: boolean;
 }) {
+  const f = useFormat();
   return (
     <div className="flex items-start gap-2.5">
       <div className="flex flex-col items-center gap-1 flex-shrink-0">
@@ -337,8 +339,8 @@ function TimelineItem({
       </div>
       <div className="flex-1 pb-1">
         <div className="text-[11px] font-medium text-text-muted mb-0.5">{label}</div>
-        <div className="text-[12px] text-text">{fmtDate(date)}</div>
-        <div className="text-[11px] text-text-muted">{relTime(date)}</div>
+        <div className="text-[12px] text-text">{f.date(date)}</div>
+        <div className="text-[11px] text-text-muted">{f.relative(date)}</div>
       </div>
     </div>
   );

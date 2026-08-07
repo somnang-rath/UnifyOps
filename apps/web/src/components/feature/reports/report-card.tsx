@@ -5,6 +5,7 @@ import type { ReportTemplate } from '@/schemas/report';
 import { reportsApi, useReportMutations } from '@/hooks/use-reports';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useFormat } from '@prism/i18n';
 import {
   BookTemplate, Calendar, Camera, Clock, Copy, Download, Edit2,
   FileJson, History, ImagePlus, Loader2, MoreHorizontal, Play,
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export function ReportCard({ template, onRun, onDelete, onDuplicate }: Props) {
+  const f = useFormat();
   const [menuOpen, setMenuOpen]           = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -285,7 +287,7 @@ export function ReportCard({ template, onRun, onDelete, onDuplicate }: Props) {
 
           <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-text-muted">
             <Clock className="w-2.5 h-2.5" />
-            {new Date(template.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {f.dateShort(template.updatedAt)}
           </span>
         </div>
 

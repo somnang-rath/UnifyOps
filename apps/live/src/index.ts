@@ -102,6 +102,36 @@ async function main(): Promise<void> {
   // authorization periodically so revoked access actually disconnects.
   const stopReauth = startReauthSweeper(server, env);
 
+  /*
+   * A second live server on the same port is the failure this handler exists
+   * for, and it is worth naming loudly.
+   *
+   * `listen` reports failure by emitting 'error' on the server, not by
+   * rejecting — so without a listener here Node raises it as an uncaught
+   * exception that `main().catch` below never sees, and the stack lands in the
+   * middle of `concurrently`'s multiplexed output where it reads as noise.
+   *
+   * The damage is out of all proportion to the message. Two `tsx watch`
+   * instances both restart on every source change, then race for the port: the
+   * winner alternates, every changeover drops every collab socket, and the
+   * browser's Hocuspocus provider retries forever — one console error per
+   * attempt, pointing at a live server that looks perfectly healthy by the time
+   * anyone checks it. Mongo is already connected at this point, so close it
+   * rather than leaving the socket to the process teardown.
+   */
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(
+        `[live] port ${env.PORT} is already in use — another live server is running.\n` +
+          '[live] Only one may own the port. Stop the other (a stray `pnpm dev:live`\n' +
+          '[live] alongside `pnpm dev` is the usual cause) and start this one again.',
+      );
+    } else {
+      console.error('[live] http server error:', err);
+    }
+    void closeMongo().finally(() => process.exit(1));
+  });
+
   httpServer.listen(env.PORT, () => {
     console.log(`[live] Hocuspocus listening on :${env.PORT}`);
     console.log(

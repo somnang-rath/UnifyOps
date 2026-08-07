@@ -1,10 +1,22 @@
 {
   "extends": "next/core-web-vitals",
-  "ignorePatterns": [".next/", "node_modules/", "next-env.d.ts", "*.tsbuildinfo"],
+  "ignorePatterns": [
+    ".next/",
+    "node_modules/",
+    "next-env.d.ts",
+    "*.tsbuildinfo"
+  ],
   "rules": {
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-unused-vars": "off",
     "react/no-unescaped-entities": "off",
-    "@next/next/no-img-element": "off"
+    "@next/next/no-img-element": "off",
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.property.name=/^toLocale(Date|Time)?String$/]",
+        "message": "Use the @prism/i18n seam (ADR 0016 §2.7): useFormat() in client components, formatDate/formatNumber with an explicit locale on the server. A bare toLocale* renders English regardless of the user's language."
+      }
+    ]
   }
 }

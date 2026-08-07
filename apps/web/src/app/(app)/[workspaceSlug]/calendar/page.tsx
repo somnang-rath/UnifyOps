@@ -14,10 +14,10 @@ import { toast } from '@/stores/toast-store';
 import {
   buildCalendarMonth,
   buildCalendarWeek,
-  fmtDateShort,
   isoDay,
-  monthLabel,
 } from '@/lib/format';
+import { useFormat, useLocale } from '@prism/i18n';
+import { khmerHolidayMap } from '@prism/constants';
 import { cn } from '@/lib/utils';
 import type { Issue } from '@/schemas/issue';
 import { IssueModal } from '@/components/feature/issue/issue-modal';
@@ -31,10 +31,11 @@ const TYPE_META: Record<Issue['type'], { color: string; label: string }> = {
 
 const CAL_VIEWS = ['month', 'week'] as const;
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const todayIso = () => isoDay(new Date());
 
 export default function CalendarPage() {
+  const f = useFormat();
+  const locale = useLocale();
   const me = useAuthStore((s) => s.user)!;
   // Workspace from the URL — the `[workspaceSlug]` layout already resolved
   // this slug (cache-shared query), same pattern as the analytics page.
@@ -82,6 +83,14 @@ export default function CalendarPage() {
   );
   const from = cells[0].iso;
   const to = cells[cells.length - 1].iso;
+
+  // Cambodian public holidays over exactly the visible range (ADR 0016 §2.7).
+  // Built here rather than per-cell so a month costs one pass, not 42.
+  const holidays = useMemo(() => khmerHolidayMap(from, to), [from, to]);
+
+  // From ICU, not a hardcoded array: 'Sun'…'Sat' was English-only, and Khmer
+  // weekday names are exactly the kind of string nobody remembers to translate.
+  const weekdays = useMemo(() => f.weekdays('short'), [f]);
 
   // ADR 0011 §2: scoped to this workspace's readable projects.
   const { data: allIssues = [] } = useCalendarIssues(from, to, workspace?.id);
@@ -151,8 +160,8 @@ export default function CalendarPage() {
 
   const rangeLabel =
     view === 'month'
-      ? monthLabel(anchor)
-      : `${fmtDateShort(cells[0].iso)} – ${fmtDateShort(cells[6].iso)}, ${cells[6].date.getFullYear()}`;
+      ? f.monthYear(anchor)
+      : `${f.dateShort(cells[0].iso)} – ${f.dateShort(cells[6].iso)}, ${cells[6].date.getFullYear()}`;
 
   const reschedule = (issueId: string, iso: string) => {
     const issue = allIssues.find((i) => i._id === issueId);
@@ -160,7 +169,7 @@ export default function CalendarPage() {
     issueMut.update.mutate(
       { id: issueId, body: { dueDate: `${iso}T00:00:00.000Z` } },
       {
-        onSuccess: () => toast('Moved to ' + fmtDateShort(iso), 'success'),
+        onSuccess: () => toast('Moved to ' + f.dateShort(iso), 'success'),
         onError: () => toast("Couldn't reschedule", 'error'),
       },
     );
@@ -273,7 +282,7 @@ export default function CalendarPage() {
       {/* Calendar */}
       <div className="cal-wrap">
         <div className="cal-grid cal-head">
-          {WEEKDAYS.map((d, i) => (
+          {weekdays.map((d, i) => (
             <div
               key={d}
               className={cn('cal-head-cell', (i === 0 || i === 6) && 'weekend')}
@@ -290,14 +299,17 @@ export default function CalendarPage() {
             const visible = items.slice(0, cap);
             const more = items.length - visible.length;
             const weekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
+            const holiday = holidays.get(cell.iso);
             return (
               <div
                 key={`${cell.iso}-${idx}`}
+                title={holiday ? holiday[locale] : undefined}
                 className={cn(
                   'cal-cell',
                   cell.otherMonth && 'other',
                   cell.today && 'is-today',
                   weekend && 'weekend',
+                  holiday && 'holiday',
                 )}
                 onClick={() => setCreatingDate(cell.iso)}
                 onDragOver={(e) => {
@@ -318,6 +330,11 @@ export default function CalendarPage() {
                   <span className={cn('cal-daynum', cell.today && 'today')}>
                     {cell.date.getDate()}
                   </span>
+                  {holiday && !cell.otherMonth && (
+                    <span className="cal-holiday" title={holiday[locale]}>
+                      {holiday[locale]}
+                    </span>
+                  )}
                   {!cell.otherMonth && (
                     <button
                       type="button"
@@ -426,10 +443,7 @@ export default function CalendarPage() {
           >
             <div className="cal-pop-head">
               <strong>
-                {new Date(dayPopover.iso + 'T00:00:00').toLocaleDateString(
-                  undefined,
-                  { weekday: 'long', month: 'short', day: 'numeric' },
-                )}
+                {f.dateWithWeekday(dayPopover.iso + 'T00:00:00')}
               </strong>
               <button
                 type="button"

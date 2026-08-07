@@ -11,6 +11,7 @@ import { useProjectsInWorkspace } from '@/hooks/use-projects';
 import { useActivity, type ActivityItem, type ActivityActor } from '@/hooks/use-activity';
 import { useWorkspaceBySlug } from '@/hooks/use-workspaces';
 import { useWorkbookMutations } from '@/hooks/use-workbooks';
+import { dateKey, useFormat, type Formatters } from '@prism/i18n';
 import { rcToA1 } from '@/lib/sheets/a1';
 import { Avatar } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -67,19 +68,13 @@ function getDaysInRange(from: string, to: string): string[] {
   const days: string[] = [];
   const end = new Date(to);  end.setHours(12);
   const cur = new Date(from); cur.setHours(12);
-  while (cur <= end) { days.push(cur.toLocaleDateString('en-CA')); cur.setDate(cur.getDate() + 1); }
+  while (cur <= end) { days.push(dateKey(cur)); cur.setDate(cur.getDate() + 1); }
   return days;
 }
 
-function dayLabel(key: string, total: number) {
+function dayLabel(key: string, total: number, f: Formatters) {
   const d = new Date(key + 'T12:00:00');
-  return total <= 7
-    ? d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
-    : String(d.getDate());
-}
-
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return total <= 7 ? f.weekdayDay(d) : String(d.getDate());
 }
 
 const ACTION_VERB: Record<string, string> = {
@@ -102,7 +97,7 @@ function buildGantt(items: ActivityItem[]): { rows: GanttRow[]; maxCount: number
     if (!actor?._id) continue;
     actors.set(actor._id, actor);
     if (!dayCounts.has(actor._id)) dayCounts.set(actor._id, new Map());
-    const day = new Date(item.createdAt).toLocaleDateString('en-CA');
+    const day = dateKey(item.createdAt);
     const m = dayCounts.get(actor._id)!;
     m.set(day, (m.get(day) ?? 0) + 1);
   }
@@ -117,22 +112,22 @@ function buildGantt(items: ActivityItem[]): { rows: GanttRow[]; maxCount: number
   return { rows: rows.sort((a, b) => b.total - a.total), maxCount };
 }
 
-function groupByDay(items: ActivityItem[]) {
+function groupByDay(items: ActivityItem[], f: Formatters) {
   const map = new Map<string, ActivityItem[]>();
   for (const item of items) {
-    const key = new Date(item.createdAt).toLocaleDateString('en-CA');
+    const key = dateKey(item.createdAt);
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(item);
   }
-  const today     = new Date().toLocaleDateString('en-CA');
-  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA');
+  const today     = dateKey(Date.now());
+  const yesterday = dateKey(Date.now() - 86400000);
   return [...map.entries()]
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([key, its]) => ({
       key,
       label: key === today ? 'Today'
            : key === yesterday ? 'Yesterday'
-           : new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+           : f.dateWithWeekday(key + 'T12:00:00'),
       items: its,
     }));
 }
@@ -142,6 +137,7 @@ function groupByDay(items: ActivityItem[]) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function EventRow({ item, showActor }: { item: ActivityItem; showActor?: boolean }) {
+  const f = useFormat();
   const { Icon, color, bg, label } = entityMeta(item.entityType);
   const actor = item.actorId;
   return (
@@ -173,7 +169,7 @@ function EventRow({ item, showActor }: { item: ActivityItem; showActor?: boolean
               <span className="text-[10px] text-text-muted capitalize">{actor.role}</span>
             </div>
           )}
-          <span className="text-[11px] text-text-muted font-mono tabular-nums">{fmtTime(item.createdAt)}</span>
+          <span className="text-[11px] text-text-muted font-mono tabular-nums">{f.time(item.createdAt)}</span>
         </div>
       </div>
     </div>
@@ -209,6 +205,7 @@ function GanttChart({
   rows: GanttRow[]; days: string[]; maxCount: number;
   selectedUserId: string; onSelect: (id: string) => void;
 }) {
+  const f = useFormat();
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
 
@@ -280,7 +277,7 @@ function GanttChart({
                   'shrink-0 text-center text-[10px] font-medium pb-2 truncate px-0.5',
                   isWeekend(d) ? 'text-accent/50' : 'text-text-muted',
                 )}>
-                {dayLabel(d, days.length)}
+                {dayLabel(d, days.length, f)}
               </div>
             ))}
           </div>
@@ -525,6 +522,7 @@ function ProjectCard({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function TimelinePage() {
+  const f       = useFormat();
   const me      = useAuthStore((s) => s.user);
   const isAdmin = me?.role === 'admin';
   const router  = useRouter();
@@ -573,7 +571,7 @@ export default function TimelinePage() {
     selectedUser ? items.filter((i) => i.actorId?._id === selectedUser) : items,
   [items, selectedUser]);
 
-  const groups = useMemo(() => groupByDay(filteredItems), [filteredItems]);
+  const groups = useMemo(() => groupByDay(filteredItems, f), [filteredItems, f]);
 
   // Stats
   const stats = useMemo(() => {
@@ -687,8 +685,10 @@ export default function TimelinePage() {
       ) => {
         const bg = dataRow % 2 === 0 ? '#eef2ff' : '#ffffff';
         const ts = evts.map((e) => new Date(e.createdAt).getTime());
-        const first = ts.length ? new Date(Math.min(...ts)).toLocaleDateString('en-CA') : '—';
-        const last  = ts.length ? new Date(Math.max(...ts)).toLocaleDateString('en-CA') : '—';
+        // Sortable ISO days on purpose: this is an exported spreadsheet row,
+        // not screen chrome, and a sheet sorts text lexically.
+        const first = ts.length ? dateKey(Math.min(...ts)) : '—';
+        const last  = ts.length ? dateKey(Math.max(...ts)) : '—';
         const daysSpan = ts.length > 0
           ? Math.max(1, Math.round((Math.max(...ts) - Math.min(...ts)) / 86400000) + 1)
           : '—';

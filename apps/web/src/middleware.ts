@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import {
+  EMBED_FRAME_ORIGINS,
   NONCE_HEADER,
-  STATIC_SECURITY_HEADERS,
   buildCsp,
   connectOrigins,
   generateNonce,
+  staticSecurityHeaders,
+  toOrigin,
 } from '@prism/constants';
 import { LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from '@prism/i18n';
 
@@ -30,10 +32,20 @@ import { LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from '@prism/i18n';
  * The cost is that reading `headers()` in the root layout opts the app out of
  * static rendering. For a fully authenticated product where every page is
  * per-user anyway, that changes nothing in practice.
+ *
+ * ## Why this app frames itself
+ *
+ * Unlike admin and space, web renders `<iframe>`s, and all of them are its own
+ * feature surface rather than third-party chrome: the split-pane editor loads a
+ * sibling route with `?chrome=0` (same-origin), file/report previews load a PDF
+ * from the API origin or a `blob:` URL, and the project-overview block editor
+ * embeds YouTube/Vimeo. So `frame-ancestors` is `'self'` and `frame-src` is
+ * explicit. Everything off-origin is still refused.
  */
 export function middleware(request: NextRequest) {
   const nonce = generateNonce();
   const dev = process.env.NODE_ENV !== 'production';
+  const apiOrigin = toOrigin(process.env.NEXT_PUBLIC_API_URL);
 
   const csp = buildCsp({
     nonce,
@@ -48,6 +60,19 @@ export function middleware(request: NextRequest) {
       // apps/live — Hocuspocus/Yjs collab on :3100, always a direct connection.
       process.env.NEXT_PUBLIC_LIVE_URL,
     ]),
+    // Same-origin panes are covered by the `'self'` buildCsp always includes.
+    frameSrc: [
+      // The PDF preview in reports builds an object URL from a fetched blob.
+      'blob:',
+      // Storage/overview PDF previews point straight at `GET /files/:id/download`.
+      // Empty in dev, where NEXT_PUBLIC_API_URL is the relative `/api/v1` and
+      // `'self'` already covers it; it is a real origin wherever the API is not
+      // proxied same-origin.
+      ...(apiOrigin ? [apiOrigin] : []),
+      ...EMBED_FRAME_ORIGINS,
+    ],
+    // The split-pane editor frames web's own routes; nothing else may frame it.
+    frameAncestors: "'self'",
   });
 
   // Next reads the nonce off the request headers, so both of these matter.
@@ -67,7 +92,9 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);
-  for (const [key, value] of Object.entries(STATIC_SECURITY_HEADERS)) {
+  // Must be built with the same frameAncestors: a stale `X-Frame-Options: DENY`
+  // blocks the panes on its own, CSP or no CSP.
+  for (const [key, value] of Object.entries(staticSecurityHeaders({ frameAncestors: "'self'" }))) {
     response.headers.set(key, value);
   }
 

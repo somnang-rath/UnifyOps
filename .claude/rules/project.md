@@ -203,12 +203,75 @@ Keep its checkboxes in sync when work lands — the SessionStart hook reads them
     rendering as the risk; the published route is already `force-dynamic` with `no-store`
     fetches because an unpublish must take effect immediately.
 
-  New suite `pnpm --filter web test:i18n` (9 checks). The one that earns its place is the
-  computed `font-family` assertion — everything else can pass while Khmer renders in an
+  New suite `pnpm --filter web test:i18n` (9 checks, now 14). The one that earns its place is
+  the computed `font-family` assertion — everything else can pass while Khmer renders in an
   arbitrary OS fallback. A `km` message file missing a key is a **compile error**
-  (`Record<MessageKey, Message>`), confirmed by deleting one. Left for 3b/3c/3d: the
-  translation pass over the screens, Khmer holidays, and date/number/collation adoption at
-  the 79 `toLocale*` call sites.
+  (`Record<MessageKey, Message>`), confirmed by deleting one.
+
+- **Tier 1 — Khmer moat (path B), 3b/3c/3d** ✅ — closed 2026-08-06, path B complete.
+  Translation pass over issues/projects/cycles/modules · Khmer public holidays on the
+  calendar + holiday-aware cycle capacity · the formatting seam adopted everywhere.
+  Five things worth carrying forward:
+
+  - **Chromium ships no `km` locale data.** `supportedLocalesOf(['km'])` is empty and
+    `km-KH` silently resolves to `en-US`, so every date on a Khmer screen rendered
+    "Aug 6, 2026". Thai, French, Japanese and Vietnamese all resolve; Khmer alone does not.
+    **Node's full-ICU build does have it** — which is why no server-side or unit test could
+    ever have caught it. `@prism/i18n` now carries 12 month + 7 weekday names of its own and
+    uses them only when the runtime lacks Khmer; `Intl.RelativeTimeFormat` got the same
+    treatment. `Intl.Collator('km')` is affected too and is deliberately **not** patched —
+    it degrades to root collation, which is imperfect rather than wrong.
+  - **The formatting helpers were deleted, not wrapped.** `lib/format.ts` lost `fmtDate`,
+    `fmtDateShort`, `monthLabel` and `relTime`: a date helper with no locale argument can
+    only render English, and keeping the names would have let all 93 call sites keep
+    compiling while staying English. Deletion made the compiler the migration checklist.
+  - **Not every `toLocale*` is a locale call.** The new ESLint guard exempts three families
+    with reasons in `apps/web/.eslintrc.js` (converted from JSON so they can be commented):
+    spreadsheet/formula number formats (data, not chrome), report `element-*` renderers
+    (author-chosen format codes in an exported document), and the deliberately Khmer-only
+    kiosk display. A fourth case was a bug, not an exemption: `timeline/page.tsx` used
+    `toLocaleDateString('en-CA')` seven times as a **grouping key** — `dateKey()` exists so
+    the next person does not "translate" it.
+  - **ADR §2.7's premise about name sorting was wrong.** Member lists and assignee pickers
+    do not sort by `localeCompare`; they do not sort **at all**. `compareNames` now applies
+    to the project member list and to the display-name sorts that did exist.
+  - **An unmapped holiday year must not read as "no holidays".** `workingDaysBetween`
+    returns a `status` beside the number, and a range touching an unknown year reports
+    `'unknown'` rather than a confident count — silently treating no-data as no-days-off
+    over-commits a team by up to three weeks a year. 2026 ships `provisional`: fixed dates
+    certain, lunar dates pending the sub-decree.
+
+  New suite `pnpm --filter @prism/constants test` (11 checks, pure functions — no browser,
+  no DB); `test:i18n` 9 → **14**. One test lesson: the first date check asserted "Khmer
+  appears on the calendar page" and **passed** while every date on it was English, because
+  the nav was already Khmer. Asserting on the specific element found the missing ICU data.
+
+- **The CSP blocked apps/web's own split panes** ✅ — fixed 2026-08-07. Every pane that
+  falls through to the `<iframe>` path (`pane-content.tsx`; anything not in the native
+  `pane-registry`) rendered the browser's own error page — *"localhost refused to
+  connect"* — because the nonce CSP shipped `frame-ancestors 'none'` + `X-Frame-Options:
+  DENY` while web frames its own routes with `?chrome=0`. Three things worth carrying
+  forward:
+
+  - **The symptom names the wrong thing.** A frame refused by policy looks exactly like a
+    dead port, so the whole investigation goes to the dev server. The header is the first
+    thing to check when an iframe "can't connect" to an origin that answers `curl` fine.
+  - **`X-Frame-Options` must move with `frame-ancestors`.** They are independent headers and
+    a leftover `DENY` blocks the frame on its own, producing the identical symptom with a
+    perfect-looking CSP. `STATIC_SECURITY_HEADERS` is therefore now
+    `staticSecurityHeaders({ frameAncestors })` — a function, so the two cannot drift.
+    Only web relaxes to `'self'`/`SAMEORIGIN`; admin and space render no iframes and keep
+    `'none'`/`DENY`.
+  - **`frame-src` has no default of its own** — it falls back to `default-src 'self'`, so
+    the same one line was also silently blocking the PDF preview (API origin and `blob:`)
+    and the overview block editor's YouTube/Vimeo embeds. It is now explicit, with the
+    embed hosts in `@prism/constants` next to the policy rather than only in
+    `videoEmbedURL`.
+
+  `test:csp` 24 → **26**. The header assertion alone would have passed a policy nobody can
+  frame under, so the second check actually loads a same-origin route in an `<iframe>` and
+  reads its document — framing the route the page is *already on*, because `next dev`
+  compiles lazily and a cold route times out in a way that reads as a framing failure.
 
 Per-phase checkbox detail lives in `PLANE-CONVERSION-PLAN.md` §8 — trust it over this list.
 
@@ -266,10 +329,13 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
   key, no network. See its file header for why it cannot be a fetch suite.
 - `pnpm --filter web test:browser-smoke` — Playwright smoke (12 checks) across web/admin/space;
   needs the full dev stack up.
-- `pnpm --filter web test:csp` — Playwright, 24 checks that the web/admin/space CSP is both
+- `pnpm --filter web test:csp` — Playwright, 26 checks that the web/admin/space CSP is both
   *present* and *survivable*: nonce on every script, nonce differs per request, the app
   hydrates and reaches its sockets under the policy, zero violations during real use,
-  and an injected `<script>` is actually blocked. Needs web + admin + space + api up.
+  and an injected `<script>` is actually blocked. Two of the checks are about **framing**
+  (added 2026-08-07): web must serve `frame-ancestors 'self'` *and* a matching
+  `X-Frame-Options: SAMEORIGIN`, and a same-origin route must really load in an `<iframe>`.
+  Needs web + admin + space + api up.
   Does two logins, so it respects the 5/min throttle — space it ~65s from another suite.
 - `pnpm --filter web test:cover` — Playwright, 15 checks + 1 env skip. The cover-picker
   QA pass from `docs/plan/05` §8, which was written as a *manual* checklist and had never
@@ -282,8 +348,13 @@ frontend whose dev server needs to stay up; use `typecheck` instead.
   the E2E fixture, since the per-doc cap only counts authenticated connections and so
   needs real collab tokens.
 
-- `pnpm --filter web test:i18n` — Playwright, 9 checks over the locale machinery
-  (ADR 0016 §5). Not an API suite because nothing here has an interesting HTTP surface:
+- `pnpm --filter @prism/constants test` — 11 checks over the Khmer holiday table and
+  cycle capacity (ADR 0016 §2.7). The cheapest suite in the repo: pure functions over a
+  static table, no browser, no Mongo, no dev stack. Runs `ts-node -P tsconfig.test.json`
+  because the package's own tsconfig targets a bundler (`module: esnext`) for the three
+  Next apps that consume it — don't "fix" that by bending the app-facing config.
+- `pnpm --filter web test:i18n` — Playwright, 14 checks over the locale machinery
+  (ADR 0016 §5) and the 3b/3c/3d slices. Not an API suite because nothing here has an interesting HTTP surface:
   `PATCH /users/me { locale }` is one more field on a covered endpoint. What only a
   browser proves is the round trip — cookie written client-side, read by middleware on the
   next request, applied by a server-rendered root layout, in a font that actually has

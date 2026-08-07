@@ -27,7 +27,7 @@ import {
   useNotificationHistory,
   useNotifications,
 } from '@/hooks/use-notifications';
-import { relTime } from '@/lib/format';
+import { useFormat } from '@prism/i18n';
 import { cn } from '@/lib/utils';
 import type { Notification, NotifType } from '@/schemas/notification';
 
@@ -326,6 +326,7 @@ function Row({
   onClick: () => void;
   onDismiss: () => void;
 }) {
+  const f = useFormat();
   const meta = TYPE_META[n.type] ?? TYPE_META.issue;
   const Icon = meta.Icon;
   const count = n.count ?? 1;
@@ -374,7 +375,7 @@ function Row({
             )}
           </strong>
           <span className="ml-auto text-[11px] text-text-muted flex-shrink-0">
-            {relTime(n.updatedAt ?? n.createdAt)}
+            {f.relative(n.updatedAt ?? n.createdAt)}
           </span>
         </div>
         <p className="text-[12.5px] text-text-muted mt-1 line-clamp-2">

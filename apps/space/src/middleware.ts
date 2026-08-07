@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   NONCE_HEADER,
-  STATIC_SECURITY_HEADERS,
   buildCsp,
   connectOrigins,
   generateNonce,
+  staticSecurityHeaders,
 } from '@prism/constants';
 import { LOCALE_COOKIE, LOCALE_HEADER, resolveLocale } from '@prism/i18n';
 import { PUBLIC_API_URL } from '@/lib/api-url';
@@ -65,7 +65,9 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);
-  for (const [key, value] of Object.entries(STATIC_SECURITY_HEADERS)) {
+  // Defaults on purpose: published content is exactly what must not be framed
+  // into someone else's page, and space renders no iframes of its own.
+  for (const [key, value] of Object.entries(staticSecurityHeaders())) {
     response.headers.set(key, value);
   }
 
