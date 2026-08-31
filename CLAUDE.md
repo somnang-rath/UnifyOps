@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status: the plan is the product, the code is a scaffold
 
-`PLAN.en.md` / `PLAN.km.md` are the specification and carry far more weight than the ~10 source files that
+`PLAN.en.md` / `PLAN.km.md` are the specification and carry far more weight than the 15 source files that
 exist. Both are stamped **"For review · Not approved for build"**, and `PLAN.md` closes with *"Nothing will
 be built until you say so."* Treat feature implementation as gated on explicit approval — answer questions
 and refine the plan freely, but do not start building slices unasked.
@@ -14,15 +14,19 @@ placeholder home page. `src/server/` and `drizzle/` are absent, so `db:generate`
 and `db:studio` all fail today — they are wired for a `src/server/db/` that has not been written. Nothing is
 broken; it simply hasn't been built yet.
 
-**Verified working as of 2026-08-31:** `pnpm install`, `typecheck`, `lint`, `test`, `build`, and `test:e2e`
-all pass. Two dependency versions in `package.json` did not exist (`eslint@^9.40.0`, `@types/react-dom@^19.2.8`)
-and blocked `install` entirely; both are corrected. The repo is now under git, and CI runs typecheck/lint/unit,
-e2e in both locales, and a tenancy job that stays inert until slice 1 lands a schema.
+Every gate passed on 2026-08-31 — `install`, `typecheck`, `lint`, `test`, `build`, `test:e2e` (36 across
+three Playwright projects). **Re-run them rather than trusting this line**; it is a snapshot, not a promise.
+Git history starts at that verification, on `main`.
+
+One thing worth knowing before debugging an install: two dependency versions in `package.json` had never
+existed on the registry (`eslint@^9.40.0`, `@types/react-dom@^19.2.8`) and blocked `pnpm install` outright.
+Both are corrected. If `install` ever fails again with `ERR_PNPM_NO_MATCHING_VERSION`, check the range
+against the registry before assuming a network problem.
 
 ## Commands
 
-Package manager is **pnpm** (per the plan's slice-0 definition of done); Node >= 22. No lockfile is
-committed yet.
+Package manager is **pnpm** (per the plan's slice-0 definition of done); Node >= 22. `pnpm-lock.yaml` is
+committed — CI installs with `--frozen-lockfile`.
 
 | | |
 | --- | --- |
@@ -83,6 +87,15 @@ src/server/{db/{schema,client.ts,tenant.ts},authz/policy.ts,queries,services,eve
 src/components/{ui,work-item,views}   src/i18n   src/lib   drizzle/
 ```
 
+Three conventions that surprise people:
+
+- **`src/proxy.ts`, not `src/middleware.ts`.** Next 16 renamed the file convention; the old name still works
+  but warns on every build. The next-intl factory is still called `createMiddleware`.
+- **Route handlers under `src/app/api/` are excluded from the locale proxy** by its matcher, which is
+  correct — they are not locale-prefixed. Only page routes carry `/en` or `/km`.
+- **Import `Link`, `useRouter`, `usePathname`, and `redirect` from `@/i18n/navigation`**, never from
+  `next/link` or `next/navigation`. The plain ones silently drop the locale prefix. ESLint errors on this.
+
 ## Bilingual invariants
 
 English and Khmer ship together or not at all; Khmer is never the degraded path. Retrofitting this is
@@ -117,15 +130,31 @@ Components use semantic utilities only; never a raw ramp value and never a liter
 tokens and both ring tokens are exposed through `@theme inline`, so `shadow-sm` resolves to the token rather
 than to Tailwind's own default — no component should need `shadow-[var(--shadow-sm)]`.
 
+Values marked `BRAND` are the seven flat Unify colours. §18-1 is decided — UnifyOps inherits the Unify
+family palette and typography — so these are the brand's real values, not placeholders: treat them as fixed.
+Everything else is derived and tunable. Sky `#54A6DB` on Ivory is ~2.4:1 and **fails WCAG AA for text**:
+**Navy is the text blue**, Sky is for fills, accents, and large text.
+
 **next-themes** puts `.dark` on `<html>` (`attribute="class"`, `defaultTheme="system"`), which is why the
 layout carries `suppressHydrationWarning`: the class is set by an inline script before paint, so there is no
 flash of the wrong theme. The provider is the whole mechanism — every colour decision is already made by the
-semantic aliases. `e2e/theme.spec.ts` asserts that background, text, and both chip colours actually differ
-between the two themes, because a component that hard-codes a light-mode colour still renders fine. Values marked
-`BRAND` are the seven flat Unify colours. §18-1 is now decided — UnifyOps inherits the Unify family palette
-and typography — so these are the brand's real values, not placeholders: treat them as fixed. Everything else
-is derived and tunable. Sky `#54A6DB` on Ivory is ~2.4:1 and **fails WCAG AA for text**:
-**Navy is the text blue**, Sky is for fills, accents, and large text.
+semantic aliases. `e2e/theme.spec.ts` compares computed styles across both themes, because a component that
+hard-codes a light-mode colour still *renders* fine; only the comparison catches it.
+
+## Tooling in `.claude/`
+
+Three design skills load on demand — `design-tokens` (colour, dark mode, adding a token), `khmer-ui`
+(strings, fonts, truncation, search), `ui-component` (anything in `src/components/`, carrying the settled
+§12 component specs and the five-states requirement). They encode decisions already made in the plan; they
+do not invent design rules.
+
+`.claude/hooks/check-design-tokens.sh` runs after every write and greps for literal hex outside
+`globals.css`, ramp utilities in components, Tailwind defaults like `bg-white`, `outline: none`, and
+`.slice()` on possible user text. It reports rather than blocks, and the slicing check is heuristic — it
+will occasionally fire on an array.
+
+`design-reviewer` is a read-only subagent that audits UI against all of the above plus contrast, the five
+states, and the accessibility baseline.
 
 ## Keeping documents in sync
 
