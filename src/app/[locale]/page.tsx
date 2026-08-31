@@ -1,5 +1,6 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { LocaleSwitcher } from '@/components/locale-switcher';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -18,7 +19,10 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
           </h1>
           <p className="text-base text-text-muted">{t('body')}</p>
         </div>
-        <LocaleSwitcher />
+        <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
+          <LocaleSwitcher />
+        </div>
       </header>
 
       {/* Renders the five state groups so a Khmer pass can be eyeballed

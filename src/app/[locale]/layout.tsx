@@ -9,6 +9,7 @@ import {
   Koh_Santepheap,
 } from 'next/font/google';
 import { routing } from '@/i18n/routing';
+import { ThemeProvider } from '@/components/theme-provider';
 import '../globals.css';
 
 const sans = IBM_Plex_Sans({
@@ -79,7 +80,9 @@ export default async function LocaleLayout({
       suppressHydrationWarning
     >
       <body>
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

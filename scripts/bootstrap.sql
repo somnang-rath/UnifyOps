@@ -3,10 +3,18 @@
 --
 -- Run ONCE, as a superuser, before the first migration:
 --
---   psql -U postgres -h localhost -f scripts/bootstrap.sql
+--   node scripts/db-setup.mjs
 --
--- Then set both URLs in .env. The two roles are the foundation of §9 tenancy
--- and are NOT interchangeable:
+-- That reads the two role passwords out of .env and passes them in as psql
+-- variables, so no secret is ever written into this file or into shell
+-- history. psql prompts for the SUPERUSER password interactively.
+--
+-- To run it by hand instead:
+--
+--   psql -U postgres -h localhost -d postgres \
+--        -v owner_password=... -v app_password=... -f scripts/bootstrap.sql
+--
+-- The two roles are the foundation of §9 tenancy and are NOT interchangeable:
 --
 --   DATABASE_URL_OWNER -> unifyops_owner  migrations and drizzle-kit only
 --   DATABASE_URL       -> unifyops_app    the running app, RLS forced
@@ -20,19 +28,35 @@
 \set ON_ERROR_STOP on
 
 -- --- Roles -------------------------------------------------------------------
--- Change both passwords before running, and match them in .env.
+-- Passwords arrive as psql variables from scripts/db-setup.mjs, which reads
+-- them from .env. Re-running is safe: an existing role has its password reset
+-- to whatever .env currently holds, so the two never drift apart.
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unifyops_owner') THEN
-    CREATE ROLE unifyops_owner LOGIN PASSWORD 'CHANGE_ME_OWNER';
-  END IF;
+\if :{?owner_password}
+\else
+  \echo 'ERROR: owner_password not set. Run: node scripts/db-setup.mjs'
+  \quit 1
+\endif
 
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unifyops_app') THEN
-    CREATE ROLE unifyops_app LOGIN PASSWORD 'CHANGE_ME_APP';
-  END IF;
-END
-$$;
+\if :{?app_password}
+\else
+  \echo 'ERROR: app_password not set. Run: node scripts/db-setup.mjs'
+  \quit 1
+\endif
+
+SELECT format('CREATE ROLE unifyops_owner LOGIN PASSWORD %L', :'owner_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unifyops_owner')
+\gexec
+
+SELECT format('CREATE ROLE unifyops_app LOGIN PASSWORD %L', :'app_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unifyops_app')
+\gexec
+
+SELECT format('ALTER ROLE unifyops_owner PASSWORD %L', :'owner_password')
+\gexec
+
+SELECT format('ALTER ROLE unifyops_app PASSWORD %L', :'app_password')
+\gexec
 
 -- Neither role may bypass RLS. BYPASSRLS on the app role would silently defeat
 -- every policy in the schema; on the owner role it would hide leaks in tests.

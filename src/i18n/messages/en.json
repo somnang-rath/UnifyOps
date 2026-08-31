@@ -43,6 +43,12 @@
   "locale": {
     "label": "Language"
   },
+  "theme": {
+    "label": "Appearance",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
   "home": {
     "heading": "UnifyOps",
     "body": "Multi-company work management. Bilingual from day one.",

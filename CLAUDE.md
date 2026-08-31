@@ -34,12 +34,15 @@ committed yet.
 | `pnpm test -- <pattern>` | Single file or test-name pattern |
 | `pnpm test:e2e` | Playwright, three projects: `en`, `km`, `mobile-km` |
 | `pnpm test:tenancy` | Cross-workspace read suite. Empty until slice 1 |
+| `pnpm db:setup` | One-time: create the database and both roles. Prompts for the superuser password |
 | `pnpm db:generate` | Drizzle migration from `src/server/db/schema/index.ts` |
 | `pnpm db:migrate` / `pnpm db:seed` | `tsx` scripts under `src/server/db/` |
 
-Postgres 18.4 is confirmed installed locally and listening on 5432, but the `unifyops` database and its two
-roles **do not exist yet**. Run `scripts/bootstrap.sql` as a superuser once, then fill in `.env` from
-`.env.example`. Nothing database-shaped works before that.
+Postgres 18.4 is installed locally and listening on 5432 with `scram-sha-256` on every line of `pg_hba.conf`.
+The `unifyops` database and its two roles **do not exist yet**: run `pnpm db:setup` once. That reads the
+generated role passwords out of `.env` and hands them to `scripts/bootstrap.sql` as psql variables, so no
+secret lands in the SQL or in shell history; psql prompts for the superuser password. Nothing
+database-shaped works before that.
 
 ## The one architectural rule that everything else hangs off
 
@@ -112,7 +115,13 @@ called out in the plan as the most expensive available mistake, so these are loa
 
 Components use semantic utilities only; never a raw ramp value and never a literal hex. All three shadow
 tokens and both ring tokens are exposed through `@theme inline`, so `shadow-sm` resolves to the token rather
-than to Tailwind's own default — no component should need `shadow-[var(--shadow-sm)]`. Values marked
+than to Tailwind's own default — no component should need `shadow-[var(--shadow-sm)]`.
+
+**next-themes** puts `.dark` on `<html>` (`attribute="class"`, `defaultTheme="system"`), which is why the
+layout carries `suppressHydrationWarning`: the class is set by an inline script before paint, so there is no
+flash of the wrong theme. The provider is the whole mechanism — every colour decision is already made by the
+semantic aliases. `e2e/theme.spec.ts` asserts that background, text, and both chip colours actually differ
+between the two themes, because a component that hard-codes a light-mode colour still renders fine. Values marked
 `BRAND` are the seven flat Unify colours. §18-1 is now decided — UnifyOps inherits the Unify family palette
 and typography — so these are the brand's real values, not placeholders: treat them as fixed. Everything else
 is derived and tunable. Sky `#54A6DB` on Ivory is ~2.4:1 and **fails WCAG AA for text**:
