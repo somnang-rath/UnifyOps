@@ -1,0 +1,297 @@
+@import 'tailwindcss';
+
+/* ==========================================================================
+   UnifyOps design tokens
+   --------------------------------------------------------------------------
+   The Unify brand supplies seven flat colours, no ramps, no semantic mapping,
+   and no green. A product UI needs all three. Layers below:
+
+     1. @theme        raw ramps. Fixed values, never change between themes.
+     2. :root / .dark semantic aliases. These flip.
+     3. @theme inline exposes the semantic aliases as Tailwind utilities.
+
+   Brand anchors are marked BRAND. Do not change those seven values without
+   a brand decision — everything else is derived and may be tuned.
+   ========================================================================== */
+
+@theme {
+  /* --- Sky (primary accent) --------------------------------------------- */
+  --color-sky-50: #f0f7fc;
+  --color-sky-100: #ddedf8;
+  --color-sky-200: #bfddf1;
+  --color-sky-300: #94c7e7;
+  --color-sky-400: #54a6db; /* BRAND Sky */
+  --color-sky-500: #3b8fc7;
+  --color-sky-600: #2c74a8;
+  --color-sky-700: #265d88;
+  --color-sky-800: #244f71;
+  --color-sky-900: #22425f;
+  --color-sky-950: #172b3f;
+
+  /* --- Navy (text blue, primary action) --------------------------------- */
+  --color-navy-50: #f1f5fa;
+  --color-navy-100: #dee9f4;
+  --color-navy-200: #c4d8ec;
+  --color-navy-300: #9bbede;
+  --color-navy-400: #6b9ccc;
+  --color-navy-500: #4a7eb8;
+  --color-navy-600: #38659b;
+  --color-navy-700: #2e527e;
+  --color-navy-800: #214775; /* BRAND Navy */
+  --color-navy-900: #1d3a5e;
+  --color-navy-950: #14253d;
+
+  /* --- Neutral (Ivory → Charcoal) --------------------------------------- */
+  --color-ink-0: #ffffff;
+  --color-ink-50: #f2f0ed; /* BRAND Ivory */
+  --color-ink-100: #e8e6e2;
+  --color-ink-200: #d6d5d2;
+  --color-ink-300: #b9bab9;
+  --color-ink-400: #93979a;
+  --color-ink-500: #6f757b;
+  --color-ink-600: #565d65;
+  --color-ink-700: #434a53;
+  --color-ink-800: #333b45;
+  --color-ink-900: #212e3b; /* BRAND Charcoal */
+  --color-ink-950: #161f28;
+
+  /* --- Crimson (danger) -------------------------------------------------- */
+  --color-crimson-50: #ffeceb;
+  --color-crimson-100: #ffd9d7;
+  --color-crimson-200: #ffb6b2;
+  --color-crimson-300: #ff8781;
+  --color-crimson-400: #ff5952; /* BRAND Crimson */
+  --color-crimson-500: #ed3d36;
+  --color-crimson-600: #cf2a24;
+  --color-crimson-700: #a9211c;
+  --color-crimson-800: #841c18;
+  --color-crimson-900: #661a17;
+
+  /* --- Lilac (BRAND, decorative / labels) -------------------------------- */
+  --color-lilac-100: #efe8f4;
+  --color-lilac-300: #d7c6e2;
+  --color-lilac-400: #bda3cc; /* BRAND Lilac */
+  --color-lilac-600: #8d6ba0;
+  --color-lilac-800: #5d4470;
+
+  /* --- Chartreuse (BRAND, decorative / labels) --------------------------- */
+  --color-chartreuse-100: #f3f6dc;
+  --color-chartreuse-300: #dde68f;
+  --color-chartreuse-400: #c4d145; /* BRAND Chartreuse */
+  --color-chartreuse-600: #8b9724;
+  --color-chartreuse-800: #5a6218;
+
+  /* --- Success (NOT in brand — added, harmonised to the palette) ---------- */
+  --color-success-50: #e7f5ee;
+  --color-success-100: #cbe9da;
+  --color-success-300: #7fcaa7;
+  --color-success-500: #2e9e6b;
+  --color-success-600: #248056;
+  --color-success-700: #1c6543;
+
+  /* --- Warning (NOT in brand — Chartreuse is too green to read as caution) */
+  --color-warning-50: #fdf2e0;
+  --color-warning-100: #fae3bd;
+  --color-warning-300: #eeb960;
+  --color-warning-500: #c77a0a;
+  --color-warning-600: #a46208;
+  --color-warning-700: #7f4c06;
+
+  /* --- Typography -------------------------------------------------------- */
+  /* Khmer faces sit AFTER the Latin face in every stack — they have no Latin
+     coverage worth using, so they are only reached by Khmer codepoints.
+     §18-2: Koh Santepheap is display-weight and carries headings; Kantumruy
+     Pro carries body text, where at 12–14px it is materially more legible. */
+  --font-display: var(--font-plex-condensed), var(--font-khmer-display), system-ui, sans-serif;
+  --font-sans: var(--font-plex-sans), var(--font-khmer), system-ui, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Type scale — the brand defines none, so this is ours. */
+  --text-2xs: 0.6875rem; /* 11 */
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.875rem; /* 14 */
+  --text-base: 1rem; /* 16 */
+  --text-lg: 1.25rem; /* 20 */
+  --text-xl: 1.5rem; /* 24 */
+  --text-2xl: 2rem; /* 32 */
+  --text-3xl: 2.5rem; /* 40 */
+
+  /* --- Radii / motion ---------------------------------------------------- */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ==========================================================================
+   Semantic aliases — light
+   ========================================================================== */
+
+:root {
+  --bg: var(--color-ink-50);
+  --surface: var(--color-ink-0);
+  --surface-raised: var(--color-ink-0);
+  --surface-sunken: var(--color-ink-100);
+  --surface-hover: var(--color-ink-100);
+
+  --border: var(--color-ink-200);
+  --border-strong: var(--color-ink-300);
+
+  --text: var(--color-ink-900);
+  --text-muted: var(--color-ink-600);
+  --text-subtle: var(--color-ink-500);
+  --text-inverse: var(--color-ink-0);
+
+  /* Sky #54A6DB on Ivory is ~2.4:1 and FAILS WCAG AA for text.
+     Navy is the text blue; Sky is reserved for fills and large text. */
+  --accent: var(--color-navy-800);
+  --accent-hover: var(--color-navy-900);
+  --accent-fg: var(--color-ink-0);
+  --accent-subtle: var(--color-sky-50);
+  --accent-ring: var(--color-sky-400);
+
+  --danger: var(--color-crimson-600);
+  --danger-fg: var(--color-ink-0);
+  --danger-subtle: var(--color-crimson-50);
+
+  --warning: var(--color-warning-600);
+  --warning-subtle: var(--color-warning-50);
+
+  --success: var(--color-success-600);
+  --success-subtle: var(--color-success-50);
+
+  --focus-ring: var(--color-sky-500);
+
+  --shadow-sm: 0 1px 2px 0 rgb(33 46 59 / 0.06);
+  --shadow-md: 0 2px 8px -1px rgb(33 46 59 / 0.10), 0 1px 3px -1px rgb(33 46 59 / 0.06);
+  --shadow-lg: 0 12px 32px -8px rgb(33 46 59 / 0.18);
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   Semantic aliases — dark. A second token set, not a rewrite.
+   ========================================================================== */
+
+.dark {
+  --bg: var(--color-ink-950);
+  --surface: var(--color-ink-900);
+  --surface-raised: var(--color-ink-800);
+  --surface-sunken: var(--color-ink-950);
+  --surface-hover: var(--color-ink-800);
+
+  --border: var(--color-ink-800);
+  --border-strong: var(--color-ink-700);
+
+  --text: var(--color-ink-50);
+  --text-muted: var(--color-ink-300);
+  --text-subtle: var(--color-ink-400);
+  --text-inverse: var(--color-ink-950);
+
+  --accent: var(--color-sky-400);
+  --accent-hover: var(--color-sky-300);
+  --accent-fg: var(--color-ink-950);
+  --accent-subtle: var(--color-navy-950);
+  --accent-ring: var(--color-sky-400);
+
+  --danger: var(--color-crimson-400);
+  --danger-fg: var(--color-ink-950);
+  --danger-subtle: #3a1614;
+
+  --warning: var(--color-warning-300);
+  --warning-subtle: #2e2007;
+
+  --success: var(--color-success-300);
+  --success-subtle: #0e2c1f;
+
+  --focus-ring: var(--color-sky-300);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.30);
+  --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.60);
+
+  color-scheme: dark;
+}
+
+/* Expose the semantic aliases as utilities: bg-surface, text-muted, etc. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-inverse: var(--text-inverse);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-focus-ring: var(--focus-ring);
+  --color-accent-ring: var(--accent-ring);
+
+  /* Without these, Tailwind's `shadow-sm` resolves to Tailwind's own default
+     rather than the token above, and every component has to write
+     `shadow-[var(--shadow-sm)]` to get the real one. */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Khmer stacks diacritics vertically and clips at Latin line heights.
+     Applied by [lang] so it follows content, not layout. */
+  :lang(km) {
+    line-height: 1.75;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

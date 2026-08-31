@@ -1,0 +1,51 @@
+{
+  "app": {
+    "name": "UnifyOps",
+    "tagline": "Work management that needs no training."
+  },
+  "nav": {
+    "myWork": "My Work",
+    "inbox": "Inbox",
+    "projects": "Projects",
+    "search": "Search",
+    "settings": "Settings"
+  },
+  "action": {
+    "create": "Create",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "archive": "Archive",
+    "retry": "Try again"
+  },
+  "priority": {
+    "urgent": "Urgent",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "none": "No priority"
+  },
+  "stateGroup": {
+    "backlog": "Backlog",
+    "unstarted": "Not started",
+    "started": "In progress",
+    "completed": "Done",
+    "cancelled": "Cancelled"
+  },
+  "defaultState": {
+    "backlog": "Backlog",
+    "todo": "Todo",
+    "inProgress": "In Progress",
+    "inReview": "In Review",
+    "done": "Done",
+    "cancelled": "Cancelled"
+  },
+  "locale": {
+    "label": "Language"
+  },
+  "home": {
+    "heading": "UnifyOps",
+    "body": "Multi-company work management. Bilingual from day one.",
+    "status": "Slice 0 — scaffold running."
+  }
+}
