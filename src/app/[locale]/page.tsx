@@ -1,12 +1,14 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { Link } from '@/i18n/navigation';
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations('home');
   const tg = await getTranslations('stateGroup');
+  const ta = await getTranslations('auth');
 
   const groups = ['backlog', 'unstarted', 'started', 'completed', 'cancelled'] as const;
 
@@ -38,6 +40,25 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
           </span>
         ))}
       </section>
+
+      {/* Deliberately no session read on this page. It stays statically
+          rendered and needs no database, which is what lets the locale and
+          theme suites run against a build with neither. Signed-in users reach
+          their workspace through these links, one redirect later. */}
+      <nav aria-label={ta('signIn.title')} className="flex flex-wrap gap-2">
+        <Link
+          href="/sign-up"
+          className="inline-flex h-10 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg transition-colors duration-120 ease-[var(--ease-out-soft)] hover:bg-accent-hover"
+        >
+          {ta('signUp.submit')}
+        </Link>
+        <Link
+          href="/sign-in"
+          className="inline-flex h-10 items-center justify-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition-colors duration-120 ease-[var(--ease-out-soft)] hover:bg-surface-hover"
+        >
+          {ta('signIn.submit')}
+        </Link>
+      </nav>
 
       <footer className="rounded-lg border border-border bg-surface-sunken px-4 py-3 text-xs text-text-subtle">
         {t('status')}

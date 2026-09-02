@@ -12,6 +12,7 @@ import {
 import { WORKSPACE_ROLES } from '@/server/authz/roles';
 import {
   appRole,
+  identityRole,
   operatorRole,
   primaryId,
   tenantPolicies,
@@ -66,6 +67,23 @@ export const workspace = pgTable(
      * (slice 3) — and deleting a workspace is an owner operation that will
      * arrive with billing, not a row delete from a request.
      */
+    /**
+     * Creating a company is the other half of signup: it cannot happen on a
+     * connection already scoped to a workspace, because there is not one yet.
+     * INSERT and SELECT only — renaming or deleting a workspace is a §10 action
+     * inside it, and goes through `withActor` like everything else.
+     */
+    pgPolicy('identity_insert', {
+      for: 'insert',
+      to: identityRole,
+      withCheck: sql`true`,
+    }),
+    pgPolicy('identity_select', {
+      for: 'select',
+      to: identityRole,
+      using: sql`true`,
+    }),
+
     pgPolicy('operator_select', {
       for: 'select',
       to: operatorRole,
@@ -96,5 +114,21 @@ export const workspaceMember = pgTable(
     unique('workspace_member_id_workspace_key').on(t.id, t.workspaceId),
     index('workspace_member_user_idx').on(t.userId),
     ...tenantPolicies(),
+
+    /**
+     * The narrowest policy in the schema, and the one that keeps the identity
+     * role honest.
+     *
+     * After sign-in the app has to answer "which workspaces is this person in?"
+     * — a question that spans workspaces, so no single scope answers it. The
+     * identity connection sets only `unifyops.user_id` and reads exactly the
+     * rows for that user. It cannot see who else is in those workspaces, which
+     * is the difference between a membership lookup and a tenant read.
+     */
+    pgPolicy('identity_select_own', {
+      for: 'select',
+      to: identityRole,
+      using: sql`"workspace_member"."user_id" = tenancy.user_id()`,
+    }),
   ],
 );

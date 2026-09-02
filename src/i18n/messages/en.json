@@ -18,6 +18,11 @@
     "archive": "Archive",
     "retry": "Try again"
   },
+  "feedback": {
+    "loading": "Loading…",
+    "error": "Something went wrong.",
+    "working": "Working…"
+  },
   "priority": {
     "urgent": "Urgent",
     "high": "High",
@@ -40,6 +45,12 @@
     "done": "Done",
     "cancelled": "Cancelled"
   },
+  "role": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "member": "Member",
+    "guest": "Guest"
+  },
   "locale": {
     "label": "Language"
   },
@@ -49,9 +60,163 @@
     "dark": "Dark",
     "system": "System"
   },
+  "auth": {
+    "signIn": {
+      "title": "Sign in",
+      "subtitle": "Welcome back.",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "noAccount": "No account yet?",
+      "createOne": "Create one"
+    },
+    "signUp": {
+      "title": "Create your account",
+      "subtitle": "Two minutes, and you are working.",
+      "name": "Your name",
+      "email": "Work email",
+      "password": "Password",
+      "passwordHint": "At least 12 characters.",
+      "submit": "Create account",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in"
+    },
+    "signOut": "Sign out",
+    "errors": {
+      "required": "This field is required.",
+      "invalidEmail": "Enter a valid email address.",
+      "nameRequired": "Enter your name.",
+      "weakPassword": "Use at least 12 characters.",
+      "emailTaken": "An account already exists for this address.",
+      "invalidCredentials": "That email and password do not match.",
+      "unknown": "Something went wrong. Try again."
+    },
+    "verify": {
+      "title": "Check your email",
+      "sentTo": "We sent a confirmation link to {email}.",
+      "resend": "Send it again",
+      "resent": "Sent. Check your inbox.",
+      "success": "Your email is confirmed.",
+      "expired": "That link has expired.",
+      "alreadyUsed": "That link has already been used.",
+      "unknown": "That link is not valid.",
+      "continue": "Continue",
+      "pending": "Confirm your email address to secure your account."
+    }
+  },
+  "onboarding": {
+    "workspace": {
+      "title": "Name your company",
+      "subtitle": "You can change this later.",
+      "name": "Company name",
+      "slug": "Workspace address",
+      "slugHint": "This appears in every link to your workspace.",
+      "submit": "Create company",
+      "errors": {
+        "nameRequired": "Enter a company name.",
+        "slugTaken": "That address is already taken.",
+        "slugReserved": "That address is reserved.",
+        "slugTooShort": "Use at least 2 characters.",
+        "slugInvalid": "Use lowercase letters, numbers and hyphens."
+      }
+    },
+    "invite": {
+      "title": "Invite your teammates",
+      "subtitle": "Paste as many addresses as you like.",
+      "skip": "Skip for now",
+      "done": "Go to the workspace"
+    }
+  },
+  "invite": {
+    "form": {
+      "emails": "Email addresses",
+      "emailsHint": "Separate them with commas, spaces or new lines. A CSV of email, role, team works too.",
+      "role": "Role",
+      "teams": "Teams",
+      "teamsHint": "Everyone in this batch joins these teams.",
+      "projectsLater": "Projects can be added once you have created one.",
+      "send": "Send invitations",
+      "sending": "Sending…",
+      "remove": "Remove {email}",
+      "invalid": "Not a valid address",
+      "empty": "Add at least one address.",
+      "count": "{count, plural, =1 {# address} other {# addresses}}"
+    },
+    "result": {
+      "title": "Invitations",
+      "sent": "{count, plural, =1 {# invitation sent} other {# invitations sent}}",
+      "failed": "{count, plural, =1 {# could not be sent} other {# could not be sent}}",
+      "skippedMember": "{count, plural, =1 {# is already a member} other {# are already members}}",
+      "skippedPending": "{count, plural, =1 {# was already invited} other {# were already invited}}",
+      "invalidCount": "{count, plural, =1 {# is not a valid address} other {# are not valid addresses}}",
+      "retryFailed": "Retry the ones that failed"
+    },
+    "accept": {
+      "title": "Join {workspace}",
+      "body": "Accepting adds you to {workspace} straight away.",
+      "cta": "Accept invitation",
+      "signInFirst": "Sign in to accept",
+      "signUpFirst": "Create an account to accept",
+      "expired": "This invitation has expired.",
+      "revoked": "This invitation was withdrawn.",
+      "unknown": "This invitation link is not valid.",
+      "requestNew": "Ask for a new invitation",
+      "alreadyMember": "You are already in this workspace."
+    }
+  },
+  "members": {
+    "title": "Members",
+    "invite": "Invite people",
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "status": "Status",
+    "you": "You",
+    "active": "Active",
+    "pending": "Invited",
+    "notDelivered": "Not delivered",
+    "resend": "Resend",
+    "revoke": "Withdraw",
+    "remove": "Remove",
+    "empty": "Nobody else yet. Invite the people you work with.",
+    "pendingTitle": "Pending invitations",
+    "lastOwner": "A workspace must keep at least one owner.",
+    "removed": "{name} was removed."
+  },
+  "teams": {
+    "title": "Teams",
+    "create": "New team",
+    "name": "Team name",
+    "empty": "No teams yet. A team is how projects get an owner.",
+    "members": "{count, plural, =1 {# member} other {# members}}"
+  },
+  "workspace": {
+    "switcher": "Switch workspace",
+    "settings": "Workspace settings",
+    "none": "You are not in a workspace yet.",
+    "create": "Create a company"
+  },
+  "email": {
+    "verify": {
+      "subject": "Confirm your email",
+      "heading": "Confirm your email address",
+      "body": "Hello {name} — confirm this address to finish setting up your UnifyOps account.",
+      "expiry": "The link works for 24 hours.",
+      "cta": "Confirm my email",
+      "ignore": "If you did not create this account, you can ignore this message."
+    },
+    "invitation": {
+      "subject": "You are invited to {workspace}",
+      "heading": "Join {workspace}",
+      "body": "{inviter} invited you to work with them in {workspace} on UnifyOps.",
+      "expiry": "The invitation is open for 14 days.",
+      "cta": "Accept the invitation",
+      "ignore": "If you were not expecting this, you can ignore it."
+    }
+  },
   "home": {
     "heading": "UnifyOps",
     "body": "Multi-company work management. Bilingual from day one.",
-    "status": "Slice 0 — scaffold running."
+    "status": "Slice 3 — accounts, companies, teams and invitations."
   }
 }

@@ -31,6 +31,11 @@ jobs:
   e2e:
     name: e2e · en + km
     runs-on: ubuntu-latest
+    # From slice 3 the flows §15 asks to be tested in a browser are flows
+    # through a database, so the Playwright web server provisions its own —
+    # roles, grants and migrations from the same module the tenancy harness
+    # uses, so the browser drives the same isolation the RLS suite asserts
+    # rather than a permissive copy of it. Docker is present on ubuntu-latest.
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -40,8 +45,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      # §13: every end-to-end flow runs in both languages, from slice 4 onward.
+      # §13: every end-to-end flow runs in both languages.
       - run: pnpm test:e2e
+        env:
+          # The build inlines this into the client bundle; the server also reads
+          # it to build invitation links. The specs extract the token and
+          # rebuild the path against Playwright's baseURL, so the two need not
+          # agree — but an unset value would fail the build.
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3100
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

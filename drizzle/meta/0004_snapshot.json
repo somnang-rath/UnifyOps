@@ -1,0 +1,1747 @@
+{
+  "id": "19d68c50-625f-433e-b5bc-199f55cc3a94",
+  "prevId": "cf501551-8aae-49c6-afe3-8c8e9ba5d6c3",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.app_user": {
+      "name": "app_user",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "image_url": {
+          "name": "image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en'"
+        },
+        "email_verified_at": {
+          "name": "email_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "app_user_email_key": {
+          "name": "app_user_email_key",
+          "columns": [
+            {
+              "expression": "lower(\"email\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "user_select": {
+          "name": "user_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "exists (\n        select 1 from workspace_member wm\n        where wm.user_id = \"app_user\".\"id\"\n          and wm.workspace_id = tenancy.workspace_id()\n          and wm.deleted_at is null\n      )"
+        },
+        "user_update_self": {
+          "name": "user_update_self",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"app_user\".\"id\" = tenancy.user_id() and not tenancy.is_read_only()",
+          "withCheck": "\"app_user\".\"id\" = tenancy.user_id() and not tenancy.is_read_only()"
+        },
+        "identity_manage": {
+          "name": "identity_manage",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace": {
+      "name": "workspace",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "workspace_slug_key": {
+          "name": "workspace_slug_key",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace\".\"id\" = tenancy.workspace_id()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace\".\"id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace\".\"id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "identity_insert": {
+          "name": "identity_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "withCheck": "true"
+        },
+        "identity_select": {
+          "name": "identity_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace_member": {
+      "name": "workspace_member",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "workspace_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "workspace_member_user_idx": {
+          "name": "workspace_member_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "workspace_member_workspace_id_workspace_id_fk": {
+          "name": "workspace_member_workspace_id_workspace_id_fk",
+          "tableFrom": "workspace_member",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "workspace_member_user_id_app_user_id_fk": {
+          "name": "workspace_member_user_id_app_user_id_fk",
+          "tableFrom": "workspace_member",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workspace_member_workspace_user_key": {
+          "name": "workspace_member_workspace_user_key",
+          "columns": [
+            "workspace_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "workspace_member_id_workspace_key": {
+          "name": "workspace_member_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        },
+        "identity_select_own": {
+          "name": "identity_select_own",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "\"workspace_member\".\"user_id\" = tenancy.user_id()"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.team": {
+      "name": "team",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "team_workspace_id_workspace_id_fk": {
+          "name": "team_workspace_id_workspace_id_fk",
+          "tableFrom": "team",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "team_workspace_slug_key": {
+          "name": "team_workspace_slug_key",
+          "columns": [
+            "workspace_id",
+            "slug"
+          ],
+          "nullsNotDistinct": false
+        },
+        "team_id_workspace_key": {
+          "name": "team_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.team_member": {
+      "name": "team_member",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_member_id": {
+          "name": "workspace_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "team_member_member_idx": {
+          "name": "team_member_member_idx",
+          "columns": [
+            {
+              "expression": "workspace_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "team_member_workspace_id_workspace_id_fk": {
+          "name": "team_member_workspace_id_workspace_id_fk",
+          "tableFrom": "team_member",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "team_member_team_fk": {
+          "name": "team_member_team_fk",
+          "tableFrom": "team_member",
+          "columnsFrom": [
+            "team_id",
+            "workspace_id"
+          ],
+          "tableTo": "team",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "team_member_member_fk": {
+          "name": "team_member_member_fk",
+          "tableFrom": "team_member",
+          "columnsFrom": [
+            "workspace_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "team_member_team_member_key": {
+          "name": "team_member_team_member_key",
+          "columns": [
+            "team_id",
+            "workspace_member_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.audit_record": {
+      "name": "audit_record",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "audit_actor_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "on_behalf_of_user_id": {
+          "name": "on_behalf_of_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_type": {
+          "name": "subject_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "audit_record_workspace_occurred_idx": {
+          "name": "audit_record_workspace_occurred_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "audit_record_subject_idx": {
+          "name": "audit_record_subject_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subject_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subject_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "audit_record_workspace_id_workspace_id_fk": {
+          "name": "audit_record_workspace_id_workspace_id_fk",
+          "tableFrom": "audit_record",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "audit_record_actor_user_id_app_user_id_fk": {
+          "name": "audit_record_actor_user_id_app_user_id_fk",
+          "tableFrom": "audit_record",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "audit_record_on_behalf_of_user_id_app_user_id_fk": {
+          "name": "audit_record_on_behalf_of_user_id_app_user_id_fk",
+          "tableFrom": "audit_record",
+          "columnsFrom": [
+            "on_behalf_of_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_credential": {
+      "name": "auth_credential",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_credential_user_key": {
+          "name": "auth_credential_user_key",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "auth_credential_user_id_app_user_id_fk": {
+          "name": "auth_credential_user_id_app_user_id_fk",
+          "tableFrom": "auth_credential",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "identity_all": {
+          "name": "identity_all",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_session": {
+      "name": "auth_session",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_session_token_key": {
+          "name": "auth_session_token_key",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "auth_session_user_idx": {
+          "name": "auth_session_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "auth_session_expires_idx": {
+          "name": "auth_session_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "auth_session_user_id_app_user_id_fk": {
+          "name": "auth_session_user_id_app_user_id_fk",
+          "tableFrom": "auth_session",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "identity_all": {
+          "name": "identity_all",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_verification_token": {
+      "name": "auth_verification_token",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "verification_purpose",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_verification_token_key": {
+          "name": "auth_verification_token_key",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "auth_verification_user_purpose_idx": {
+          "name": "auth_verification_user_purpose_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "auth_verification_token_user_id_app_user_id_fk": {
+          "name": "auth_verification_token_user_id_app_user_id_fk",
+          "tableFrom": "auth_verification_token",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "identity_all": {
+          "name": "identity_all",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invitation": {
+      "name": "invitation",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "workspace_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invited_by_member_id": {
+          "name": "invited_by_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "invitation_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "accepted_by_user_id": {
+          "name": "accepted_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivery_status": {
+          "name": "delivery_status",
+          "type": "invitation_delivery",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "delivery_error": {
+          "name": "delivery_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "invitation_token_key": {
+          "name": "invitation_token_key",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "invitation_workspace_email_pending_key": {
+          "name": "invitation_workspace_email_pending_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"email\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"invitation\".\"status\" = 'pending' and \"invitation\".\"deleted_at\" is null",
+          "concurrently": false
+        },
+        "invitation_workspace_status_idx": {
+          "name": "invitation_workspace_status_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "invitation_workspace_id_workspace_id_fk": {
+          "name": "invitation_workspace_id_workspace_id_fk",
+          "tableFrom": "invitation",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "invitation_accepted_by_user_id_app_user_id_fk": {
+          "name": "invitation_accepted_by_user_id_app_user_id_fk",
+          "tableFrom": "invitation",
+          "columnsFrom": [
+            "accepted_by_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "invitation_invited_by_fk": {
+          "name": "invitation_invited_by_fk",
+          "tableFrom": "invitation",
+          "columnsFrom": [
+            "invited_by_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitation_id_workspace_key": {
+          "name": "invitation_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        },
+        "identity_select": {
+          "name": "identity_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invitation_team": {
+      "name": "invitation_team",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invitation_id": {
+          "name": "invitation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invitation_team_workspace_id_workspace_id_fk": {
+          "name": "invitation_team_workspace_id_workspace_id_fk",
+          "tableFrom": "invitation_team",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "invitation_team_invitation_fk": {
+          "name": "invitation_team_invitation_fk",
+          "tableFrom": "invitation_team",
+          "columnsFrom": [
+            "invitation_id",
+            "workspace_id"
+          ],
+          "tableTo": "invitation",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "invitation_team_team_fk": {
+          "name": "invitation_team_team_fk",
+          "tableFrom": "invitation_team",
+          "columnsFrom": [
+            "team_id",
+            "workspace_id"
+          ],
+          "tableTo": "team",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitation_team_key": {
+          "name": "invitation_team_key",
+          "columns": [
+            "invitation_id",
+            "team_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.workspace_role": {
+      "name": "workspace_role",
+      "schema": "public",
+      "values": [
+        "owner",
+        "admin",
+        "member",
+        "guest"
+      ]
+    },
+    "public.audit_actor_kind": {
+      "name": "audit_actor_kind",
+      "schema": "public",
+      "values": [
+        "member",
+        "operator",
+        "system"
+      ]
+    },
+    "public.verification_purpose": {
+      "name": "verification_purpose",
+      "schema": "public",
+      "values": [
+        "email_verification",
+        "password_reset"
+      ]
+    },
+    "public.invitation_delivery": {
+      "name": "invitation_delivery",
+      "schema": "public",
+      "values": [
+        "pending",
+        "sent",
+        "failed"
+      ]
+    },
+    "public.invitation_status": {
+      "name": "invitation_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "accepted",
+        "revoked"
+      ]
+    }
+  },
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

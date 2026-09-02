@@ -38,6 +38,8 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     userId: 'u1',
   },
   'team.created': { type: 'team.created', workspaceId: 'w1', teamId: 't1', slug: 'eng', name: 'Eng' },
+  'team.renamed': { type: 'team.renamed', workspaceId: 'w1', teamId: 't1', from: 'Eng', to: 'Product' },
+  'team.deleted': { type: 'team.deleted', workspaceId: 'w1', teamId: 't1', name: 'Eng' },
   'team.member_added': {
     type: 'team.member_added',
     workspaceId: 'w1',
@@ -49,6 +51,33 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     workspaceId: 'w1',
     teamId: 't1',
     memberId: 'm1',
+  },
+  'invitation.sent': {
+    type: 'invitation.sent',
+    workspaceId: 'w1',
+    invitationId: 'i1',
+    email: 'sophea@example.com',
+    role: 'member',
+  },
+  'invitation.resent': {
+    type: 'invitation.resent',
+    workspaceId: 'w1',
+    invitationId: 'i1',
+    email: 'sophea@example.com',
+  },
+  'invitation.revoked': {
+    type: 'invitation.revoked',
+    workspaceId: 'w1',
+    invitationId: 'i1',
+    email: 'sophea@example.com',
+  },
+  'invitation.accepted': {
+    type: 'invitation.accepted',
+    workspaceId: 'w1',
+    invitationId: 'i1',
+    email: 'sophea@example.com',
+    userId: 'u2',
+    memberId: 'm2',
   },
 };
 
@@ -95,7 +124,13 @@ describe('the event registry', () => {
 
     expect(audited.sort()).toEqual(
       [
+        'invitation.accepted',
+        'invitation.resent',
+        'invitation.revoked',
+        'invitation.sent',
         'team.created',
+        'team.deleted',
+        'team.renamed',
         'workspace.created',
         'workspace.renamed',
         'workspace_member.added',
@@ -103,5 +138,14 @@ describe('the event registry', () => {
         'workspace_member.role_changed',
       ].sort(),
     );
+  });
+
+  // §18-11: the audit log exists so an owner can reconstruct how someone got
+  // access. An invitation accepted by an account whose address differs from the
+  // one invited is exactly the case that question is asked about, so the row
+  // has to carry both.
+  it('records who accepted an invitation, not only who was invited', () => {
+    const row = auditRowFor(sample['invitation.accepted']);
+    expect(row?.data).toMatchObject({ email: 'sophea@example.com', userId: 'u2' });
   });
 });

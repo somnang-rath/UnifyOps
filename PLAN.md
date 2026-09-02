@@ -1,7 +1,7 @@
 # UnifyOps — Plan · ផែនការ
 
-**Version 3 · Approved for build, 31 August 2026 · Slices 1–2 done**
-**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–២ រួចរាល់**
+**Version 3 · Approved for build, 31 August 2026 · Slices 1–3 done**
+**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–៣ រួចរាល់**
 
 ---
 
@@ -45,7 +45,13 @@ All settled. The last two — audit records from `withActor` (§18-11) and the p
 
 https://claude.ai/code/artifact/df48ef68-f940-4e47-9184-c1bbe14e3fa9
 
+> **Behind the Markdown as of slice 3.** §8's auth row and §17's findings 29–31 are in `PLAN.en.md` and
+> `PLAN.km.md` but not yet in the artifact — it is a third surface for the same content and has to be
+> republished by hand.
+> **យឺតជាង Markdown ចាប់ពីដំណាក់កាល ៣។** ជួរផ្ទៀងផ្ទាត់ក្នុង §៨ និងលទ្ធផល ២៩–៣១ ក្នុង §១៧ មានក្នុង
+> `PLAN.en.md` និង `PLAN.km.md` តែមិនទាន់មានក្នុងឯកសារគេហទំព័រនៅឡើយ។
+
 ---
 
-> **Build in progress. Slices 1–2 of 16 are done; §14 lists what follows.**
-> **កំពុងសាងសង់។ ដំណាក់កាល ១–២ ក្នុងចំណោម ១៦ រួចរាល់; §១៤ រាយអ្វីដែលបន្តបន្ទាប់។**
+> **Build in progress. Slices 1–3 of 16 are done; §14 lists what follows.**
+> **កំពុងសាងសង់។ ដំណាក់កាល ១–៣ ក្នុងចំណោម ១៦ រួចរាល់; §១៤ រាយអ្វីដែលបន្តបន្ទាប់។**

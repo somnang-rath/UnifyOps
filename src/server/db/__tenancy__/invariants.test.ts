@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { TenancyHarness } from './harness';
-import { startTenancyHarness } from './harness';
+import { seedWorkspace, startTenancyHarness } from './harness';
 
 /**
  * Structural gates, not behaviour.
@@ -21,12 +21,33 @@ afterAll(async () => {
   await h?.stop();
 });
 
-/** Tables that legitimately have no workspace_id. Both are deliberate; nothing else may join them. */
+/**
+ * Tables that legitimately have no workspace_id. Every entry is deliberate, and
+ * nothing else may join them without a reason written down here.
+ */
 const NON_TENANT_TABLES = new Set([
   'app_user', // global: one person, several workspaces
   'workspace', // the tenant root — it keys on its own id
   '__drizzle_migrations',
+  // Authentication is pre-tenancy by nature: a session is resolved from a
+  // cookie before anything is known about which workspace the request is for,
+  // so there is no tenant key to carry. What protects these is the grant —
+  // only the identity role reaches them — which the tests below assert.
+  'auth_credential',
+  'auth_session',
+  'auth_verification_token',
 ]);
+
+/** The tables the identity role may reach, and the privileges it gets on each. */
+const IDENTITY_GRANTS: Record<string, string[]> = {
+  app_user: ['INSERT', 'SELECT', 'UPDATE'],
+  workspace: ['INSERT', 'SELECT'],
+  workspace_member: ['SELECT'],
+  invitation: ['SELECT'],
+  auth_credential: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+  auth_session: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+  auth_verification_token: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+};
 
 async function publicTables(): Promise<string[]> {
   const rows = await h.owner.execute<{ table_name: string }>(sql`
@@ -98,11 +119,11 @@ describe('roles', () => {
       rolbypassrls: boolean;
     }>(sql`
       select rolname, rolsuper, rolbypassrls from pg_roles
-      where rolname in ('unifyops_owner', 'unifyops_app', 'unifyops_operator')
+      where rolname in ('unifyops_owner', 'unifyops_app', 'unifyops_operator', 'unifyops_identity')
       order by rolname
     `);
 
-    expect(rows.rows).toHaveLength(3);
+    expect(rows.rows).toHaveLength(4);
     for (const r of rows.rows) {
       expect(r.rolsuper, `${r.rolname} is a superuser`).toBe(false);
       expect(r.rolbypassrls, `${r.rolname} can bypass RLS`).toBe(false);
@@ -129,6 +150,93 @@ describe('roles', () => {
     expect(rows.rows.length).toBeGreaterThan(0);
     const nonSelect = rows.rows.filter((r) => r.privilege_type !== 'SELECT');
     expect(nonSelect).toEqual([]);
+  });
+});
+
+describe('the identity role (slice 3)', () => {
+  it('reaches only the handshake tables, and only with the privileges they need', async () => {
+    const rows = await h.owner.execute<{ table_name: string; privilege_type: string }>(sql`
+      select table_name, privilege_type
+      from information_schema.role_table_grants
+      where grantee = 'unifyops_identity' and table_schema = 'public'
+      order by table_name, privilege_type
+    `);
+
+    const granted = new Map<string, string[]>();
+    for (const row of rows.rows) {
+      granted.set(row.table_name, [...(granted.get(row.table_name) ?? []), row.privilege_type]);
+    }
+
+    // Exact, not a subset. The value of this role is the shortness of the list:
+    // a tenant table added in a later slice must not appear here, and
+    // bootstrap.sql gives it no default privileges precisely so that one cannot
+    // arrive silently.
+    expect(Object.fromEntries([...granted].map(([t, p]) => [t, p.sort()]))).toEqual(
+      IDENTITY_GRANTS,
+    );
+  });
+
+  it('cannot read what a company is doing', async () => {
+    // The sentence the whole design rests on. team, team_member and
+    // audit_record are ordinary tenant tables; if the handshake role can read
+    // one of them, it is not a handshake role any more.
+    for (const table of ['team', 'team_member', 'audit_record', 'invitation_team']) {
+      const rows = await h.owner.execute<{ has: boolean }>(
+        sql`select has_table_privilege('unifyops_identity', ${table}, 'SELECT') as has`,
+      );
+      expect(rows.rows[0]?.has, `identity can select ${table}`).toBe(false);
+    }
+  });
+
+  it('cannot create tables', async () => {
+    const rows = await h.owner.execute<{ has: boolean }>(
+      sql`select has_schema_privilege('unifyops_identity', 'public', 'CREATE') as has`,
+    );
+    expect(rows.rows[0]?.has).toBe(false);
+  });
+
+  it('reads only the memberships of the user it has authenticated', async () => {
+    // The policy is `user_id = tenancy.user_id()`, so this is a test of one
+    // predicate — but it is the predicate that stops "which workspaces am I in?"
+    // from also answering "who else is in them?".
+    const a = await seedWorkspace(h, 'identity-a');
+    const b = await seedWorkspace(h, 'identity-b');
+
+    const seen = await h.identity.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('unifyops.user_id', ${a.ownerUserId}, true)`);
+      return tx.execute<{ workspace_id: string }>(sql`select workspace_id from workspace_member`);
+    });
+
+    const workspaces = seen.rows.map((r) => r.workspace_id);
+    expect(workspaces).toEqual([a.workspaceId]);
+    expect(workspaces).not.toContain(b.workspaceId);
+  });
+
+  it('sees nothing at all when no user has been authenticated', async () => {
+    const seen = await h.identity.transaction(async (tx) =>
+      tx.execute<{ workspace_id: string }>(sql`select workspace_id from workspace_member`),
+    );
+    expect(seen.rows).toEqual([]);
+  });
+});
+
+describe('the auth tables belong to the identity role alone', () => {
+  it('are unreachable by the app and operator roles', async () => {
+    // bootstrap.sql's default privileges would have handed the app role full
+    // CRUD and the operator SELECT on these. 0004 revokes both: a support role
+    // that could read live session tokens would be a way to become any user in
+    // the product, and one that could read password hashes a way to try
+    // becoming them somewhere else.
+    for (const table of ['auth_credential', 'auth_session', 'auth_verification_token']) {
+      for (const role of ['unifyops_app', 'unifyops_operator']) {
+        for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+          const rows = await h.owner.execute<{ has: boolean }>(
+            sql`select has_table_privilege(${role}, ${table}, ${privilege}) as has`,
+          );
+          expect(rows.rows[0]?.has, `${role} has ${privilege} on ${table}`).toBe(false);
+        }
+      }
+    }
   });
 });
 

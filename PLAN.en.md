@@ -520,7 +520,7 @@ is the accountability · `[!]` the member is removed mid-session → view-as end
 | Framework | **Next.js 16** (App Router, React 19, TS 5.9) | One language, one deployable; RSC suits a data-dense read-heavy UI |
 | Database | **Postgres 18** | RLS, `tsvector`, `pg_trgm`, arrays, and the job queue in one dependency |
 | ORM | **Drizzle** | SQL-first control for the §9 list query; RLS and generated columns without escape hatches |
-| Auth | **Auth.js v5** | Email/password + Google, database sessions |
+| Auth | **Own session layer** on `node:crypto` | Email/password + database sessions; Auth.js v5 cannot do both — see §17-29. Google OAuth slots in behind the same interface |
 | Styling | **Tailwind v4** + **Radix primitives** | Accessible behaviour we don't rebuild; components stay ours |
 | Animation | **Motion** (formerly Framer Motion) | Radix ships behaviour, not motion; layout and enter/exit animation that survives unmounting, gated on `prefers-reduced-motion` |
 | Rich text | **TipTap 2** | Comments and descriptions, mentions, paste-image |
@@ -1059,6 +1059,36 @@ support ticket, diagnoses one tenant's data, or counts anything across workspace
 this pass that is not additive: RLS policies are written once, in slice 1, and they are written differently
 for three roles than for two. Settling it after slice 1 means rewriting those policies rather than adding
 one. → §18-12.
+
+**29. Auth.js v5 cannot deliver what §8 asked of it — RESOLVED by building the session layer.** §8 named
+Auth.js v5 with "email/password + Google, **database sessions**". Those two are mutually exclusive in that
+library: its Credentials provider — which §7.1's email-and-password signup requires — supports only the JWT
+session strategy. Its Drizzle adapter also needs `INSERT` on `app_user`, which the slice-1 hardening
+deliberately revoked from the application role. Resolved toward the plan's *requirement* rather than its
+*named dependency*: scrypt from `node:crypto`, an opaque token in an httpOnly cookie, and its SHA-256 in an
+`auth_session` row. The database session is what makes three later promises real rather than eventual —
+offboarding ends a session now (§7.12), view-as is an exitable context (§7.13), and a role change takes
+effect on the next click. Google OAuth is additive behind the same interface, and no beta dependency sits
+under the auth layer. §8's stack row is updated.
+
+**30. Signup had no connection it could legitimately run on — RESOLVED with a fourth role.** Slice 1's
+hardening left a note that signup would create `app_user` and `workspace` "as the owner". Acting on it would
+have put a role that owns every table — and can therefore drop any of them — inside the running web process,
+which is the exact failure the owner/app split exists to prevent. But the app role cannot do the work either:
+signing in means finding an account by email with no workspace in hand, and every app-role policy is false
+when `tenancy.workspace_id()` is NULL. Resolved with **`unifyops_identity`**, a fourth non-owner role for the
+pre-tenancy handshake, whose reach is short enough to state: `app_user`, `workspace`, the `auth_*` tables,
+`invitation` by token, and on `workspace_member` only the rows of the user it has already authenticated. It
+cannot read one row of what a company is *doing*, it has no `CREATE` anywhere, and `invariants.test.ts`
+asserts its grant list exactly — so a tenant table added in a later slice is outside it by construction rather
+than by anyone remembering to revoke.
+
+**31. Email verification was a gate in a three-minute path — RESOLVED as non-blocking.** §7.1 draws "Verify
+email" as a step between signing up and creating a company. Implemented as a gate it puts a mail round trip
+inside a flow the same section targets at under three minutes, and makes a provider outage cost the account
+rather than the confirmation. The link is still sent at signup and still works; the account is usable
+immediately, and a standing banner asks for confirmation on every workspace screen until it is done. The
+step is kept, its position in the sequence is not.
 
 ---
 

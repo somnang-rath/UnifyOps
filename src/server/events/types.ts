@@ -6,7 +6,8 @@
  * member here without deciding its handling is a compile error rather than a
  * silently unaudited, unprojected change.
  *
- * Slice 1 carries only the events the tenancy foundation itself can emit.
+ * Slice 1 carried only the events the tenancy foundation itself can emit; slice
+ * 3 adds the membership lifecycle — invitations, teams, joining and leaving.
  * Later slices extend the union; the compile error is the point.
  */
 export type DomainEvent =
@@ -28,8 +29,27 @@ export type DomainEvent =
     }
   | { type: 'workspace_member.removed'; workspaceId: string; memberId: string; userId: string }
   | { type: 'team.created'; workspaceId: string; teamId: string; slug: string; name: string }
+  | { type: 'team.renamed'; workspaceId: string; teamId: string; from: string; to: string }
+  | { type: 'team.deleted'; workspaceId: string; teamId: string; name: string }
   | { type: 'team.member_added'; workspaceId: string; teamId: string; memberId: string }
-  | { type: 'team.member_removed'; workspaceId: string; teamId: string; memberId: string };
+  | { type: 'team.member_removed'; workspaceId: string; teamId: string; memberId: string }
+  | {
+      type: 'invitation.sent';
+      workspaceId: string;
+      invitationId: string;
+      email: string;
+      role: string;
+    }
+  | { type: 'invitation.resent'; workspaceId: string; invitationId: string; email: string }
+  | { type: 'invitation.revoked'; workspaceId: string; invitationId: string; email: string }
+  | {
+      type: 'invitation.accepted';
+      workspaceId: string;
+      invitationId: string;
+      email: string;
+      userId: string;
+      memberId: string;
+    };
 
 export type EventType = DomainEvent['type'];
 

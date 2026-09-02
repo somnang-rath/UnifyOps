@@ -75,10 +75,60 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ slug: e.slug, name: e.name }),
     },
   },
+  'team.renamed': {
+    audit: {
+      subjectType: 'team',
+      subject: (e) => e.teamId,
+      data: (e) => ({ from: e.from, to: e.to }),
+    },
+  },
+  'team.deleted': {
+    audit: {
+      subjectType: 'team',
+      subject: (e) => e.teamId,
+      data: (e) => ({ name: e.name }),
+    },
+  },
   // Team composition changes are ordinary collaboration, visible in the team's
   // own screens. They are activity, not audit.
   'team.member_added': { audit: false },
   'team.member_removed': { audit: false },
+
+  // Who was invited, by whom, in what role — and who actually walked through
+  // the door. This is the sequence an owner reconstructs when they find an
+  // account they do not recognise, so all four are audited even though only two
+  // change anything a member would notice.
+  'invitation.sent': {
+    audit: {
+      subjectType: 'invitation',
+      subject: (e) => e.invitationId,
+      data: (e) => ({ email: e.email, role: e.role }),
+    },
+  },
+  'invitation.resent': {
+    audit: {
+      subjectType: 'invitation',
+      subject: (e) => e.invitationId,
+      data: (e) => ({ email: e.email }),
+    },
+  },
+  'invitation.revoked': {
+    audit: {
+      subjectType: 'invitation',
+      subject: (e) => e.invitationId,
+      data: (e) => ({ email: e.email }),
+    },
+  },
+  'invitation.accepted': {
+    audit: {
+      subjectType: 'invitation',
+      subject: (e) => e.invitationId,
+      // The user id as well as the address: an invitation can be accepted by
+      // an account whose address differs from the one invited — the link is
+      // the credential — and the log is where that becomes visible.
+      data: (e) => ({ email: e.email, userId: e.userId, memberId: e.memberId }),
+    },
+  },
 };
 
 export type AuditDraft = {

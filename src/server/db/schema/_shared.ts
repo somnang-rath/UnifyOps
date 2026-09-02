@@ -11,6 +11,18 @@ export const appRole = pgRole('unifyops_app').existing();
 export const operatorRole = pgRole('unifyops_operator').existing();
 
 /**
+ * The pre-tenancy handshake role (slice 3).
+ *
+ * Sign in, sign up and invitation acceptance all happen before a workspace is
+ * known, and every app-role policy is false when `tenancy.workspace_id()` is
+ * NULL — correctly so. This role is that one moment, and its reach is short
+ * enough to state: the tables that identify people and companies, the auth
+ * tables, and on `workspace_member` only the rows belonging to the user it has
+ * already authenticated. Nothing that says what a company is doing.
+ */
+export const identityRole = pgRole('unifyops_identity').existing();
+
+/**
  * UUIDv7 primary key, generated in the application.
  *
  * v7 is time-ordered, so inserts stay at the right-hand edge of the index
@@ -90,5 +102,27 @@ export const tenantPolicies = () => [
     for: 'select',
     to: operatorRole,
     using: sql`true`,
+  }),
+];
+
+/**
+ * The policies for a table the identity role owns outright.
+ *
+ * The `auth_*` tables are not tenant data and have no `workspace_id` to key on
+ * — a session is looked up by its token hash before anything is known about
+ * who or where the request is. RLS cannot help here, so the protection is the
+ * grant: only the identity role reaches these tables at all, and migration 0004
+ * revokes them from the app and operator roles, which the default privileges in
+ * bootstrap.sql would otherwise have handed out.
+ *
+ * FORCE ROW LEVEL SECURITY still applies, so this policy is what keeps the
+ * table reachable rather than what restricts it. It is named for what it is.
+ */
+export const authTablePolicies = () => [
+  pgPolicy('identity_all', {
+    for: 'all',
+    to: identityRole,
+    using: sql`true`,
+    withCheck: sql`true`,
   }),
 ];

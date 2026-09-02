@@ -1,10 +1,10 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import { uuidv7 } from 'uuidv7';
 import * as schema from '../schema';
 import { team, teamMember, user, workspace, workspaceMember } from '../schema';
+import { provisionDatabase, superuserConnection } from '../provision';
 import { withActor } from '../tenant';
 
 /**
@@ -15,23 +15,11 @@ import { withActor } from '../tenant';
  * scope, the branded handle — are only three-quarters testable without a
  * database. This harness supplies the last quarter.
  *
- * Two ways to get one, because both matter:
- *   - Testcontainers, the default. What CI uses; needs Docker.
- *   - An existing server, when TENANCY_SUPERUSER_URL is set. What a developer
- *     with a local Postgres and no Docker uses.
- *
- * The role and grant setup below mirrors scripts/bootstrap.sql, which cannot
- * be reused directly because it is written in psql meta-commands. The pairing
- * is checked rather than trusted: invariants.test.ts asserts the live role
- * attributes and schema privileges, so a drift between the two shows up as a
- * failing test rather than as a test that quietly passes against a weaker
- * database than production has.
+ * The roles, grants and migrations come from `../provision`, shared with the
+ * end-to-end setup so the two cannot drift into proving different things.
  */
 
 const TEST_DB = 'unifyops_tenancy';
-const OWNER_PW = 'owner_test_pw';
-const APP_PW = 'app_test_pw';
-const OPERATOR_PW = 'operator_test_pw';
 
 export type TenancyHarness = {
   /** Unbranded app-role handle. Pass it to withActor; never query it directly. */
@@ -40,6 +28,8 @@ export type TenancyHarness = {
   readonly owner: NodePgDatabase<typeof schema>;
   /** Operator role: cross-tenant SELECT, nothing else (§18-12). */
   readonly operator: NodePgDatabase<typeof schema>;
+  /** The pre-tenancy handshake role (slice 3). Sign-in and invitation lookup. */
+  readonly identity: NodePgDatabase<typeof schema>;
   readonly stop: () => Promise<void>;
 };
 
@@ -53,111 +43,27 @@ export type SeededWorkspace = {
   teamMemberId: string;
 };
 
-async function superuserUrl(): Promise<{ url: string; stop: () => Promise<void> }> {
-  const existing = process.env.TENANCY_SUPERUSER_URL;
-  if (existing) return { url: existing, stop: async () => {} };
-
-  const { PostgreSqlContainer } = await import('@testcontainers/postgresql');
-  const container = await new PostgreSqlContainer('postgres:18')
-    .withDatabase('postgres')
-    .withUsername('postgres')
-    .withPassword('postgres')
-    .start();
-
-  return {
-    url: container.getConnectionUri(),
-    stop: async () => {
-      await container.stop();
-    },
-  };
-}
-
-function withDatabase(url: string, database: string): string {
-  const parsed = new URL(url);
-  parsed.pathname = `/${database}`;
-  return parsed.toString();
-}
-
-function asRole(url: string, role: string, password: string): string {
-  const parsed = new URL(url);
-  parsed.username = role;
-  parsed.password = password;
-  return parsed.toString();
-}
-
-const ROLES = [
-  ['unifyops_owner', OWNER_PW],
-  ['unifyops_app', APP_PW],
-  ['unifyops_operator', OPERATOR_PW],
-] as const;
-
 export async function startTenancyHarness(): Promise<TenancyHarness> {
-  const { url, stop: stopContainer } = await superuserUrl();
+  const { url, stop: stopContainer } = await superuserConnection();
+  const urls = await provisionDatabase({ superuserUrl: url, database: TEST_DB });
 
-  const admin = new Pool({ connectionString: url, max: 1 });
-  try {
-    for (const [role, password] of ROLES) {
-      await admin.query(
-        `do $do$ begin
-           if not exists (select 1 from pg_roles where rolname = '${role}') then
-             execute format('create role ${role} login password %L', $pw$${password}$pw$);
-           end if;
-         end $do$;`,
-      );
-      // No role may bypass RLS — on the app role it would defeat every policy,
-      // on the owner role it would hide leaks from this very suite.
-      await admin.query(`alter role ${role} nosuperuser nobypassrls nocreaterole nocreatedb`);
-      await admin.query(`alter role ${role} password $pw$${password}$pw$`);
-    }
-
-    // A fresh database each run: a row left over from a previous run is
-    // indistinguishable from a leak.
-    await admin.query(`drop database if exists ${TEST_DB} with (force)`);
-    await admin.query(`create database ${TEST_DB} owner unifyops_owner encoding 'UTF8'`);
-  } finally {
-    await admin.end();
-  }
-
-  const dbUrl = withDatabase(url, TEST_DB);
-  const setup = new Pool({ connectionString: dbUrl, max: 1 });
-  try {
-    for (const statement of [
-      'create extension if not exists pg_trgm',
-      'create extension if not exists btree_gist',
-      'alter schema public owner to unifyops_owner',
-      'revoke all on schema public from public',
-      'grant usage on schema public to unifyops_app, unifyops_operator',
-      'revoke create on schema public from unifyops_app, unifyops_operator',
-      `alter default privileges for role unifyops_owner in schema public
-         grant select, insert, update, delete on tables to unifyops_app`,
-      `alter default privileges for role unifyops_owner in schema public
-         grant usage, select on sequences to unifyops_app`,
-      `alter default privileges for role unifyops_owner in schema public
-         grant execute on functions to unifyops_app`,
-      `alter default privileges for role unifyops_owner in schema public
-         grant select on tables to unifyops_operator`,
-    ]) {
-      await setup.query(statement);
-    }
-  } finally {
-    await setup.end();
-  }
-
-  const ownerPool = new Pool({ connectionString: asRole(dbUrl, 'unifyops_owner', OWNER_PW), max: 2 });
-  await migrate(drizzle(ownerPool), { migrationsFolder: 'drizzle' });
-
-  const appPool = new Pool({ connectionString: asRole(dbUrl, 'unifyops_app', APP_PW), max: 4 });
-  const operatorPool = new Pool({
-    connectionString: asRole(dbUrl, 'unifyops_operator', OPERATOR_PW),
-    max: 2,
-  });
+  const ownerPool = new Pool({ connectionString: urls.owner, max: 2 });
+  const appPool = new Pool({ connectionString: urls.app, max: 4 });
+  const operatorPool = new Pool({ connectionString: urls.operator, max: 2 });
+  const identityPool = new Pool({ connectionString: urls.identity, max: 2 });
 
   return {
     app: drizzle(appPool, { schema }),
     owner: drizzle(ownerPool, { schema }),
     operator: drizzle(operatorPool, { schema }),
+    identity: drizzle(identityPool, { schema }),
     stop: async () => {
-      await Promise.all([appPool.end(), operatorPool.end(), ownerPool.end()]);
+      await Promise.all([
+        appPool.end(),
+        operatorPool.end(),
+        identityPool.end(),
+        ownerPool.end(),
+      ]);
       await stopContainer();
     },
   };
@@ -197,13 +103,18 @@ export async function failureOf(promise: Promise<unknown>): Promise<PgFailure> {
 }
 
 /**
- * Seeds one workspace, the same way signup will (slice 3).
+ * Seeds one workspace, along the same seam signup uses.
  *
- * The two root rows go in as the owner, because nothing else can create them:
- * a workspace cannot be inserted by a connection already scoped to a workspace,
- * and an account exists before any membership does. Everything after that goes
- * through `withActor` scoped to the new workspace — the tenant tables have
- * exactly one write path and the fixture does not get to skip it.
+ * The two root rows go in outside any tenant scope, because nothing inside one
+ * can create them: a workspace cannot be inserted by a connection already scoped
+ * to a workspace, and an account exists before any membership does. Signup does
+ * that on the identity connection; this fixture does it as the owner, which
+ * reaches the same two tables through the `provisioning` policies of 0002 and
+ * keeps the fixture independent of the identity role it is not testing.
+ *
+ * Everything after that goes through `withActor` scoped to the new workspace —
+ * the tenant tables have exactly one write path and the fixture does not get to
+ * skip it.
  *
  * That still lets a test build data in a workspace the app role is not
  * currently scoped to: open a second `withActor` for it. What it does not allow

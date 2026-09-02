@@ -39,9 +39,18 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `pnpm build && pnpm start -p ${PORT}`,
+    // Not `pnpm start`. From slice 3 the flows §15 asks to be tested in a
+    // browser are flows through a database, so the server provisions its own
+    // Postgres first — roles, grants and migrations from the same module the
+    // tenancy harness uses, so the browser drives the same isolation the RLS
+    // suite asserts rather than a permissive copy of it.
+    //
+    // Needs Docker, or TENANCY_SUPERUSER_URL pointing at a server with
+    // superuser rights. Same rule and same variable as `pnpm test:tenancy`.
+    command: `pnpm build && pnpm exec tsx e2e/support/serve.ts`,
     url: baseURL,
+    env: { E2E_PORT: String(PORT) },
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    timeout: 240_000,
   },
 });

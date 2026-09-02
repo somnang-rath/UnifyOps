@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { pgPolicy, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import { appRole, operatorRole, primaryId, timestamps } from './_shared';
+import { pgPolicy, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { appRole, identityRole, operatorRole, primaryId, timestamps } from './_shared';
 
 /**
  * A person. Global, not tenant-scoped: one human can belong to several
@@ -22,6 +22,12 @@ export const user = pgTable(
      * data; translated strings never reach the database (§13).
      */
     locale: text('locale').notNull().default('en'),
+    /**
+     * Null until the address is confirmed (§7.1). Deliberately a timestamp and
+     * not a boolean: "when" is the question support actually asks, and a
+     * boolean would have to be widened to answer it later.
+     */
+    emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
@@ -54,6 +60,21 @@ export const user = pgTable(
       to: appRole,
       using: sql`"app_user"."id" = tenancy.user_id() and not tenancy.is_read_only()`,
       withCheck: sql`"app_user"."id" = tenancy.user_id() and not tenancy.is_read_only()`,
+    }),
+
+    /**
+     * The identity role owns this table's pre-tenancy half (slice 3).
+     *
+     * Signing in means finding an account by email with no workspace in hand,
+     * which the app-role policy above correctly refuses. Creating one, and
+     * marking an address verified, are the same moment. Everything after the
+     * handshake reads `app_user` through the membership-scoped policy instead.
+     */
+    pgPolicy('identity_manage', {
+      for: 'all',
+      to: identityRole,
+      using: sql`true`,
+      withCheck: sql`true`,
     }),
 
     pgPolicy('operator_select', {
