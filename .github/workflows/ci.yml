@@ -52,21 +52,10 @@ jobs:
   tenancy:
     name: tenancy · cross-workspace reads return zero rows
     runs-on: ubuntu-latest
-    # §16 names a tenancy leak "the failure that ends the product". This job
-    # exists from slice 1 and is the gate that proves RLS actually holds.
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: unifyops_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+    # §16 names a tenancy leak "the failure that ends the product". This job is
+    # the gate that proves RLS actually holds, and it runs against a real
+    # Postgres provisioned by Testcontainers — the same harness a developer
+    # gets locally, so a pass here means the same thing it means on a laptop.
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -75,21 +64,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Skip until slice 1 lands the schema
-        id: guard
-        run: |
-          if [ -f src/server/db/schema/index.ts ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No schema yet — tenancy suite is inert until slice 1."
-          fi
-      - if: steps.guard.outputs.ready == 'true'
-        env:
-          DATABASE_URL_OWNER: postgresql://postgres:postgres@localhost:5432/unifyops_test
-        run: pnpm db:migrate
-      - if: steps.guard.outputs.ready == 'true'
-        env:
-          DATABASE_URL_OWNER: postgresql://postgres:postgres@localhost:5432/unifyops_test
-          DATABASE_URL: postgresql://unifyops_app:postgres@localhost:5432/unifyops_test
-        run: pnpm test:tenancy
+      # Docker is present on ubuntu-latest; the suite provisions its own
+      # database, roles and grants, and applies drizzle/ as the owner role.
+      - run: pnpm test:tenancy

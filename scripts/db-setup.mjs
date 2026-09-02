@@ -4,9 +4,13 @@
  * passwords in from .env so they never appear in the committed SQL, in shell
  * history, or in a process argument list.
  *
+ * Three roles, all created here because role creation is a superuser
+ * operation: the owner (migrations), the app (runtime, RLS forced) and the
+ * platform operator (cross-tenant SELECT only, PLAN.en.md §18-12).
+ *
  *   node scripts/db-setup.mjs [--superuser postgres] [--host localhost] [--port 5432]
  *
- * psql prompts for the SUPERUSER password interactively. The two role
+ * psql prompts for the SUPERUSER password interactively. The three role
  * passwords come from .env.
  */
 import { spawn, spawnSync } from 'node:child_process';
@@ -46,10 +50,11 @@ const superuser = opt('superuser', 'postgres');
 const host = opt('host', 'localhost');
 const port = opt('port', '5432');
 
-let ownerPw, appPw;
+let ownerPw, appPw, operatorPw;
 try {
   ownerPw = passwordFor('DATABASE_URL_OWNER');
   appPw = passwordFor('DATABASE_URL');
+  operatorPw = passwordFor('DATABASE_URL_OPERATOR');
 } catch (err) {
   console.error(err.message);
   process.exit(1);
@@ -96,6 +101,7 @@ const child = spawn(
     '-v', 'ON_ERROR_STOP=1',
     '-v', `owner_password=${ownerPw}`,
     '-v', `app_password=${appPw}`,
+    '-v', `operator_password=${operatorPw}`,
     '-f', resolve(root, 'scripts', 'bootstrap.sql'),
   ],
   { stdio: 'inherit' },

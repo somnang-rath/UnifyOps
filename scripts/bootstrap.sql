@@ -5,19 +5,20 @@
 --
 --   node scripts/db-setup.mjs
 --
--- That reads the two role passwords out of .env and passes them in as psql
+-- That reads the three role passwords out of .env and passes them in as psql
 -- variables, so no secret is ever written into this file or into shell
 -- history. psql prompts for the SUPERUSER password interactively.
 --
 -- To run it by hand instead:
 --
 --   psql -U postgres -h localhost -d postgres \
---        -v owner_password=... -v app_password=... -f scripts/bootstrap.sql
+--        -v owner_password=... -v app_password=... -v operator_password=... \n--        -f scripts/bootstrap.sql
 --
--- The two roles are the foundation of §9 tenancy and are NOT interchangeable:
+-- The three roles are the foundation of §9 tenancy and are NOT interchangeable:
 --
---   DATABASE_URL_OWNER -> unifyops_owner  migrations and drizzle-kit only
---   DATABASE_URL       -> unifyops_app    the running app, RLS forced
+--   DATABASE_URL_OWNER    -> unifyops_owner     migrations and drizzle-kit only
+--   DATABASE_URL          -> unifyops_app       the running app, RLS forced
+--   DATABASE_URL_OPERATOR -> unifyops_operator  platform support, cross-tenant SELECT only
 --
 -- The app role is deliberately not the owner, because Postgres exempts a
 -- table's owner from its own RLS policies unless FORCE is set — and relying on
@@ -44,6 +45,12 @@
   \quit 1
 \endif
 
+\if :{?operator_password}
+\else
+  \echo 'ERROR: operator_password not set. Run: node scripts/db-setup.mjs'
+  \quit 1
+\endif
+
 SELECT format('CREATE ROLE unifyops_owner LOGIN PASSWORD %L', :'owner_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unifyops_owner')
 \gexec
@@ -52,16 +59,30 @@ SELECT format('CREATE ROLE unifyops_app LOGIN PASSWORD %L', :'app_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unifyops_app')
 \gexec
 
+-- The platform operator (PLAN.en.md §18-12). A separate role behind its own auth
+-- boundary, granted cross-tenant SELECT and nothing else. Deliberately not a
+-- session-variable bypass on the app connection: that puts the escape hatch on
+-- the connection the app already holds, one SET away from any bug that can
+-- influence session state.
+SELECT format('CREATE ROLE unifyops_operator LOGIN PASSWORD %L', :'operator_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unifyops_operator')
+\gexec
+
 SELECT format('ALTER ROLE unifyops_owner PASSWORD %L', :'owner_password')
 \gexec
 
 SELECT format('ALTER ROLE unifyops_app PASSWORD %L', :'app_password')
 \gexec
 
--- Neither role may bypass RLS. BYPASSRLS on the app role would silently defeat
--- every policy in the schema; on the owner role it would hide leaks in tests.
+SELECT format('ALTER ROLE unifyops_operator PASSWORD %L', :'operator_password')
+\gexec
+
+-- No role may bypass RLS. BYPASSRLS on the app role would silently defeat every
+-- policy in the schema; on the owner role it would hide leaks in tests; on the
+-- operator role it would make §18-12's read-only boundary decorative.
 ALTER ROLE unifyops_owner NOSUPERUSER NOBYPASSRLS NOCREATEROLE;
-ALTER ROLE unifyops_app   NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
+ALTER ROLE unifyops_app      NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
+ALTER ROLE unifyops_operator NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
 
 -- --- Database ----------------------------------------------------------------
 
@@ -85,10 +106,12 @@ ALTER SCHEMA public OWNER TO unifyops_owner;
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO unifyops_app;
+GRANT USAGE ON SCHEMA public TO unifyops_operator;
 
 -- No CREATE for the app role: it must never be able to own a table, because a
 -- table's owner is exempt from RLS unless FORCE is set on that table.
 REVOKE CREATE ON SCHEMA public FROM unifyops_app;
+REVOKE CREATE ON SCHEMA public FROM unifyops_operator;
 
 -- --- Default privileges ------------------------------------------------------
 -- Applied to everything the owner creates from here on, so a new table in a
@@ -104,13 +127,17 @@ ALTER DEFAULT PRIVILEGES FOR ROLE unifyops_owner IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE unifyops_owner IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO unifyops_app;
 
+-- The operator reads and never writes. SELECT is the whole grant.
+ALTER DEFAULT PRIVILEGES FOR ROLE unifyops_owner IN SCHEMA public
+  GRANT SELECT ON TABLES TO unifyops_operator;
+
 -- --- Verification ------------------------------------------------------------
 
 \echo ''
-\echo 'Roles — both must show f for superuser and bypassrls:'
+\echo 'Roles — all three must show f for superuser and bypassrls:'
 SELECT rolname, rolsuper AS superuser, rolbypassrls AS bypassrls, rolcanlogin AS login
 FROM pg_roles
-WHERE rolname IN ('unifyops_owner', 'unifyops_app')
+WHERE rolname IN ('unifyops_owner', 'unifyops_app', 'unifyops_operator')
 ORDER BY rolname;
 
 \echo ''
@@ -118,5 +145,5 @@ ORDER BY rolname;
 SELECT extname, extversion FROM pg_extension WHERE extname IN ('pg_trgm', 'btree_gist');
 
 \echo ''
-\echo 'Bootstrap complete. Next: set DATABASE_URL_OWNER and DATABASE_URL in .env,'
-\echo 'then run pnpm db:migrate once slice 1 has landed the schema.'
+\echo 'Bootstrap complete. Next: pnpm db:migrate to apply the slice 1 schema,'
+\echo 'then pnpm db:seed for two workspaces to click around in.'

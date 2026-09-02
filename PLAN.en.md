@@ -189,7 +189,7 @@ onboarding checklist · saved view sharing with teammates.
 
 Configurable workflow transitions & gates · notification rules engine · custom roles · realtime presence ·
 docs/wiki · time tracking · timeline/Gantt · automation rules · public API + webhooks · native mobile ·
-SSO/SAML · AI assist · billing.
+SSO/SAML · AI assist · company group chat · MCP server · billing.
 
 ### Behaviour worth stating precisely
 
@@ -259,9 +259,11 @@ A product without these feels dated on arrival.
 
 | Feature | Note |
 | --- | --- |
-| **Telegram integration** | Strategically the most valuable item here for this market (§2.5). Create an item from a message, get notified in chat, update state from chat. Depends on the §8 outbox, which v1 builds |
+| **Telegram integration** | Strategically the most valuable item here for this market (§2.5). Create an item from a message, get notified in chat, update state from chat. Depends on the §8 outbox, which v1 builds. Designed in **§19.5** |
+| **Company group chat** | Channels and DMs inside the workspace, with one-action promotion of a message into a work item — the thing Telegram cannot do for the company. Designed in **§19.3** |
 | **Email-to-task** | Forward an email into a project |
-| **AI assist** | Summarize a long comment thread · suggest sub-task breakdown · draft the weekly status from activity · translate a comment EN↔KH inline — the last is unusually valuable for bilingual teams |
+| **AI assist** | Summarize a long comment thread · suggest sub-task breakdown · draft the weekly status from activity · translate a comment EN↔KH inline — the last is unusually valuable for bilingual teams. Designed in **§19.4** |
+| **MCP server, one per company** | A company points its own AI client at its own workspace, on a token scoped exactly like a member. Designed in **§19.6** |
 | **Realtime presence** | Live cursors and updates; v1 installs the seams |
 | **Workload forecasting** | Capacity vs committed work per person over time |
 | **Duplicate detection** | Warn when a new item looks like an existing one |
@@ -271,6 +273,10 @@ A product without these feels dated on arrival.
 > **✅ DECIDED (§18-8):** Telegram integration is Phase 2. Revisited only if the pilot company (§18-7) turns
 > out to be strongly chat-first. It depends on the outbox (§8), so it cannot be built earlier than slice 9
 > regardless.
+
+> **The four chat and AI items above are designed in §19** — group chat, the assistant,
+> the Telegram bridge and a per-company MCP server, with the one rule they share: an assistant or an
+> integration is an *actor*, never a tenancy bypass.
 
 ---
 
@@ -1058,10 +1064,9 @@ one. → §18-12.
 
 ## 18. Open questions
 
-**Five resolved, seven open.** Two of the open questions now block the start of the build: **#11 and #12 must
-be answered before slice 1**, because both change the schema and the RLS policies rather than adding to them.
-The rest do not: #5 and #6 are needed by slice 8, #7 and #10 are decisions only you can make, and #9 is
-deferred to Phase 2 by its own dependency.
+**Seven resolved, five open.** Nothing blocks the build any more: #11 and #12 were the two that did, and both
+are answered below and built in slice 1. The rest never blocked it — #5 and #6 are needed by slice 8, #7 and
+#10 are decisions only you can make, and #9 is deferred to Phase 2 by its own dependency.
 
 1. **Brand identity — RESOLVED.** UnifyOps inherits the UnifyCharge palette and typography; both products
    belong to the same company, so a separate identity would be cost without benefit. Nothing to commission —
@@ -1090,30 +1095,208 @@ deferred to Phase 2 by its own dependency.
    are set by sub-decree each year and several move with the lunar calendar, so the seed is not a constant we
    ship once. *Recommendation: seed the current and next year at signup, surface a warning in Settings when
    the calendar runs out, and never silently guess a date the workspace has not confirmed.*
-11. **Audit records from `withActor` — OPEN, needed before slice 1.** (§17-27) *Recommendation: a second sink
-   on the existing event registry, not a blanket "every mutation writes a row" — that duplicates the activity
-   feed and doubles write volume on ordinary title edits. Activity and audit differ in scope (item vs
-   workspace), audience (everyone vs Owner/Admin), language (translated vs never), and lifetime (follows the
-   item vs append-only), so one table cannot serve both without being wrong for one of them. Add an `audit`
-   field to each registry entry, exhaustive over the event union exactly as the projectors are, so a new event
-   type cannot be added without deciding whether it is auditable. Two details are cheap now and expensive
-   later: **append-only must be enforced by RLS** — `UPDATE` and `DELETE` policies that deny to every
-   application role including Owner, or an admin editing the record of their own role change is a supported
-   operation — and the row needs both `actor_user_id` and `on_behalf_of_user_id`, because during view-as the
-   `ActorContext` resolves to the target member and a single actor column makes view-as sessions invisible in
-   the log that exists to record them.*
-12. **Platform operator access model — OPEN, needed before slice 1.** (§17-28) Three shapes: a separate
-   operator surface on its own database role; a bypass policy keyed to a distinct session variable; or no
-   cross-tenant access at all, with support going through an invited account and view-as. *Recommendation: the
-   first, with the third as its mutation path — a `DATABASE_URL_OPERATOR` role behind its own auth boundary,
-   cross-tenant **read** only, and anything that must act inside a workspace goes through an invited account
-   plus view-as, which #11 has just made auditable. The session-variable bypass is the one to avoid: it puts
-   the escape hatch on the connection the app already holds, one `SET` away from any bug that can influence
-   session state, and §8's rule — reaching for the owner connection at runtime is the bug, not the policy —
-   exists to keep that hatch out of reach. Note that the operator is not a workspace member, so their identity
-   lives outside the tenant tables and #11's audit row must be able to name an actor with no membership:
-   decide the two together, or write the audit schema twice.*
+11. **Audit records from `withActor` — RESOLVED.** (§17-27) A second sink on the existing event registry, not
+   a blanket "every mutation writes a row" — that duplicates the activity feed and doubles write volume on
+   ordinary title edits. Activity and audit differ in scope (item vs workspace), audience (everyone vs
+   Owner/Admin), language (translated vs never), and lifetime (follows the item vs append-only), so one table
+   cannot serve both without being wrong for one of them. Each registry entry carries an `audit` field,
+   exhaustive over the event union exactly as the projectors are, so a new event type cannot be added without
+   deciding whether it is auditable. Two details were cheap to settle now and expensive later, and both are
+   built: **append-only is enforced by RLS** — `audit_record` has no `UPDATE` or `DELETE` policy, which denies
+   both to every application role including Owner, and the matching table privileges are revoked as well, so
+   an admin editing the record of their own role change is not a supported operation; and the row carries both
+   `actor_user_id` and `on_behalf_of_user_id`, because during view-as the `ActorContext` resolves to the
+   target member and a single actor column would make view-as sessions invisible in the log that exists to
+   record them.
+12. **Platform operator access model — RESOLVED.** (§17-28) A separate operator surface on its own database
+   role, with "no cross-tenant access" as its mutation path: a `DATABASE_URL_OPERATOR` role behind its own
+   auth boundary, cross-tenant **read** only, and anything that must act inside a workspace goes through an
+   invited account plus view-as, which #11 has made auditable. The rejected shape is the session-variable
+   bypass: it puts the escape hatch on the connection the app already holds, one `SET` away from any bug that
+   can influence session state, and §8's rule — reaching for the owner connection at runtime is the bug, not
+   the policy — exists to keep that hatch out of reach. The operator is not a workspace member, so their
+   identity lives outside the tenant tables and #11's audit row can name an actor with no membership: hence a
+   nullable `actor_user_id` alongside an `actor_kind` of `member`, `operator` or `system`.
 
 ---
 
-> **Nothing in `d:\Unify\UnifyOps` will be built until you say so.**
+## 19. Company chat, AI, and MCP (Phase 2)
+
+Four things a company asks for once the work data is real: **a place to talk**, **an assistant that has read
+the work**, **the chat app they already live in**, and **a way to point their own AI tools at their own
+workspace**. None of it is v1 — §3 lists AI features and a public API as non-goals, and §14 is unchanged by
+this section. It is written now for the reason §3-6 exists: each piece attaches to a seam v1 already builds,
+and the cheap way to keep that true is to know what will attach before the seam is finished.
+
+| Piece | What it is | Attaches to | Earliest |
+| --- | --- | --- | --- |
+| **19.3 Group chat** | Channels and DMs inside the workspace | RLS + the realtime seams (§8) | After slice 9 |
+| **19.4 AI assistant** | Answers grounded in workspace data, in the asker's language | `withActor` + the event registry (§8) | After chat |
+| **19.5 Telegram bridge** | The chat app this market already uses, as a surface | The outbox (§8, slice 9) | After slice 9 |
+| **19.6 MCP server** | Each company points its own AI client at its own workspace | The policy module (§10) + token-based `resolveActorContext` | Last |
+
+**Order is deliberate.** The Telegram bridge is the cheapest and the most valuable here (§2.5, §18-8), so it
+goes first even though it is listed third. MCP goes last because it is the largest new security surface in
+the product's life, and it should be built on top of services that chat and the assistant have already
+proven, not alongside them.
+
+### 19.1 The governing rule — an assistant is an actor, never a bypass
+
+Everything in this section runs inside `withActor` with the `ActorContext` of the human who asked, under the
+same RLS variables and the same policy module (§10). A model, a bot, or an MCP token never holds a
+connection wider than the person on whose behalf it acts.
+
+> **Why this is stated first.** The tempting shortcut is identical to the one §18-12 rejected for the
+> platform operator: give the integration the owner connection, or a session variable that turns tenancy
+> off, "just for the assistant". That puts the escape hatch on the connection the app already holds. §8's
+> rule holds without exception here — reaching for the owner connection at runtime is the bug, not the
+> policy. An assistant that cannot answer a question is correct behaviour; an assistant that answers it from
+> another company's rows is the end of the product.
+
+Three consequences, all cheap now and expensive later:
+
+- **Retrieval is a query, not a corpus.** Nothing is indexed into an external store that has no
+  `workspace_id` on it. If a vector index is added, the workspace is part of the key and the filter, not
+  metadata that a bug can drop.
+- **Every AI or integration action is an event**, on the existing registry (§8), which makes it auditable by
+  construction (§18-11). `actor_kind` gains `assistant` and `integration` alongside `member`, `operator` and
+  `system` — that is the whole schema change, and §18-12 already made the column nullable and the enum the
+  right shape for it.
+- **`on_behalf_of_user_id` is not optional here.** An assistant acting for Sophea writes Sophea in that
+  column, exactly as view-as does. An audit log where the AI is the only visible actor records nothing worth
+  having.
+
+### 19.2 Chat is not comments — the distinction that has to hold
+
+The §18-11 trap, again: two things that look alike, differ in scope, audience, and lifetime, and must not
+share a table.
+
+| | Comment | Chat message |
+| --- | --- | --- |
+| Scope | One work item | A room — project, team, or DM |
+| Lifetime | Follows the item, is part of its record | Follows attention; scrollback, not a record |
+| Audience | Whoever can see the item | Channel members |
+| Purpose | The decision about *this* work | Getting to that decision |
+
+**A chat message is never the record of a decision.** The single most valuable interaction in this whole
+section is therefore not the chat — it is **promoting a message into a work item or a comment in one
+action**, carrying the message, its author, and a link back to the thread. That is the thing Telegram cannot
+do for the company today (§2.5-2), and the reason chat belongs in the product at all rather than being left
+to Telegram entirely.
+
+The corollary is a hard no: **chat must not become a second comment system.** If a discussion belongs on an
+item, the product's job is to move it there, not to host it twice.
+
+### 19.3 Group chat — data and tenancy
+
+Ordinary tenant tables, built the way §9 requires and no differently: `channel`, `channel_member`,
+`message`, `message_read`, each carrying `workspace_id`, composite foreign keys to the parent, and
+`...tenantPolicies()` plus a `FORCE ROW LEVEL SECURITY` line — the same three things adding any table means,
+enforced by `invariants.test.ts` rather than by review.
+
+| Concern | Decision |
+| --- | --- |
+| **Channel kinds** | Project channel (auto-created, membership derived from project membership), team channel, and DM. No workspace-wide "general" at launch — an unread badge nobody can mute is how a product gets muted entirely |
+| **Ordering & paging** | Monotonic `seq` per channel, not `created_at`. Keyset cursors only (§9); scrollback is the one surface where offset pagination is guaranteed to be wrong |
+| **Read state** | One row per `(channel, member)` holding the last-read `seq`. Unread counts are a comparison, not a per-message table |
+| **Edit & delete** | Edit in place with an edited marker; delete is `deleted_at` and leaves a tombstone. Neither rewrites history for someone who has already read it |
+| **Search** | The §9 routing unchanged — `tsvector('simple')` for Latin, `pg_trgm` for Khmer, script-detected. Chat is where mixed-script messages are most common, so it is tested with both scripts in one message |
+| **Attachments** | The existing presigned direct upload (§8). No second upload path |
+| **Realtime** | The v1 seams: `resolveActorContext` resolves from a token so a WebSocket can call it, and the outbox `seq` lets a reconnecting client replay what it missed. Chat is the first feature that actually needs them — until then they stay unused on purpose |
+| **Notifications** | Mentions reuse the §7.8 rules exactly, including *never notify the actor*. A per-channel mute is required at launch, not later |
+
+### 19.4 The AI assistant
+
+Scope at first release, all of it read-and-draft, grounded only in what the asker may already see:
+
+- Summarize a long thread, or a channel's day.
+- Draft the weekly status from activity — the manager loop of §7.4, and the strongest case in the list.
+- Suggest a sub-task breakdown for an item, as a proposal the human edits.
+- Translate a comment or a message EN↔KH inline — the highest-value item for a bilingual team (§5), and the
+  one nothing else in this market does well for Khmer.
+- Answer "what is blocked and who is waiting on me" — the Needs-attention surface (§4) asked in words
+  instead of filters.
+
+Rules that make it safe to ship:
+
+- **Proposes, never writes silently.** Every mutation the assistant suggests is applied by a human action.
+  The first release has no autonomous write path at all; whether it ever gets one is open (§19.7).
+- **Off by default, per workspace.** §6's governing rule applies — a company that never opens Settings is
+  fine, and here "fine" means no data reaches a model. Enabling it is an Owner action, and it appears in the
+  audit log.
+- **Answers in the asker's locale**, and Khmer is not the degraded path (§13). Model output is display text
+  only: **no model-generated string is ever written to the database as a translation key** — the §13 rule
+  holds without exception.
+- **Nothing leaves the workspace boundary that the workspace has not agreed to.** Which provider, and where
+  inference runs, ties directly to §18-6 residency and is open (§19.7).
+
+### 19.5 Telegram as the chat surface
+
+Already decided (§18-8): Phase 2, depends on the outbox, cannot land before slice 9. What it does, and the
+one rule that keeps it from becoming a second source of truth:
+
+| Direction | Behaviour |
+| --- | --- |
+| Out | Mention, assignment, and the due-date digest (§7.8) delivered to a linked account, in that member's locale |
+| In | Create an item from a message, comment, and change state — the same three actions as the app, no more |
+| Never | Telegram is a **surface**, never the record. Nothing exists only in Telegram; every inbound action produces the same event through the same service (§8) |
+
+**Identity linking is the whole security story.** A Telegram account is bound to one workspace member by a
+short-lived token the member generates in the app. An unlinked chat can do nothing — not create, not read.
+Group chats resolve the *sender*, never the group, so a member's permissions travel with them and a shared
+group never becomes a shared identity.
+
+### 19.6 MCP server — one per company, scoped like a member
+
+Companies increasingly want their own AI client — Claude, or anything else speaking MCP — pointed at their
+own workspace. The shape that is safe is the one the rest of this plan already forces:
+
+- **A token is minted by an Owner or Admin in Settings**, bound to `(workspace, member, scopes)`. It
+  resolves through the same token-based `resolveActorContext` as a session, so RLS and §10 apply unchanged
+  and the token can never see more than the member it belongs to. **There is no platform-wide MCP
+  credential**, and the operator role (§18-12) is not reachable from MCP at all.
+- **Read tools first** — search, list items through the §9 filter DSL, read an item with its comments,
+  project and cycle overview. Write tools arrive later, and only behind scopes granted explicitly at mint
+  time.
+- **Every call is an event and an audit row** (§18-11), `actor_kind = 'integration'`, with the token's
+  member in `on_behalf_of_user_id`. Settings shows scope, last-used, and a revoke button; revocation is
+  immediate, not on expiry.
+- **Tools are a thin layer over the existing services.** An MCP tool that re-implements the list query is a
+  second implementation that drifts from the first — the §9 builder is called, not copied.
+- **Rejected shape:** an MCP server holding the owner or operator connection and taking a workspace ID as a
+  parameter. It is cross-tenant by construction, one bad parameter away from a breach, and it is the same
+  session-variable bypass §18-12 already refused.
+
+Sequenced last for a reason: it is effectively the public API from §4's nice-to-have list wearing a
+different protocol, and it should ship on services that chat and the assistant have already exercised.
+
+### 19.7 What v1 must not foreclose, and what is still open
+
+Nothing here changes slices 0–16. What it does is name the five properties that must stay true — all of
+which are true today:
+
+1. Events stay the **single fan-out point**, and the registry stays exhaustive over the event union.
+2. `resolveActorContext` stays **token-based** and free of `next/headers`, so a WebSocket and an MCP request
+   can both call it.
+3. `actor_kind` stays an enum that can **gain values** — `assistant`, `integration` — without changing what
+   the existing ones mean.
+4. Services take an `ActorContext`, never a request object, so one service serves a form post, a bot, and a
+   tool call.
+5. `en.json` / `km.json` parity holds for every string this section adds. Chat and assistant UI roughly
+   double the string count, and the §13 rule does not bend for volume.
+
+Open, and deliberately **not** added to §18 — none of it blocks the build:
+
+- **Model provider, and where inference runs.** Tied to §18-6 residency; a Cambodian customer with a
+  residency requirement may constrain this before it constrains hosting.
+- **Chat scope at launch** — project channels only, or DMs as well. DMs are the larger moderation and export
+  surface for a company that later needs records.
+- **Whether the assistant ever writes autonomously**, and under what confirmation. The first release does
+  not, and that answer should come from watching a pilot (§18-7), not from a design document.
+- **MCP write scopes** — which actions are ever grantable to a token, and whether destructive ones are
+  simply never on the list.
+
+---
+
+> **Approved for build, 31 August 2026.** Slices 1 and 2 — schema, RLS and `withActor`, then the §10 policy
+> module — are implemented. §14 lists what follows.

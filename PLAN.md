@@ -1,7 +1,7 @@
 # UnifyOps — Plan · ផែនការ
 
-**Version 3 · For review · Not approved for build**
-**កំណែទី ៣ · សម្រាប់ពិនិត្យ · មិនទាន់អនុញ្ញាតឱ្យសាងសង់ទេ**
+**Version 3 · Approved for build, 31 August 2026 · Slices 1–2 done**
+**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–២ រួចរាល់**
 
 ---
 
@@ -33,15 +33,11 @@ bilingual English/Khmer from day one.
 
 ## Blocking decisions · ការសម្រេចដែលរារាំង
 
-Two questions must be answered before the build can start:
+All settled. The last two — audit records from `withActor` (§18-11) and the platform operator access model
+(§18-12) — were answered on 31 August 2026 and are built into slice 1.
 
-សំណួរពីរត្រូវឆ្លើយមុនពេលចាប់ផ្តើមសាងសង់៖
-
-1. **Brand identity** — does UnifyOps inherit the UnifyCharge palette and typography, or get its own?
-   **អត្តសញ្ញាណម៉ាក** — តើ UnifyOps ទទួលមរតកពណ៌ និងអក្សររបស់ UnifyCharge ឬមានផ្ទាល់ខ្លួន?
-
-2. **Signup model** — open self-serve, or invite-only for the first cohort?
-   **គំរូចុះឈ្មោះ** — បើកសាធារណៈ ឬតាមការអញ្ជើញតែប៉ុណ្ណោះ?
+សម្រេចរួចទាំងអស់។ ពីរចុងក្រោយ — កំណត់ហេតុសវនកម្មចេញពី `withActor` (§១៨-១១) និងគំរូសិទ្ធិចូលរបស់
+អ្នកប្រតិបត្តិការវេទិកា (§១៨-១២) — បានឆ្លើយថ្ងៃទី ៣១ សីហា ២០២៦ ហើយសាងសង់ក្នុងដំណាក់កាល ១។
 
 ---
 
@@ -51,5 +47,5 @@ https://claude.ai/code/artifact/df48ef68-f940-4e47-9184-c1bbe14e3fa9
 
 ---
 
-> **Nothing will be built until you say so.**
-> **គ្មានអ្វីនឹងត្រូវសាងសង់ទេ រហូតដល់លោកអ្នកអនុញ្ញាត។**
+> **Build in progress. Slices 1–2 of 16 are done; §14 lists what follows.**
+> **កំពុងសាងសង់។ ដំណាក់កាល ១–២ ក្នុងចំណោម ១៦ រួចរាល់; §១៤ រាយអ្វីដែលបន្តបន្ទាប់។**

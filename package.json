@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:tenancy": "vitest run --dir src/server/db/__tenancy__",
+    "test:tenancy": "vitest run --config vitest.tenancy.config.ts",
     "db:setup": "node scripts/db-setup.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/server/db/migrate.ts",
