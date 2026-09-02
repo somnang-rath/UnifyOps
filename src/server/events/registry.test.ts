@@ -71,6 +71,95 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     invitationId: 'i1',
     email: 'sophea@example.com',
   },
+  'project.created': {
+    type: 'project.created',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    teamId: 't1',
+    slug: 'website',
+    key: 'WEB',
+    name: 'Website',
+    visibility: 'workspace',
+  },
+  'project.renamed': {
+    type: 'project.renamed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    from: 'Website',
+    to: 'Web Platform',
+  },
+  'project.visibility_changed': {
+    type: 'project.visibility_changed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    from: 'workspace',
+    to: 'private',
+  },
+  'project.archived': {
+    type: 'project.archived',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    name: 'Website',
+  },
+  'project.unarchived': {
+    type: 'project.unarchived',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    name: 'Website',
+  },
+  'project.member_added': {
+    type: 'project.member_added',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    memberId: 'm1',
+    role: 'lead',
+  },
+  'project.member_role_changed': {
+    type: 'project.member_role_changed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    memberId: 'm1',
+    from: 'member',
+    to: 'lead',
+  },
+  'project.member_removed': {
+    type: 'project.member_removed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    memberId: 'm1',
+  },
+  'workflow_state.created': {
+    type: 'workflow_state.created',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    stateId: 's1',
+    name: 'In Review',
+    group: 'started',
+  },
+  'workflow_state.updated': {
+    type: 'workflow_state.updated',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    stateId: 's1',
+    name: 'Reviewing',
+    group: 'started',
+    color: 'warning',
+    previousName: 'In Review',
+  },
+  'workflow_state.reordered': {
+    type: 'workflow_state.reordered',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    order: ['s1', 's2'],
+  },
+  'workflow_state.deleted': {
+    type: 'workflow_state.deleted',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    stateId: 's1',
+    name: 'In Review',
+    migratedToStateId: 's2',
+  },
   'invitation.accepted': {
     type: 'invitation.accepted',
     workspaceId: 'w1',
@@ -119,12 +208,21 @@ describe('the event registry', () => {
     }
   });
 
-  it('audits membership and workspace changes, not team composition', () => {
+  it('audits membership, access and workspace changes, not composition or board setup', () => {
     const audited = everyEvent.filter((e) => auditRowFor(e) !== null).map((e) => e.type);
 
     expect(audited.sort()).toEqual(
       [
         'invitation.accepted',
+        'project.archived',
+        'project.created',
+        'project.member_added',
+        'project.member_removed',
+        'project.member_role_changed',
+        'project.renamed',
+        'project.unarchived',
+        'project.visibility_changed',
+        'workflow_state.deleted',
         'invitation.resent',
         'invitation.revoked',
         'invitation.sent',

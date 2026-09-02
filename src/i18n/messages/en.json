@@ -45,11 +45,27 @@
     "done": "Done",
     "cancelled": "Cancelled"
   },
+  "defaultTeam": {
+    "general": "General"
+  },
+  "stateColor": {
+    "ink": "Grey",
+    "sky": "Sky",
+    "navy": "Navy",
+    "warning": "Amber",
+    "success": "Green",
+    "danger": "Red"
+  },
   "role": {
     "owner": "Owner",
     "admin": "Admin",
     "member": "Member",
     "guest": "Guest"
+  },
+  "projectRole": {
+    "lead": "Lead",
+    "member": "Member",
+    "viewer": "Viewer"
   },
   "locale": {
     "label": "Language"
@@ -189,6 +205,72 @@
     "name": "Team name",
     "empty": "No teams yet. A team is how projects get an owner.",
     "members": "{count, plural, =1 {# member} other {# members}}"
+  },
+  "projects": {
+    "title": "Projects",
+    "create": "New project",
+    "name": "Project name",
+    "slug": "Project address",
+    "slugHint": "This appears in every link to the project.",
+    "key": "Item prefix",
+    "keyHint": "Every item gets an identifier like {example}. It cannot be changed later.",
+    "team": "Team",
+    "visibility": "Who can see it",
+    "visibilityWorkspace": "Everyone in the company",
+    "visibilityPrivate": "Only people added to it",
+    "submit": "Create project",
+    "creating": "Creating…",
+    "empty": "No projects yet.",
+    "emptyHint": "A project holds the work your team is doing.",
+    "count": "{count, plural, =1 {# project} other {# projects}}",
+    "open": "Open {name}",
+    "board": "Board",
+    "boardEmpty": "Nothing here yet.",
+    "settings": "Project settings",
+    "archived": "Archived",
+    "archive": "Archive project",
+    "unarchive": "Bring it back",
+    "archivedNotice": "This project is archived. Nothing in it can change until it is brought back.",
+    "showArchived": "Show archived",
+    "hideArchived": "Hide archived",
+    "members": "People on this project",
+    "addMember": "Add to project",
+    "membersEmpty": "Nobody has been added to this project yet.",
+    "errors": {
+      "nameRequired": "Enter a project name.",
+      "slugTaken": "Another project already uses that address.",
+      "keyTaken": "Another project already uses that prefix.",
+      "invalidSlug": "Use lowercase letters, numbers and hyphens.",
+      "invalidKey": "Use 2 to 5 letters or digits, starting with a letter.",
+      "noTeam": "Create a team before creating a project.",
+      "notFound": "That project no longer exists.",
+      "archived": "This project is archived. Bring it back before changing it.",
+      "forbidden": "You do not have permission to change this project."
+    }
+  },
+  "states": {
+    "title": "Workflow states",
+    "subtitle": "The columns of this project's board.",
+    "add": "Add state",
+    "adding": "Adding…",
+    "name": "State name",
+    "group": "Group",
+    "groupHint": "Progress and reporting read the group, never the name.",
+    "color": "Colour",
+    "save": "Save state",
+    "delete": "Delete state",
+    "deleteTitle": "Delete {name}?",
+    "deleteBody": "Choose where anything in this state should go.",
+    "migrateTo": "Move items to",
+    "moveUp": "Move {name} earlier",
+    "moveDown": "Move {name} later",
+    "count": "{count, plural, =1 {# state} other {# states}}",
+    "errors": {
+      "nameRequired": "Enter a state name.",
+      "nameTaken": "This project already has a state with that name.",
+      "lastState": "A project keeps at least one state.",
+      "unknownState": "That state no longer exists."
+    }
   },
   "workspace": {
     "switcher": "Switch workspace",

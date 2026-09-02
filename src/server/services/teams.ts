@@ -22,6 +22,8 @@ export type TeamSummary = {
   id: string;
   slug: string;
   name: string;
+  /** Set while this is the team seeded with the workspace, so it renders translated (§13). */
+  nameKey: string | null;
   memberCount: number;
 };
 
@@ -32,6 +34,7 @@ export async function listTeams(context: ActorContext): Promise<TeamSummary[]> {
         id: team.id,
         slug: team.slug,
         name: team.name,
+        nameKey: team.nameKey,
         // A correlated count rather than a group-by join: the join would drop
         // teams with no members, and an empty team is exactly the one somebody
         // needs to find in order to fix it.

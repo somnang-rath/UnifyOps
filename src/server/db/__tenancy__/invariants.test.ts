@@ -180,7 +180,18 @@ describe('the identity role (slice 3)', () => {
     // The sentence the whole design rests on. team, team_member and
     // audit_record are ordinary tenant tables; if the handshake role can read
     // one of them, it is not a handshake role any more.
-    for (const table of ['team', 'team_member', 'audit_record', 'invitation_team']) {
+    for (const table of [
+      'team',
+      'team_member',
+      'audit_record',
+      'invitation_team',
+      // Slice 4. A project is the first thing that says what a company is
+      // actually doing, and 0006 deliberately grants the handshake role nothing
+      // on any of these — the omission is checked here rather than trusted.
+      'project',
+      'project_member',
+      'workflow_state',
+    ]) {
       const rows = await h.owner.execute<{ has: boolean }>(
         sql`select has_table_privilege('unifyops_identity', ${table}, 'SELECT') as has`,
       );

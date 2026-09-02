@@ -3,7 +3,16 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { uuidv7 } from 'uuidv7';
 import * as schema from '../schema';
-import { team, teamMember, user, workspace, workspaceMember } from '../schema';
+import {
+  project,
+  projectMember,
+  team,
+  teamMember,
+  user,
+  workflowState,
+  workspace,
+  workspaceMember,
+} from '../schema';
 import { provisionDatabase, superuserConnection } from '../provision';
 import { withActor } from '../tenant';
 
@@ -41,6 +50,10 @@ export type SeededWorkspace = {
   memberUserId: string;
   memberMemberId: string;
   teamMemberId: string;
+  /** Slice 4. One project, its owner's Lead row, and one workflow state. */
+  projectId: string;
+  projectMemberId: string;
+  stateId: string;
 };
 
 export async function startTenancyHarness(): Promise<TenancyHarness> {
@@ -129,6 +142,9 @@ export async function seedWorkspace(h: TenancyHarness, slug: string): Promise<Se
     ownerMemberId: uuidv7(),
     memberMemberId: uuidv7(),
     teamMemberId: uuidv7(),
+    projectId: uuidv7(),
+    projectMemberId: uuidv7(),
+    stateId: uuidv7(),
   };
 
   await h.owner.insert(workspace).values({ id: ids.workspaceId, slug, name: `${slug} Ltd` });
@@ -167,6 +183,32 @@ export async function seedWorkspace(h: TenancyHarness, slug: string): Promise<Se
         workspaceId: ids.workspaceId,
         teamId: ids.teamId,
         workspaceMemberId: ids.ownerMemberId,
+      });
+
+      await tx.insert(project).values({
+        id: ids.projectId,
+        workspaceId: ids.workspaceId,
+        teamId: ids.teamId,
+        slug: 'board',
+        key: 'BRD',
+        name: `${slug} board`,
+      });
+      await tx.insert(projectMember).values({
+        id: ids.projectMemberId,
+        workspaceId: ids.workspaceId,
+        projectId: ids.projectId,
+        workspaceMemberId: ids.ownerMemberId,
+        role: 'lead',
+      });
+      await tx.insert(workflowState).values({
+        id: ids.stateId,
+        workspaceId: ids.workspaceId,
+        projectId: ids.projectId,
+        name: 'Todo',
+        nameKey: 'defaultState.todo',
+        group: 'unstarted',
+        color: 'ink',
+        position: 0,
       });
     },
     h.app,

@@ -4,7 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { isUniqueViolation } from '@/server/db/errors';
 import { withIdentity } from '@/server/db/identity';
-import { workspace as workspaceTable, workspaceMember } from '@/server/db/schema';
+import { team, workspace as workspaceTable, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { deriveSlug, slugify, slugProblem, type SlugProblem } from '@/lib/slug';
 
@@ -18,6 +18,21 @@ import { deriveSlug, slugify, slugProblem, type SlugProblem } from '@/lib/slug';
  * — goes through a normal `withActor` scoped to the workspace that now exists.
  * The tenant tables keep their single write path.
  */
+
+/**
+ * The team every new workspace starts with (§6).
+ *
+ * Exported because `createProject` falls back to it: a workspace created before
+ * slice 4, or one whose only team was deleted, still has to be able to hold a
+ * project, and the fallback must produce the same team this does rather than a
+ * second one that looks almost like it.
+ */
+export const DEFAULT_TEAM = {
+  slug: 'general',
+  /** The English fallback. `nameKey` is what a person actually reads until a rename. */
+  name: 'General',
+  nameKey: 'defaultTeam.general',
+} as const;
 
 export type CreateWorkspaceInput = {
   ownerUserId: string;
@@ -69,6 +84,7 @@ export async function createWorkspace(
 
   const workspaceId = uuidv7();
   const memberId = uuidv7();
+  const teamId = uuidv7();
 
   try {
     await withIdentity(async (tx) => {
@@ -100,6 +116,20 @@ export async function createWorkspace(
         role: 'owner',
       });
 
+      // The one seeded default a new workspace gets (§6). A project belongs to
+      // a team, and asking someone to create a team before they can create a
+      // project would put a configuration step inside the three-minute path
+      // §7.1 measures. It carries a message key rather than a bare literal, so
+      // a Khmer workspace does not open on the English word "General"; renaming
+      // it clears the key and the name they typed wins (§13).
+      await tx.insert(team).values({
+        id: teamId,
+        workspaceId,
+        slug: DEFAULT_TEAM.slug,
+        name: DEFAULT_TEAM.name,
+        nameKey: DEFAULT_TEAM.nameKey,
+      });
+
       uow.emit({ type: 'workspace.created', workspaceId, slug, name });
       uow.emit({
         type: 'workspace_member.added',
@@ -107,6 +137,13 @@ export async function createWorkspace(
         memberId,
         userId: input.ownerUserId,
         role: 'owner',
+      });
+      uow.emit({
+        type: 'team.created',
+        workspaceId,
+        teamId,
+        slug: DEFAULT_TEAM.slug,
+        name: DEFAULT_TEAM.name,
       });
     },
   );

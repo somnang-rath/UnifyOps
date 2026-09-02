@@ -3,7 +3,8 @@ import { Pool } from 'pg';
 import { uuidv7 } from 'uuidv7';
 import { appDatabaseUrl, ownerDatabaseUrl } from '@/env';
 import * as schema from './schema';
-import { team, teamMember, user, workspace, workspaceMember } from './schema';
+import { project, projectMember, team, teamMember, user, workspace, workspaceMember } from './schema';
+import { seedDefaultStates } from '@/server/services/workflow-states';
 import { withActor } from './tenant';
 
 /**
@@ -29,6 +30,10 @@ const WORKSPACES = [
       { slug: 'eng', name: 'Engineering' },
       { slug: 'ops', name: 'Operations' },
     ],
+    projects: [
+      { slug: 'website', key: 'WEB', name: 'Website Redesign' },
+      { slug: 'warehouse', key: 'WH', name: 'Warehouse Move' },
+    ],
     people: [
       { email: 'sophea@acme.test', name: 'Sophea Chan', locale: 'km', role: 'owner' as const },
       { email: 'dara@acme.test', name: 'Dara Kim', locale: 'km', role: 'member' as const },
@@ -39,6 +44,7 @@ const WORKSPACES = [
     slug: 'borey',
     name: 'Borey Construction',
     teams: [{ slug: 'site', name: 'Site' }],
+    projects: [{ slug: 'tower-b', key: 'TWB', name: 'Tower B' }],
     people: [
       { email: 'vuthy@borey.test', name: 'Vuthy Sok', locale: 'km', role: 'owner' as const },
       { email: 'mei@borey.test', name: 'Mei Lin', locale: 'en', role: 'member' as const },
@@ -97,6 +103,28 @@ async function main(): Promise<void> {
                 workspaceMemberId: p.memberId,
               })),
             );
+
+            // Projects, with the same six seeded states a real one gets — the
+            // seed calls `seedDefaultStates` rather than listing them again, so
+            // a development workspace cannot drift from what signup produces.
+            for (const p of w.projects) {
+              const projectId = uuidv7();
+              await tx.insert(project).values({
+                id: projectId,
+                workspaceId,
+                teamId: firstTeam.id,
+                slug: p.slug,
+                key: p.key,
+                name: p.name,
+              });
+              await tx.insert(projectMember).values({
+                workspaceId,
+                projectId,
+                workspaceMemberId: firstOwner.memberId,
+                role: 'lead',
+              });
+              await seedDefaultStates(tx, { workspaceId, projectId });
+            }
           }
         },
         asApp,

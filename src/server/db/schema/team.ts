@@ -10,6 +10,14 @@ export const team = pgTable(
     workspaceId: workspaceIdColumn().references(() => workspace.id, { onDelete: 'cascade' }),
     slug: text('slug').notNull(),
     name: text('name').notNull(),
+    /**
+     * `defaultTeam.general` while this is the team seeded with the workspace
+     * (§6: "new workspaces get one team"); NULL forever after a rename. Same
+     * mechanism as `workflow_state.name_key` — a seeded default renders
+     * translated until a person names it themselves, and then the literal wins
+     * (§13).
+     */
+    nameKey: text('name_key'),
     ...timestamps,
   },
   (t) => [

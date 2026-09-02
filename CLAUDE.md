@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: approved for build, slice 3 landed
+## Status: approved for build, slice 4 landed
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -11,17 +11,18 @@ database role. Both are implemented — see below. The remaining open questions 
 block anything before slice 8.
 
 Slices are still built **one at a time, in §14's order, on request**. The approval was to start, not a
-standing licence to run ahead — slice 4 (projects, workflow states, i18n scaffold) is next and has not been
-started.
+standing licence to run ahead — slice 5 (work items, the list query, List view) is next and has not been
+started. §14 calls slices 5 and 6 the other two places a wrong decision is expensive to reverse.
 
-What exists: **slices 0, 1, 2, 3, and part of slice 4** — the i18n scaffold, the design-token layer, the
-tenancy foundation (`src/server/db`, `drizzle/`), the policy module (`src/server/authz/`), and now
-authentication, workspace creation, teams and invitations (`src/server/auth`, `src/server/services`, and the
-routes under `src/app/[locale]/`). All the `db:*` scripts work once `pnpm db:setup` has run.
+What exists: **slices 0, 1, 2, 3 and 4** — the i18n scaffold, the design-token layer, the tenancy foundation
+(`src/server/db`, `drizzle/`), the policy module (`src/server/authz/`), authentication, workspace creation,
+teams and invitations (`src/server/auth`, `src/server/services`), and now projects, project membership and
+workflow states (`src/server/services/projects.ts`, `workflow-states.ts`, and the routes under
+`src/app/[locale]/[workspaceSlug]/projects/`). All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-02 — `typecheck`, `lint`, `test` (95 unit), `build`, `test:e2e` (47 across three
-Playwright projects) and `test:tenancy` (51 against real Postgres 18.4). **Re-run them rather than trusting
-this line**; it is a snapshot, not a promise.
+Every gate passed on 2026-09-02 — `typecheck`, `lint`, `test` (115 unit), `build`, `test:e2e` (53 across
+three Playwright projects, 1 pre-existing skip) and `test:tenancy` (63 against real Postgres 18.4). **Re-run
+them rather than trusting this line**; it is a snapshot, not a promise.
 
 **`pnpm test:e2e` now needs a database.** From slice 3 the flows §15 asks to be tested in a browser are flows
 through one, so the Playwright web server provisions its own before starting Next — see
@@ -38,6 +39,12 @@ pg_ctl -D /tmp/pg -o "-p 55432" -l /tmp/pg.log start
 TENANCY_SUPERUSER_URL=postgresql://postgres@127.0.0.1:55432/postgres pnpm test:tenancy
 TENANCY_SUPERUSER_URL=postgresql://postgres@127.0.0.1:55432/postgres pnpm test:e2e
 ```
+
+The Postgres binaries are at `C:\Program Files\PostgreSQL\18\bin` and are **not on PATH**. Two Windows
+details cost an hour in slice 4: `pg_ctl … start` does not detach from Git Bash, so run it through
+PowerShell's `Start-Process` — and if the shell it was launched from is killed, the server dies mid-write
+and comes back in a "could not reserve shared memory region" loop that only `pg_ctl -m immediate stop`
+clears.
 
 One thing worth knowing before debugging an install: two dependency versions in `package.json` had never
 existed on the registry (`eslint@^9.40.0`, `@types/react-dom@^19.2.8`) and blocked `pnpm install` outright.
@@ -90,7 +97,9 @@ the usual response to that is to skip it — which is the one suite that must ne
 
   Its reach is short enough to state in a sentence, and `invariants.test.ts` asserts the grant list
   **exactly**: `app_user`, `workspace`, the `auth_*` tables, `invitation` by token, and on `workspace_member`
-  only the rows of the user it has already authenticated. It cannot read one row of what a company is
+  only the rows of the user it has already authenticated. Slice 4's three tables are deliberately **not** on
+  that list — which is why `resolveActorContext` loads a member's project roles through `withActor` on the
+  app connection rather than adding them to the handshake. It cannot read one row of what a company is
   *doing*, and it has no `CREATE` anywhere. `bootstrap.sql` gives it no default privileges on purpose, so a
   tenant table added in a later slice is outside it by construction rather than by anyone remembering.
 
@@ -154,9 +163,9 @@ carries `import 'server-only'` at the top so a mistaken client import is a build
 
 The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*` functions **before** `0001`
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
-grants, revokes). Slice 3 repeats the pair — `0003` is generated, `0004` is the hand-written hardening for the
-tables it adds plus the identity role's grant list. Regenerating a generated file with `db:generate` is fine;
-`0000`, `0002` and `0004` are hand-written and must stay that way. A hand-written migration is scaffolded with
+grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
+4. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`, `0004` and `0006` are
+hand-written and must stay that way. A hand-written migration is scaffolded with
 `db:generate --custom` so the journal and snapshot stay consistent.
 
 Three conventions that surprise people:
@@ -240,6 +249,42 @@ surfaces that walk the matrix. Slice 2, built 2026-08-31.
 - `src/server/authz/roles.ts` is the **single source of truth for both role enums**, and
   `schema/workspace.ts` builds its `pgEnum` from it. Slice 4's `project_role` enum must do the same.
 
+## Projects, and the two names every seeded row carries
+
+`src/server/services/projects.ts` and `workflow-states.ts` are slice 4. Three decisions in them are the ones
+worth knowing before touching either.
+
+- **Visibility is written twice, on purpose, and one of the two is the authority.** `listProjects` expresses
+  §10's visibility rule as a SQL predicate — fetching every project in a 200-project workspace to filter five
+  in TypeScript is how a list view stops being usable — and then re-checks every row it got back through
+  `can(actor, 'project.view')`. The SQL is an optimisation of the policy module, never a second opinion. If
+  the filter ever removes a row, the two have drifted and the module is the one that is right.
+- **A seeded default carries a `name_key` as well as a name** (`workflow_state.name_key`, `team.name_key`).
+  It renders translated until somebody renames it, and the rename clears the key so their literal wins for
+  good. `src/lib/seeded-name.ts` is the only place that rule is applied — a screen that reads `row.name`
+  directly shows a Khmer workspace the English word "Done". This is §13's "awkward middle", and it applies to
+  seeded rows only: a **closed** enum (state group, priority, project role) still maps to messages in code and
+  never reaches the database.
+- **An archived project is read-only** (§4), and that is enforced in the service on every mutation, not only
+  by hiding buttons. `unarchive` is the one path that skips the check, because otherwise the one click that
+  brings a project back is the one click an archived project refuses.
+
+Project membership has its own section on the project settings screen, and it is not decoration: **explicit
+membership is the only way into a private project, and the only way a Guest reaches any project**. §10's
+implicit roles are composed in `effectiveProjectRole` and never written as rows, so an Admin who has never
+been added still appears in the "add" list — adding them creates a real membership that survives them losing
+Admin.
+
+Two smaller things that will look arbitrary later. Workflow states use an **integer `position` rewritten as a
+block**, not the fractional index work items get in slice 6 — that machinery exists because several people
+drag cards on one board at once, and a settings list of six rows reordered by one Lead does not need it.
+And a state is **hard-deleted**, unlike everything else, because `workflow_state_project_name_key` would
+otherwise keep a deleted state's name reserved forever.
+
+`src/lib/project-key.ts` derives the `ENG` of `ENG-142`. §7.1's example is "Marketing → MKT"; the rule gives
+`MAR`, because no rule short of a dictionary produces that contraction. The field is editable, which is what
+makes an approximation acceptable — the same bargain `slug.ts` makes for Khmer romanisation.
+
 ## Bilingual invariants
 
 English and Khmer ship together or not at all; Khmer is never the degraded path. Retrofitting this is
@@ -269,6 +314,11 @@ called out in the plan as the most expensive available mistake, so these are loa
 1. `@theme` — raw ramps, fixed, identical in both themes.
 2. `:root` / `.dark` — semantic aliases. **These are the only things that flip.**
 3. `@theme inline` — re-exposes the semantic aliases as Tailwind utilities (`bg-surface`, `text-muted`, …).
+
+Slice 4 added a sixth family to layers 2 and 3: `--state-ink` · `-sky` · `-navy` · `-warning` · `-success`
+· `-danger`, exposed as `bg-state-*`. They exist because a company may recolour a workflow state (§6-3) and
+the choice is stored — a hex written into a row in 2026 cannot resolve differently in dark mode, so what is
+stored is a token name and `StatePill` is the only place it becomes a class.
 
 Components use semantic utilities only; never a raw ramp value and never a literal hex. All three shadow
 tokens and both ring tokens are exposed through `@theme inline`, so `shadow-sm` resolves to the token rather

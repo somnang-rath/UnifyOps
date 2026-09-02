@@ -1,7 +1,16 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withActor } from '../tenant';
-import { team, teamMember, user, workspace, workspaceMember } from '../schema';
+import {
+  project,
+  projectMember,
+  team,
+  teamMember,
+  user,
+  workflowState,
+  workspace,
+  workspaceMember,
+} from '../schema';
 import type { SeededWorkspace, TenancyHarness } from './harness';
 import { SQLSTATE, failureOf, seedWorkspace, startTenancyHarness } from './harness';
 
@@ -61,6 +70,9 @@ describe('cross-workspace reads', () => {
     { name: 'workspace_member', table: workspaceMember },
     { name: 'team', table: team },
     { name: 'team_member', table: teamMember },
+    { name: 'project', table: project },
+    { name: 'project_member', table: projectMember },
+    { name: 'workflow_state', table: workflowState },
   ] as const;
 
   for (const { name, table } of tenantTables) {

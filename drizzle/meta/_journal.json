@@ -36,6 +36,20 @@
       "when": 1788316237403,
       "tag": "0004_slice3_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788334629845,
+      "tag": "0005_slice4_projects",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788334650428,
+      "tag": "0006_slice4_hardening",
+      "breakpoints": true
     }
   ]
 }

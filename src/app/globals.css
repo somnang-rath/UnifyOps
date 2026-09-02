@@ -165,6 +165,17 @@
 
   --focus-ring: var(--color-sky-500);
 
+  /* Workflow-state colours (slice 4). Six named choices a company may recolour
+     a state to, resolved as tokens rather than stored as hex — a colour picked
+     in 2026 still has to work in dark mode. They mark dots and chips, never
+     text, so the target is 3:1 against the surface rather than 4.5:1. */
+  --state-ink: var(--color-ink-500);
+  --state-sky: var(--color-sky-600);
+  --state-navy: var(--color-navy-800);
+  --state-warning: var(--color-warning-600);
+  --state-success: var(--color-success-600);
+  --state-danger: var(--color-crimson-600);
+
   --shadow-sm: 0 1px 2px 0 rgb(33 46 59 / 0.06);
   --shadow-md: 0 2px 8px -1px rgb(33 46 59 / 0.10), 0 1px 3px -1px rgb(33 46 59 / 0.06);
   --shadow-lg: 0 12px 32px -8px rgb(33 46 59 / 0.18);
@@ -209,6 +220,16 @@
 
   --focus-ring: var(--color-sky-300);
 
+  /* Lightened against Charcoal. Navy in particular is invisible on a dark
+     ground, which is the whole reason a state's colour is a token name in the
+     database and not the value itself. */
+  --state-ink: var(--color-ink-400);
+  --state-sky: var(--color-sky-400);
+  --state-navy: var(--color-navy-300);
+  --state-warning: var(--color-warning-300);
+  --state-success: var(--color-success-300);
+  --state-danger: var(--color-crimson-400);
+
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.30);
   --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.45);
   --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.60);
@@ -242,6 +263,13 @@
   --color-success-subtle: var(--success-subtle);
   --color-focus-ring: var(--focus-ring);
   --color-accent-ring: var(--accent-ring);
+
+  --color-state-ink: var(--state-ink);
+  --color-state-sky: var(--state-sky);
+  --color-state-navy: var(--state-navy);
+  --color-state-warning: var(--state-warning);
+  --color-state-success: var(--state-success);
+  --color-state-danger: var(--state-danger);
 
   /* Without these, Tailwind's `shadow-sm` resolves to Tailwind's own default
      rather than the token above, and every component has to write

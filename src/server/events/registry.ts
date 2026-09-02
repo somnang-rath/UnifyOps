@@ -119,6 +119,93 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ email: e.email }),
     },
   },
+  // A project is where work lives and who can see it, so its lifecycle is
+  // audited: created, renamed, archived (which makes it read-only), and above
+  // all made private or workspace-visible — the one setting that changes who
+  // can read a body of work without anyone being added or removed.
+  'project.created': {
+    audit: {
+      subjectType: 'project',
+      subject: (e) => e.projectId,
+      data: (e) => ({ slug: e.slug, key: e.key, name: e.name, teamId: e.teamId, visibility: e.visibility }),
+    },
+  },
+  'project.renamed': {
+    audit: {
+      subjectType: 'project',
+      subject: (e) => e.projectId,
+      data: (e) => ({ from: e.from, to: e.to }),
+    },
+  },
+  'project.visibility_changed': {
+    audit: {
+      subjectType: 'project',
+      subject: (e) => e.projectId,
+      data: (e) => ({ from: e.from, to: e.to }),
+    },
+  },
+  'project.archived': {
+    audit: {
+      subjectType: 'project',
+      subject: (e) => e.projectId,
+      data: (e) => ({ name: e.name }),
+    },
+  },
+  'project.unarchived': {
+    audit: {
+      subjectType: 'project',
+      subject: (e) => e.projectId,
+      data: (e) => ({ name: e.name }),
+    },
+  },
+
+  // Project membership is an access grant — it is how a Guest reaches a private
+  // project at all — so unlike team composition it belongs in the log an owner
+  // reads to reconstruct how someone got to something.
+  'project.member_added': {
+    audit: {
+      subjectType: 'project_member',
+      subject: (e) => e.memberId,
+      data: (e) => ({ projectId: e.projectId, role: e.role }),
+    },
+  },
+  'project.member_role_changed': {
+    audit: {
+      subjectType: 'project_member',
+      subject: (e) => e.memberId,
+      data: (e) => ({ projectId: e.projectId, from: e.from, to: e.to }),
+    },
+  },
+  'project.member_removed': {
+    audit: {
+      subjectType: 'project_member',
+      subject: (e) => e.memberId,
+      data: (e) => ({ projectId: e.projectId }),
+    },
+  },
+
+  // Configuring a board is ordinary work a Lead does in the open, and it is
+  // frequent — three columns renamed while setting a project up would bury the
+  // membership changes the audit log exists for. Activity, not audit (slice 7).
+  'workflow_state.created': { audit: false },
+  'workflow_state.updated': { audit: false },
+  'workflow_state.reordered': { audit: false },
+
+  // The exception, and §4 says why: deleting a state that holds items forces a
+  // choice about where they go, and that choice moves work nobody else agreed
+  // to move. The row records both the state and where its items went.
+  'workflow_state.deleted': {
+    audit: {
+      subjectType: 'workflow_state',
+      subject: (e) => e.stateId,
+      data: (e) => ({
+        projectId: e.projectId,
+        name: e.name,
+        migratedToStateId: e.migratedToStateId,
+      }),
+    },
+  },
+
   'invitation.accepted': {
     audit: {
       subjectType: 'invitation',

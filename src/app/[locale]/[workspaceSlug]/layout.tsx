@@ -47,6 +47,13 @@ export default async function WorkspaceLayout({
         </Link>
 
         <nav aria-label={t('nav.settings')} className="flex items-center gap-3 text-sm">
+          <Link
+            href={`/${resolved.workspace.slug}/projects`}
+            className="text-text-muted transition-colors duration-120 hover:text-text"
+          >
+            {t('nav.projects')}
+          </Link>
+
           {canManage && (
             <Link
               href={`/${resolved.workspace.slug}/settings/members`}

@@ -8,6 +8,7 @@
  *
  * Slice 1 carried only the events the tenancy foundation itself can emit; slice
  * 3 adds the membership lifecycle — invitations, teams, joining and leaving.
+ * Slice 4 adds projects and their workflow states.
  * Later slices extend the union; the compile error is the point.
  */
 export type DomainEvent =
@@ -42,6 +43,77 @@ export type DomainEvent =
     }
   | { type: 'invitation.resent'; workspaceId: string; invitationId: string; email: string }
   | { type: 'invitation.revoked'; workspaceId: string; invitationId: string; email: string }
+  | {
+      type: 'project.created';
+      workspaceId: string;
+      projectId: string;
+      teamId: string;
+      slug: string;
+      key: string;
+      name: string;
+      visibility: string;
+    }
+  | { type: 'project.renamed'; workspaceId: string; projectId: string; from: string; to: string }
+  | {
+      type: 'project.visibility_changed';
+      workspaceId: string;
+      projectId: string;
+      from: string;
+      to: string;
+    }
+  | { type: 'project.archived'; workspaceId: string; projectId: string; name: string }
+  | { type: 'project.unarchived'; workspaceId: string; projectId: string; name: string }
+  | {
+      type: 'project.member_added';
+      workspaceId: string;
+      projectId: string;
+      memberId: string;
+      role: string;
+    }
+  | {
+      type: 'project.member_role_changed';
+      workspaceId: string;
+      projectId: string;
+      memberId: string;
+      from: string;
+      to: string;
+    }
+  | { type: 'project.member_removed'; workspaceId: string; projectId: string; memberId: string }
+  | {
+      type: 'workflow_state.created';
+      workspaceId: string;
+      projectId: string;
+      stateId: string;
+      name: string;
+      group: string;
+    }
+  | {
+      type: 'workflow_state.updated';
+      workspaceId: string;
+      projectId: string;
+      stateId: string;
+      name: string;
+      group: string;
+      color: string;
+      /** Set only when this update was a rename, so the log can show both. */
+      previousName: string | null;
+    }
+  | {
+      type: 'workflow_state.reordered';
+      workspaceId: string;
+      projectId: string;
+      /** State ids, in their new left-to-right order. */
+      order: readonly string[];
+    }
+  | {
+      type: 'workflow_state.deleted';
+      workspaceId: string;
+      projectId: string;
+      stateId: string;
+      name: string;
+      /** Where the items went. Null only when the state held none. */
+      migratedToStateId: string | null;
+    }
   | {
       type: 'invitation.accepted';
       workspaceId: string;

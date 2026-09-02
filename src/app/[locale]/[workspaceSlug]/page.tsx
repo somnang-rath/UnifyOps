@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { resolveActorContext } from '@/server/auth/context';
 import { can } from '@/server/authz/policy';
 import { listMembers } from '@/server/services/members';
+import { listProjects } from '@/server/services/projects';
 import { listTeams } from '@/server/services/teams';
 import { Link } from '@/i18n/navigation';
 
@@ -26,9 +27,10 @@ export default async function WorkspaceHome({
   const resolved = await resolveActorContext(workspaceSlug);
   if (!resolved) notFound();
 
-  const [members, teams, t] = await Promise.all([
+  const [members, teams, projects, t] = await Promise.all([
     listMembers(resolved.context),
     listTeams(resolved.context),
+    listProjects(resolved),
     getTranslations(),
   ]);
 
@@ -44,6 +46,42 @@ export default async function WorkspaceHome({
           {t('role.' + resolved.workspace.role)} · {t('teams.members', { count: members.length })}
         </p>
       </header>
+
+      <section className="space-y-3">
+        <div className="flex items-center gap-3">
+          <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
+            {t('projects.title')}
+          </h2>
+          <Link
+            href={`/${workspaceSlug}/projects`}
+            className="ms-auto text-sm text-text-muted transition-colors duration-120 hover:text-text"
+          >
+            {t('projects.count', { count: projects.length })}
+          </Link>
+        </div>
+
+        {projects.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-text-muted">
+            {t('projects.emptyHint')}
+          </p>
+        ) : (
+          <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
+            {projects.map((project) => (
+              <li key={project.id}>
+                <Link
+                  href={`/${workspaceSlug}/projects/${project.slug}`}
+                  className="flex items-center gap-3 px-3 py-2 transition-colors duration-120 hover:bg-surface-hover"
+                >
+                  <span className="text-2xs font-medium tabular-nums text-text-subtle">
+                    {project.key}
+                  </span>
+                  <span className="font-medium">{project.name}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="space-y-3">
         <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">

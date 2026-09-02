@@ -4,9 +4,9 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { cache } from 'react';
 import type { Actor } from '@/server/authz/policy';
 import { withIdentity } from '@/server/db/identity';
-import { workspace as workspaceTable, workspaceMember } from '@/server/db/schema';
-import type { ActorContext } from '@/server/db/tenant';
-import type { WorkspaceRole } from '@/server/authz/roles';
+import { projectMember, workspace as workspaceTable, workspaceMember } from '@/server/db/schema';
+import { withActor, type ActorContext } from '@/server/db/tenant';
+import type { ProjectRole, WorkspaceRole } from '@/server/authz/roles';
 import { readCurrentUser } from './session';
 import type { CurrentUser } from './session';
 
@@ -60,6 +60,36 @@ export const listMyWorkspaces = cache(
       { userId },
     ),
 );
+
+/**
+ * This member's explicit project roles, keyed by project id (slice 4).
+ *
+ * On the app connection rather than the identity one, and that is not an
+ * oversight: `project_member` is tenant data — it says what a company is doing
+ * and who is doing it — and the handshake role is granted nothing on it by
+ * name, so it cannot read it at all. By the time this runs the workspace is
+ * known and `withActor` is the right tool.
+ *
+ * One extra query per request, deduplicated by `resolveActorContext` being
+ * `cache`d, and it is what makes §10 answerable at all: without the map, every
+ * project would resolve to whatever the workspace role implies and an explicit
+ * Lead would be indistinguishable from a Member.
+ */
+async function loadProjectRoles(
+  context: ActorContext,
+  memberId: string,
+): Promise<ReadonlyMap<string, ProjectRole>> {
+  const rows = await withActor(context, async (tx) =>
+    tx
+      .select({ projectId: projectMember.projectId, role: projectMember.role })
+      .from(projectMember)
+      .where(
+        and(eq(projectMember.workspaceMemberId, memberId), isNull(projectMember.deletedAt)),
+      ),
+  );
+
+  return new Map(rows.map((row) => [row.projectId, row.role]));
+}
 
 export type ResolvedActor = {
   user: CurrentUser;
@@ -118,6 +148,13 @@ export const resolveActorContext = cache(
     const readOnly = false;
     const actingAsUserId = user.id;
 
+    const context: ActorContext = {
+      workspaceId: found.workspaceId,
+      userId: actingAsUserId,
+      actorUserId: user.id,
+      readOnly,
+    };
+
     return {
       user,
       workspace: {
@@ -127,20 +164,16 @@ export const resolveActorContext = cache(
         role: found.role,
       },
       memberId: found.memberId,
-      context: {
-        workspaceId: found.workspaceId,
-        userId: actingAsUserId,
-        actorUserId: user.id,
-        readOnly,
-      },
+      context,
       actor: {
         workspaceId: found.workspaceId,
         userId: actingAsUserId,
         workspaceRole: found.role,
-        // Explicit project memberships. Empty until slice 4 creates projects;
-        // §10 composition derives the implicit roles from this, never the
-        // other way round.
-        projectRoles: new Map(),
+        // Explicit project memberships only. §10 composition derives the
+        // implicit roles from this — Owner and Admin are Leads everywhere, a
+        // workspace-visible project grants Members a Viewer, Guests get nothing
+        // — and none of that is ever written into this map.
+        projectRoles: await loadProjectRoles(context, found.memberId),
         readOnly,
       },
     };
