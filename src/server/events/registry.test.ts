@@ -208,6 +208,13 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     to: 's2',
     completed: false,
   },
+  'work_item.moved': {
+    type: 'work_item.moved',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'wi1',
+    stateId: 's1',
+  },
   'work_item.assigned': {
     type: 'work_item.assigned',
     workspaceId: 'w1',

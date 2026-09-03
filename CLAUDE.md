@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: approved for build, slice 5 landed
+## Status: approved for build, slice 6 landed
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -11,19 +11,22 @@ database role. Both are implemented — see below. The remaining open questions 
 block anything before slice 8.
 
 Slices are still built **one at a time, in §14's order, on request**. The approval was to start, not a
-standing licence to run ahead — slice 6 (board + ranking) is next and has not been started. §14 called
-slices 5 and 6 the other two places a wrong decision is expensive to reverse; slice 5 is now behind us, and
-slice 6 inherits most of its machinery.
+standing licence to run ahead — slice 7 (events, activity, unit of work) is next and has not been started.
+§14 named slices **1, 2, 5 and 6** the four places a wrong decision is expensive to reverse. All four are now
+behind us, and everything after this sits on machinery that already exists: slice 7 adds a second field to
+the `eventRegistry` entry that slices 1 and 6 have been filling in all along.
 
-What exists: **slices 0 through 5** — the i18n scaffold, the design-token layer, the tenancy foundation
+What exists: **slices 0 through 6** — the i18n scaffold, the design-token layer, the tenancy foundation
 (`src/server/db`, `drizzle/`), the policy module (`src/server/authz/`), authentication, workspace creation,
 teams and invitations (`src/server/auth`, `src/server/services`), projects, project membership and workflow
-states, and now work items, labels, the §9 list query and the List view (`src/lib/work-item-query.ts`,
+states, work items, labels, the §9 list query and the List view (`src/lib/work-item-query.ts`,
 `src/server/queries/work-items.ts`, `src/server/services/work-items.ts`, `labels.ts`, and the routes under
-`src/app/[locale]/[workspaceSlug]/projects/`). All the `db:*` scripts work once `pnpm db:setup` has run.
+`src/app/[locale]/[workspaceSlug]/projects/`), and now the board, fractional ranking and the Toast
+(`src/components/views/board-view.tsx`, `use-board-sync.ts`, `src/components/ui/toast.tsx`,
+`moveWorkItem` and `src/app/api/internal/reorder/`). All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-03 — `typecheck`, `lint`, `test` (154 unit), `build`, `test:e2e` (62 across
-three Playwright projects, 1 pre-existing skip) and `test:tenancy` (90 against real Postgres 18.4). **Re-run
+Every gate passed on 2026-09-03 — `typecheck`, `lint`, `test` (154 unit), `build`, `test:e2e` (71 across
+three Playwright projects, 1 pre-existing skip) and `test:tenancy` (92 against real Postgres 18.4). **Re-run
 them rather than trusting this line**; it is a snapshot, not a promise.
 
 **`pnpm test:e2e` now needs a database.** From slice 3 the flows §15 asks to be tested in a browser are flows
@@ -351,8 +354,60 @@ no table to count; `work_item`'s foreign key onto the state is `ON DELETE RESTRI
 
 The **FilterBar is single-select per filter this slice**. The DSL takes arrays throughout and the builder ORs
 them, so multi-select is a UI change and not a data change — it needs §12's Combobox, which is not built.
-There is also no Toast yet; a refused mutation reports in the row that caused it. Both belong with slice 6,
-where a rejected drag needs a toast by name (§7.5).
+A refused mutation reports in the row that caused it rather than in a toast — that is §11's rule, not an
+omission, and it still holds for the list. **Slice 6 added the Toast** because a refused *drag* is the
+opposite case: the card animates back and nothing on screen says why.
+
+## The board, and why the client never sends a rank
+
+Slice 6, and the last of §14's four expensive-to-reverse decisions. `src/server/services/work-items.ts`
+(`moveWorkItem`), `src/app/api/internal/reorder/`, `src/components/views/board-view.tsx` and
+`use-board-sync.ts`.
+
+**The client sends neighbour IDs and never a rank** (§9). Everything else follows from that one sentence. A
+rank computed in the browser is computed against a board that may be seconds old, and two people dropping
+onto the same gap compute the *same* key; a rank computed on the server, inside the transaction, under
+`FOR UPDATE` on the item and both neighbours, is computed against what is true right now. The e2e suite
+drives two browsers onto the same card at once and asserts they converge — that is §15's scenario 3, and it
+is the reason this slice was front-loaded rather than left until the views slice.
+
+**A stale neighbour is not an error.** §9 asks a stale drag to "land correctly relative to present state —
+this is what stops boards feeling haunted", so `moveWorkItem` has three rules and they are worth knowing
+before touching it:
+
+- A neighbour id naming no row in the project is a **bad request** — a client defect, not a race.
+- A neighbour that exists but has since **left the column** is stale, and the true neighbour is re-derived
+  from the column as it now stands.
+- `null` is an **intent**, not a missing value: `previousId: null` is "the top" and `nextId: null` is "the
+  bottom", and neither is ever re-derived. Re-deriving them would slide a card dropped at the end of a
+  column into the middle of it.
+
+**Exactly one event per drag.** Crossing columns emits `work_item.state_changed`, which slice 7's feed and
+slice 9's notifications already understand; staying inside one emits the new `work_item.moved`, whose
+registry entry is `audit: false` on purpose — a log that records every drag is a log nobody reads when it
+matters.
+
+**`rank-ordering.test.ts` is the test that would otherwise not exist.** `rank.test.ts` proves the fractional
+index is correct in JavaScript; that is half the guarantee, and the other half — that Postgres sorts the same
+keys the same way — is the half that fails silently, on deploy day, with every unit test still green. Two
+mechanisms make them agree (0008's `COLLATE "C"`, and `rank.ts` narrowing to lowercase base-36), so the test
+asserts the *result* rather than either mechanism.
+
+**The board polls a change token, and the schedule is a product decision.** `use-board-sync.ts` implements
+§8's table exactly: 20s while visible, stop when hidden, immediate revalidate on focus, backoff to a 60s cap,
+and **no timer at all under `saveData` or `2g`**. §17-24 is explicit that leaving the interval unspecified
+means someone picks 5s and a forgotten background tab bills a mobile data plan all afternoon — §2.5-5 makes
+that a product decision, not tuning. The token itself is one aggregate (`max(updated_at)` plus a count) and
+rides the same predicate the board does; it is served by a **`GET` on `api/internal/list`** rather than a
+sixth §8 route-handler exception, because it is the same concern in its cheapest form.
+
+Three smaller things that will look arbitrary later. **`view` lives in the filter DSL** even though it is
+presentation: the filter bar rewrites the whole query string on every change, so a `view` kept outside it
+would be dropped the first time anyone touched a filter. **The board is always grouped by state**, whatever
+`by=` says, because a column you drag into has to mean something the drop can change and the drop changes a
+state. And **the drag handle is not the whole card** — a card is also a link to the item, and dnd-kit's
+`KeyboardSensor` needs a focusable element to start from, which is what makes §11's mouse-free loop work.
+
 
 ## Bilingual invariants
 

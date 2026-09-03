@@ -34,6 +34,17 @@ export const NONE = 'none' as const;
 export const GROUP_BY = ['state', 'assignee', 'priority', 'label', 'project', 'none'] as const;
 export type GroupBy = (typeof GROUP_BY)[number];
 
+/**
+ * Which renderer draws the result.
+ *
+ * Presentation rather than filtering, and in this module anyway, because §5
+ * says "any view state is a URL" and because the filter bar rewrites the whole
+ * query string on every change — a `view` kept outside the DSL would be dropped
+ * the first time somebody changed a filter.
+ */
+export const VIEWS = ['list', 'board'] as const;
+export type View = (typeof VIEWS)[number];
+
 export const SORT_FIELDS = ['rank', 'created', 'updated', 'due', 'priority', 'number'] as const;
 export type SortField = (typeof SORT_FIELDS)[number];
 
@@ -89,6 +100,7 @@ export type WorkItemFilters = z.infer<typeof filtersSchema>;
 export const workItemQuerySchema = z
   .object({
     filters: filtersSchema,
+    view: z.enum(VIEWS).default('list'),
     groupBy: z.enum(GROUP_BY).default('state'),
     sort: z.enum(SORT_FIELDS).default('rank'),
     direction: z.enum(['asc', 'desc']).default('asc'),
@@ -149,6 +161,7 @@ const PARAM = {
   due: 'd',
   parentId: 'parent',
   includeArchivedProjects: 'arch',
+  view: 'view',
   groupBy: 'by',
   sort: 'sort',
   direction: 'dir',
@@ -218,6 +231,9 @@ export function parseWorkItemQuery(params: ParamBag): WorkItemQuery {
         parentRaw === 'root' ? null : parentRaw && isUuid(parentRaw) ? parentRaw : undefined,
       includeArchivedProjects: read(params, PARAM.includeArchivedProjects) === '1',
     },
+    view: (VIEWS as readonly string[]).includes(read(params, PARAM.view) ?? '')
+      ? (read(params, PARAM.view) as View)
+      : 'list',
     groupBy: (GROUP_BY as readonly string[]).includes(read(params, PARAM.groupBy) ?? '')
       ? (read(params, PARAM.groupBy) as GroupBy)
       : 'state',
@@ -257,6 +273,7 @@ export function toSearchParams(query: WorkItemQuery): URLSearchParams {
   else if (filters.parentId !== undefined) params.set(PARAM.parentId, filters.parentId);
   if (filters.includeArchivedProjects) params.set(PARAM.includeArchivedProjects, '1');
 
+  if (query.view !== 'list') params.set(PARAM.view, query.view);
   if (query.groupBy !== 'state') params.set(PARAM.groupBy, query.groupBy);
   if (query.sort !== 'rank') params.set(PARAM.sort, query.sort);
   if (query.direction !== 'asc') params.set(PARAM.direction, query.direction);

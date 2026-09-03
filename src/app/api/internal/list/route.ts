@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { resolveActorContext } from '@/server/auth/context';
 import { UnanchoredQueryError } from '@/server/queries/work-items';
-import { listWorkItems } from '@/server/services/work-items';
+import { boardChangeToken, listWorkItems } from '@/server/services/work-items';
 import { parseWorkItemQuery } from '@/lib/work-item-query';
 import { toItemRowData } from '@/lib/work-item-row';
 
@@ -23,6 +23,40 @@ import { toItemRowData } from '@/lib/work-item-row';
  * Route handlers under `src/app/api/` are excluded from the locale proxy by its
  * matcher, which is right — they are not locale-prefixed.
  */
+
+/**
+ * The board's change-token poll (§8, §17-24).
+ *
+ * A `GET` on the same route rather than a sixth §8 exception, because it is the
+ * same concern — reading a list — asked in its cheapest possible form. It runs
+ * every 20 seconds per visible board and stops entirely when the tab is hidden,
+ * which is a §2.5-5 decision about mobile data rather than a tuning detail.
+ */
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const workspaceSlug = url.searchParams.get('w');
+  const query = url.searchParams.get('q') ?? '';
+
+  if (!workspaceSlug) return NextResponse.json({ error: 'bad_request' }, { status: 400 });
+
+  const resolved = await resolveActorContext(workspaceSlug);
+  if (!resolved) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  const parsedQuery = parseWorkItemQuery(
+    // `URLSearchParams` strips a leading `?` itself, so the query string is
+    // handed over whole rather than trimmed here.
+    Object.fromEntries(new URLSearchParams(query)),
+  );
+
+  try {
+    return NextResponse.json({ token: await boardChangeToken(resolved, parsedQuery) });
+  } catch (error) {
+    if (error instanceof UnanchoredQueryError) {
+      return NextResponse.json({ error: 'unanchored' }, { status: 400 });
+    }
+    throw error;
+  }
+}
 
 const bodySchema = z
   .object({
@@ -48,7 +82,9 @@ export async function POST(request: Request) {
   if (!resolved) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const parsedQuery = parseWorkItemQuery(
-    Object.fromEntries(new URLSearchParams(query.startsWith('?') ? query.slice(1) : query)),
+    // `URLSearchParams` strips a leading `?` itself, so the query string is
+    // handed over whole rather than trimmed here.
+    Object.fromEntries(new URLSearchParams(query)),
   );
 
   try {

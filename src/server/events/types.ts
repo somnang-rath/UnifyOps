@@ -162,6 +162,21 @@ export type DomainEvent =
       completed: boolean;
     }
   | {
+      /**
+       * A drag that changed only the item's position within its own column.
+       *
+       * Separate from `state_changed` so exactly one event describes a drag: a
+       * cross-column drag emits `state_changed`, which slice 7's feed and slice
+       * 9's notifications already understand, and never both. A drag that
+       * crosses no boundary is this.
+       */
+      type: 'work_item.moved';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      stateId: string;
+    }
+  | {
       type: 'work_item.assigned';
       workspaceId: string;
       projectId: string;

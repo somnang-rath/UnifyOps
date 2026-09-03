@@ -392,7 +392,9 @@
       "notFound": "That item no longer exists.",
       "readOnly": "You are viewing as someone else, so nothing can be changed.",
       "forbidden": "You do not have permission to change this item.",
-      "loadMore": "Could not load more. Try again."
+      "loadMore": "Could not load more. Try again.",
+      "unknownNeighbour": "That card is no longer on the board.",
+      "moveRefused": "The move could not be saved."
     }
   },
   "labels": {
@@ -411,5 +413,29 @@
       "inUse": "This label is still on some items. Confirm to remove it from them.",
       "forbidden": "You do not have permission to change labels."
     }
+  },
+  "board": {
+    "title": "Board",
+    "columnLabel": "{name}, {count} items",
+    "empty": "Nothing in this column yet.",
+    "addCard": "Add an item to {name}",
+    "dragHandle": "Reorder {identifier}",
+    "pickedUp": "Picked up {identifier}. Use the arrow keys to move it, space to drop, escape to cancel.",
+    "movedTo": "{identifier} moved to {name}, position {position} of {count}.",
+    "dropped": "{identifier} dropped in {name}.",
+    "cancelled": "Move cancelled. {identifier} returned to where it was.",
+    "moveFailed": "{identifier} moved back — {reason}",
+    "stale": "The board moved on. Showing the latest.",
+    "columnsOverflow": "Scroll for more columns"
+  },
+  "view": {
+    "list": "List",
+    "board": "Board",
+    "switch": "Switch view"
+  },
+  "toast": {
+    "dismiss": "Dismiss",
+    "undo": "Undo",
+    "region": "Notifications"
   }
 }

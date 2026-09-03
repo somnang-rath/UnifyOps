@@ -1,27 +1,41 @@
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Alert, Badge } from '@/components/ui/feedback';
+import { BoardView, type BoardColumn } from '@/components/views/board-view';
 import { ListView, type ListGroupHeading } from '@/components/views/list-view';
+import { ViewSwitcher } from '@/components/views/view-switcher';
 import type { StateOption } from '@/components/work-item/state-select';
 import { resolveActorContext } from '@/server/auth/context';
 import { can } from '@/server/authz/policy';
 import { listLabels } from '@/server/services/labels';
 import { listMembers } from '@/server/services/members';
 import { getProjectBySlug } from '@/server/services/projects';
-import { listWorkItems } from '@/server/services/work-items';
+import { boardChangeToken, listWorkItems } from '@/server/services/work-items';
 import { displayName } from '@/lib/seeded-name';
 import { PRIORITIES } from '@/lib/priorities';
-import { NONE, parseWorkItemQuery, type WorkItemQuery } from '@/lib/work-item-query';
+import { toItemRowData } from '@/lib/work-item-row';
+import {
+  NONE,
+  parseWorkItemQuery,
+  toQueryString,
+  type WorkItemQuery,
+} from '@/lib/work-item-query';
 import { Link } from '@/i18n/navigation';
 
 /**
  * A project's work — the List view (§14, slice 5).
  *
  * §7.1 lands somebody here after creating a project, so this page is the first
- * thing a new workspace sees with anything in it. The board arrives in slice 6
- * and will read the same query with a different `groupBy` and a different
- * renderer; the query, the filters and the URL contract are shared, which is
- * the reason §9 asks for one builder rather than one per view.
+ * thing a new workspace sees with anything in it. Slice 6 added the board
+ * beside it, and the two share everything but the renderer: one query, one
+ * filter DSL, one URL contract — which is the reason §9 asks for one builder
+ * rather than one per view.
+ *
+ * **The board is always grouped by state**, whatever `by=` says. A column you
+ * drag a card into has to *mean* something the drop can change, and the drop
+ * changes a state; dragging into an assignee column would be a reassignment and
+ * is not what `moveWorkItem` does. The grouping control belongs to the list,
+ * and the board hides it rather than offering a choice that would not work.
  *
  * **The URL is the state** (§5): the filter, the grouping and the sort are all
  * in the query string, parsed by the same module the filter bar writes with. A
@@ -58,6 +72,7 @@ export default async function ProjectListPage({
   }));
 
   const parsed = parseWorkItemQuery(await searchParams);
+  const board = parsed.view === 'board';
 
   /**
    * The project anchors the query (§9, §16) and is not negotiable from the URL:
@@ -68,7 +83,7 @@ export default async function ProjectListPage({
    * `parentId: null` unless the URL asks otherwise — a flat list that
    * interleaves parents and their sub-items reads as duplicates.
    */
-  const query: WorkItemQuery = {
+  const urlQuery: WorkItemQuery = {
     ...parsed,
     filters: {
       ...parsed.filters,
@@ -77,6 +92,9 @@ export default async function ProjectListPage({
       includeArchivedProjects: project.archivedAt !== null,
     },
   };
+
+  // The board is a board of states, so its grouping is not the URL's to choose.
+  const query: WorkItemQuery = board ? { ...urlQuery, groupBy: 'state' } : urlQuery;
 
   const headings = headingsFor(query, states, members, labels, t);
 
@@ -95,6 +113,26 @@ export default async function ProjectListPage({
   const canCreate = can(resolved.actor, 'work_item.create', resource) && !archived;
   const canEdit = can(resolved.actor, 'work_item.edit', resource) && !archived;
 
+  // Only the board polls, so only the board pays for the token (§8).
+  const token = board ? await boardChangeToken(resolved, query) : '';
+
+  const columns: BoardColumn[] = board
+    ? headings.flatMap((heading) => {
+        // A heading without a state is not a board column. `headingsFor` is
+        // shared with the list, where a grouping may be by priority or person.
+        if (!heading.state) return [];
+        const group = listing.groups.find((candidate) => candidate.key === heading.key);
+        return [
+          {
+            key: heading.key,
+            state: heading.state,
+            total: group?.total ?? 0,
+            items: (group?.rows ?? []).map(toItemRowData),
+          },
+        ];
+      })
+    : [];
+
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -110,28 +148,57 @@ export default async function ProjectListPage({
           </p>
         </div>
 
-        {project.canEditSettings && (
-          <Link
-            href={`/${workspaceSlug}/projects/${projectSlug}/settings`}
-            className="ms-auto text-sm text-text-muted transition-colors duration-120 hover:text-text"
-          >
-            {t('projects.settings')}
-          </Link>
-        )}
+        <div className="ms-auto flex items-center gap-3">
+          <ViewSwitcher
+            query={urlQuery}
+            pathname={`/${workspaceSlug}/projects/${projectSlug}`}
+          />
+
+          {project.canEditSettings && (
+            <Link
+              href={`/${workspaceSlug}/projects/${projectSlug}/settings`}
+              className="text-sm text-text-muted transition-colors duration-120 hover:text-text"
+            >
+              {t('projects.settings')}
+            </Link>
+          )}
+        </div>
       </header>
 
       {archived && <Alert tone="warning">{t('projects.archivedNotice')}</Alert>}
 
-      <ListView
-        context={{ workspaceSlug, projectSlug, locale }}
-        query={query}
-        listing={listing}
-        headings={headings}
-        states={states}
-        projectId={project.id}
-        canCreate={canCreate}
-        canEdit={canEdit}
-      />
+      {board ? (
+        <BoardView
+          context={{ workspaceSlug, projectSlug, locale }}
+          columns={columns}
+          people={listing.people.map((person) => ({
+            memberId: person.memberId,
+            name: person.name,
+          }))}
+          labels={listing.labels.map((label) => ({
+            id: label.id,
+            name: label.name,
+            color: label.color,
+          }))}
+          today={listing.today}
+          projectId={project.id}
+          query={toQueryString(query)}
+          token={token}
+          canCreate={canCreate}
+          canEdit={canEdit}
+        />
+      ) : (
+        <ListView
+          context={{ workspaceSlug, projectSlug, locale }}
+          query={query}
+          listing={listing}
+          headings={headings}
+          states={states}
+          projectId={project.id}
+          canCreate={canCreate}
+          canEdit={canEdit}
+        />
+      )}
     </div>
   );
 }

@@ -230,6 +230,12 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
   'work_item.created': { audit: false },
   'work_item.updated': { audit: false },
   'work_item.state_changed': { audit: false },
+
+  // Reordering a backlog is not a consequential act, and a log that records
+  // every drag is a log nobody reads when it matters. The event exists for
+  // slice 7's feed, which will also choose to say nothing about it.
+  'work_item.moved': { audit: false },
+
   'work_item.assigned': { audit: false },
   'work_item.labelled': { audit: false },
   'work_item.blocked_changed': { audit: false },

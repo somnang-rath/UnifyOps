@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import type { ResolvedActor } from '@/server/auth/context';
 import { assertCan, can } from '@/server/authz/policy';
@@ -18,13 +18,14 @@ import {
 import { withActor } from '@/server/db/tenant';
 import { isClosedGroup, type StateGroup } from '@/lib/state-groups';
 import { isPriority } from '@/lib/priorities';
-import { rankAfter } from '@/lib/rank';
+import { rankAfter, rankBetween } from '@/lib/rank';
 import { todayIn } from '@/lib/workspace-date';
 import {
   NONE,
   type WorkItemQuery,
 } from '@/lib/work-item-query';
 import {
+  fetchChangeToken,
   fetchWorkItemGroups,
   type WorkItemGroupPage,
   type WorkItemRow,
@@ -65,6 +66,7 @@ export type WorkItemProblem =
   | ProjectProblem
   | 'title_required'
   | 'unknown_state'
+  | 'unknown_neighbour'
   | 'unknown_parent'
   | 'too_deep'
   | 'unknown_member'
@@ -165,6 +167,28 @@ export async function listWorkItems(
       today,
     };
   });
+}
+
+/**
+ * The token a board polls (§8, §17-2).
+ *
+ * No hydration, no policy second pass, no group fan-out — it is one aggregate
+ * and it answers exactly one question: *has anything I am looking at moved?*
+ * The board only fetches when the answer changes, so this is the call that runs
+ * on a timer and the expensive one that does not.
+ *
+ * RLS still scopes it, so a token cannot report activity in a workspace the
+ * caller cannot see. It can report activity in a *private project* they cannot
+ * see — the count would move without the rows being readable — which is why the
+ * refetch it triggers goes through `listWorkItems` and its §10 pass rather than
+ * trusting the token to have been about visible work.
+ */
+export async function boardChangeToken(
+  resolved: ResolvedActor,
+  query: WorkItemQuery,
+): Promise<string> {
+  const today = todayIn(resolved.workspace.timezone);
+  return withActor(resolved.context, (tx) => fetchChangeToken(tx, query, { today }));
 }
 
 /**
@@ -590,6 +614,183 @@ export async function setWorkItemState(
     });
 
     return { ok: true } as const;
+  });
+}
+
+export type MoveWorkItemInput = {
+  workItemId: string;
+  /** The column the card was dropped into. May be the one it already sits in. */
+  stateId: string;
+  /** The card the drop point sits *below*, or null for the top of the column. */
+  previousId: string | null;
+  /** The card the drop point sits *above*, or null for the bottom of the column. */
+  nextId: string | null;
+};
+
+/**
+ * A drag, resolved (§7.5, §9).
+ *
+ * **The client sends neighbour IDs and never a rank.** That is the whole design,
+ * and everything awkward below follows from it. A rank computed in the browser
+ * is computed against a board that may be seconds stale, and two people
+ * dragging onto the same gap would compute the same key; a rank computed here,
+ * under a row lock, is computed against what is actually true right now.
+ *
+ * §9: "A stale drag lands correctly relative to present state — this is what
+ * stops boards feeling haunted." So a neighbour that has *moved on* since the
+ * drag began is not an error. The rules, in order:
+ *
+ *   * A neighbour id that names no row in this project is a **bad request** —
+ *     that is a client defect or a crafted body, not a race.
+ *   * A neighbour that exists but has since left this column is **stale**. The
+ *     true neighbour is re-derived from the column as it stands, so the card
+ *     lands where the user aimed relative to the cards they can still see.
+ *   * `null` is an *intent*, not a missing value: `previousId: null` means "the
+ *     top", `nextId: null` means "the bottom". Neither is ever re-derived, or a
+ *     card dropped at the end of a column would slide into the middle of it.
+ *
+ * The lock covers the item and both neighbours in one statement, so two drags
+ * touching the same cards serialize rather than interleave — which is what §15's
+ * two-browser test asserts.
+ */
+export async function moveWorkItem(
+  resolved: ResolvedActor,
+  input: MoveWorkItemInput,
+): Promise<Ok<{ rank: string }> | Failed> {
+  return withActor(resolved.context, async (tx, uow) => {
+    const loaded = await guardForWrite(tx, resolved, input.workItemId);
+    if ('problem' in loaded) return loaded;
+    const { item } = loaded;
+
+    const stateRows = await tx
+      .select({ id: workflowState.id, group: workflowState.group })
+      .from(workflowState)
+      .where(
+        and(
+          eq(workflowState.id, input.stateId),
+          eq(workflowState.projectId, item.projectId),
+          isNull(workflowState.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    const state = stateRows[0];
+    if (!state) return { ok: false, problem: 'unknown_state' } as const;
+
+    // A card is never its own neighbour, whatever the client believed.
+    const previousId = input.previousId === input.workItemId ? null : input.previousId;
+    const nextId = input.nextId === input.workItemId ? null : input.nextId;
+
+    const wanted = [previousId, nextId].filter((id): id is string => id !== null);
+
+    // One locking read for the item and both neighbours. `FOR UPDATE` is §9's,
+    // and it is taken before any rank is read — a lock acquired after the read
+    // it was meant to protect is decoration.
+    const locked = wanted.length
+      ? await tx
+          .select({ id: workItem.id, rank: workItem.rank, stateId: workItem.stateId })
+          .from(workItem)
+          .where(
+            and(
+              inArray(workItem.id, [...wanted, input.workItemId]),
+              eq(workItem.projectId, item.projectId),
+              isNull(workItem.deletedAt),
+            ),
+          )
+          .for('update')
+      : await tx
+          .select({ id: workItem.id, rank: workItem.rank, stateId: workItem.stateId })
+          .from(workItem)
+          .where(eq(workItem.id, input.workItemId))
+          .for('update');
+
+    const byId = new Map(locked.map((row) => [row.id, row]));
+    for (const id of wanted) {
+      if (!byId.has(id)) return { ok: false, problem: 'unknown_neighbour' } as const;
+    }
+
+    /** A neighbour still counts only while it is still in the column being dropped into. */
+    const liveRank = (id: string | null): string | null => {
+      if (id === null) return null;
+      const row = byId.get(id);
+      return row && row.stateId === state.id ? row.rank : null;
+    };
+
+    const previousRank = liveRank(previousId);
+
+    // `nextId` named a card that has since left the column: re-derive the card
+    // that now follows the drop point, so the drag lands relative to what is
+    // there. A `nextId` of null is an intent and is never re-derived.
+    let nextRank = liveRank(nextId);
+    if (nextId !== null && nextRank === null) {
+      const successor = await tx
+        .select({ rank: workItem.rank })
+        .from(workItem)
+        .where(
+          and(
+            eq(workItem.stateId, state.id),
+            eq(workItem.projectId, item.projectId),
+            isNull(workItem.deletedAt),
+            ne(workItem.id, input.workItemId),
+            previousRank === null ? undefined : gt(workItem.rank, previousRank),
+          ),
+        )
+        .orderBy(asc(workItem.rank))
+        .limit(1);
+
+      nextRank = successor[0]?.rank ?? null;
+    }
+
+    // Both neighbours survived but no longer bracket a gap — the column was
+    // reordered under the drag. The one above wins, because it is the card the
+    // user was aiming beneath.
+    if (previousRank !== null && nextRank !== null && previousRank >= nextRank) {
+      nextRank = null;
+    }
+
+    const rank = rankBetween(previousRank, nextRank);
+
+    const sameState = item.stateId === state.id;
+    if (sameState && item.rank === rank) return { ok: true, rank } as const;
+
+    const closing = isClosedGroup(state.group);
+
+    await tx
+      .update(workItem)
+      .set({
+        stateId: state.id,
+        rank,
+        // The same rule `setWorkItemState` applies, because a drag into a Done
+        // column is a completion and slice 11's burndown reads this column.
+        completedAt: closing ? (item.completedAt ?? new Date()) : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(workItem.id, input.workItemId));
+
+    // Exactly one event per drag. Crossing columns is a state change and
+    // already has an event that slice 7 and slice 9 understand; staying inside
+    // one is a move and has its own.
+    uow.emit(
+      sameState
+        ? {
+            type: 'work_item.moved',
+            workspaceId: resolved.workspace.id,
+            projectId: item.projectId,
+            workItemId: input.workItemId,
+            stateId: state.id,
+          }
+        : {
+            type: 'work_item.state_changed',
+            workspaceId: resolved.workspace.id,
+            projectId: item.projectId,
+            workItemId: input.workItemId,
+            from: item.stateId,
+            to: state.id,
+            completed: closing,
+          },
+    );
+
+    return { ok: true, rank } as const;
   });
 }
 

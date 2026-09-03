@@ -380,6 +380,38 @@ export async function countWorkItemsByGroup(
 }
 
 /**
+ * The board's change token (§8, §17-2, §17-24).
+ *
+ * `max(updated_at)` plus a row count, for the filter the board is showing. Two
+ * numbers rather than one because neither alone is enough: a deletion moves the
+ * count without moving the maximum, and an edit moves the maximum without
+ * moving the count.
+ *
+ * One aggregate over the same predicate the board itself uses, so it rides the
+ * same indexes — this runs every 20 seconds per open board and is the reason
+ * §17-24 fixed an interval at all. It is deliberately *not* per group: the board
+ * refetches as a whole, and a per-column token would be six aggregates to save
+ * a refetch nobody notices.
+ */
+export async function fetchChangeToken(
+  tx: TenantDb,
+  query: WorkItemQuery,
+  options: Pick<FetchOptions, 'today'>,
+): Promise<string> {
+  assertAnchored(query);
+
+  const result = await tx.execute<{ token: string }>(sql`
+    select
+      coalesce(extract(epoch from max(wi.updated_at))::text, '0')
+        || ':' || count(*)::text as token
+    from work_item wi
+    where ${wherePredicate(query, options.today)}
+  `);
+
+  return result.rows[0]?.token ?? '0:0';
+}
+
+/**
  * The page query: one page per group, in one round trip.
  *
  * `LATERAL` over a VALUES list of the groups, so each group gets its own

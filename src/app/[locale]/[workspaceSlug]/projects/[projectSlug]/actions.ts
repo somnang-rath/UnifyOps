@@ -30,6 +30,7 @@ import { redirect } from '@/i18n/navigation';
 const KEYS: Record<WorkItemProblem, string> = {
   title_required: 'workItems.errors.titleRequired',
   unknown_state: 'workItems.errors.unknownState',
+  unknown_neighbour: 'workItems.errors.unknownNeighbour',
   unknown_parent: 'workItems.errors.unknownParent',
   too_deep: 'workItems.errors.tooDeep',
   unknown_member: 'workItems.errors.unknownMember',
