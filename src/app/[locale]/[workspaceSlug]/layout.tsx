@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { LocaleSwitcher } from '@/components/locale-switcher';
+import { InboxBell } from '@/components/notifications/inbox-bell';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { SignOutButton } from '@/components/auth/sign-out-button';
 import { VerifyEmailBanner } from '@/components/auth/verify-email-banner';
@@ -60,6 +61,18 @@ export default async function WorkspaceLayout({
               {t('nav.projects')}
             </Link>
 
+            {/*
+              Not behind `canManage`: this is the one settings screen that is
+              the member's own rather than the company's, and a preference page
+              an Admin has to unlock is a preference page nobody finds.
+            */}
+            <Link
+              href={`/${resolved.workspace.slug}/settings/notifications`}
+              className="text-text-muted transition-colors duration-120 hover:text-text"
+            >
+              {t('notificationSettings.title')}
+            </Link>
+
             {canManage && (
               <Link
                 href={`/${resolved.workspace.slug}/settings/members`}
@@ -72,6 +85,7 @@ export default async function WorkspaceLayout({
 
           <div className="ms-auto flex items-center gap-2">
             <span className="hidden text-xs text-text-subtle sm:inline">{resolved.user.name}</span>
+            <InboxBell workspaceSlug={resolved.workspace.slug} unread={resolved.unread} />
             <ThemeToggle />
             <LocaleSwitcher />
             <SignOutButton />

@@ -296,6 +296,34 @@
       "expiry": "The invitation is open for 14 days.",
       "cta": "Accept the invitation",
       "ignore": "If you were not expecting this, you can ignore it."
+    },
+    "notification": {
+      "mention": {
+        "subject": "{actor} mentioned you on {key}",
+        "heading": "{actor} mentioned you"
+      },
+      "assignment": {
+        "subject": "{actor} assigned you {key}",
+        "heading": "{actor} assigned this to you"
+      },
+      "item_activity": {
+        "subject": "{actor} updated {key}",
+        "heading": "{actor} updated an item you are on"
+      },
+      "comment": {
+        "subject": "{actor} commented on {key}",
+        "heading": "{actor} left a comment"
+      },
+      "cta": "Open the item",
+      "preferences": "You are receiving this because of your notification settings in {workspace}."
+    },
+    "digest": {
+      "subject": "Your work for the next working day ({count})",
+      "heading": "What needs you next",
+      "intro": "From {workspace}: {count} to look at before you start.",
+      "overdue": "Already overdue",
+      "dueSoon": "Due by the next working day",
+      "preferences": "One message per evening. You can turn this off in your notification settings."
     }
   },
   "home": {
@@ -509,6 +537,61 @@
       "fileTooLarge": "That file is too large.",
       "fileType": "That file type is not accepted.",
       "uploadFailed": "The upload did not finish. Check your connection and try again."
+    }
+  },
+  "inbox": {
+    "title": "Inbox",
+    "bell": {
+      "unread": "Inbox, {count} unread",
+      "empty": "Inbox, nothing unread"
+    },
+    "empty": "You're all caught up.",
+    "unreadCount": "{count} unread",
+    "allRead": "Nothing unread.",
+    "markAllRead": "Mark all read",
+    "markRead": "Mark read",
+    "markUnread": "Mark unread",
+    "someone": "Someone",
+    "loadMore": "Show older",
+    "loading": "Loading…",
+    "kind": {
+      "mention": "{actor} mentioned you",
+      "assignment": "{actor} changed who this is assigned to",
+      "item_activity": "{actor} updated this",
+      "comment": "{actor} commented",
+      "digest": "Due-date reminder"
+    },
+    "errors": {
+      "gone": "That notification is no longer there. The list has been refreshed.",
+      "loadMore": "Those could not be loaded. Try again."
+    }
+  },
+  "notificationSettings": {
+    "title": "Notifications",
+    "description": "Choose what reaches you, and where. Anything you have not changed uses the default.",
+    "channel": {
+      "in_app": "Inbox",
+      "email": "Email"
+    },
+    "unavailable": "Not available for this",
+    "default": "Default",
+    "kind": {
+      "mention": "Mentions",
+      "assignment": "Assigned to me",
+      "item_activity": "Changes to my items",
+      "comment": "Comments on my items",
+      "digest": "Evening due-date reminder"
+    },
+    "hint": {
+      "mention": "Somebody writes your name in a comment.",
+      "assignment": "You are given an item, or taken off one.",
+      "item_activity": "An item you are assigned to is edited, moved, or blocked.",
+      "comment": "Somebody comments on an item you are assigned to without naming you.",
+      "digest": "One message each working evening, listing what is due next and what is late."
+    },
+    "saved": "Saved.",
+    "errors": {
+      "failed": "That could not be saved. Try again."
     }
   }
 }

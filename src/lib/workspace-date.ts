@@ -65,6 +65,25 @@ export function todayIn(timeZone: string, now: Date = new Date()): CalendarDate 
   }).format(now);
 }
 
+/**
+ * The hour of day, 0–23, as the company sees it.
+ *
+ * §7.8's digest goes out "per person per evening, in the **workspace**
+ * timezone", and an hourly job in UTC has to ask each workspace whether it is
+ * evening *there*. `hourCycle: 'h23'` rather than the locale default, because
+ * `en-CA` renders midnight as 24 in some runtimes and this is arithmetic, not
+ * something anybody reads.
+ */
+export function hourIn(timeZone: string, now: Date = new Date()): number {
+  const hour = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).format(now);
+
+  return Number.parseInt(hour, 10);
+}
+
 /** `date` plus `days`, in calendar days. Pure string arithmetic through UTC. */
 export function addDays(date: CalendarDate, days: number): CalendarDate {
   const at = new Date(`${date}T00:00:00Z`);

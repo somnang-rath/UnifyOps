@@ -259,7 +259,7 @@ function groupFanout(groupBy: GroupBy): SQL {
  * precisely so this module cannot accidentally answer "is it overdue" in the
  * server's zone — which is nobody's.
  */
-function wherePredicate(query: WorkItemQuery, today: string): SQL {
+function wherePredicate(query: WorkItemQuery, today: string, horizon: string = today): SQL {
   // Every array below is bound through `sql.param`, and that is load-bearing
   // rather than stylistic: interpolating a JS array into a `sql` template
   // spreads it into one placeholder *per element*, so `any(($3)::uuid[])` would
@@ -324,6 +324,14 @@ function wherePredicate(query: WorkItemQuery, today: string): SQL {
     case 'week':
       parts.push(sql`wi.due_date >= ${today}::date and wi.due_date < ${today}::date + 7`);
       break;
+    case 'soon':
+      // Overdue *and* upcoming in one predicate, because §7.8's digest is one
+      // list — "what is due tomorrow, and what is already overdue" — and two
+      // queries stitched together would need the ordering reconciled by hand.
+      // Open work only, for the reason `overdue` gives: an item finished late
+      // is history, not something to chase.
+      parts.push(sql`wi.due_date <= ${horizon}::date and wi.completed_at is null`);
+      break;
     case 'none':
       parts.push(sql`wi.due_date is null`);
       break;
@@ -353,6 +361,12 @@ export type FetchOptions = {
   cursors?: Readonly<Record<string, string | null | undefined>>;
   /** Today, as `YYYY-MM-DD`, in the workspace timezone. */
   today: string;
+  /**
+   * The far edge of the `soon` due window, as `YYYY-MM-DD`. Defaults to `today`,
+   * which makes `soon` mean exactly `overdue` — the safe reading for a caller
+   * that has not thought about a horizon.
+   */
+  horizon?: string;
 };
 
 /**
@@ -365,14 +379,14 @@ export type FetchOptions = {
 export async function countWorkItemsByGroup(
   tx: TenantDb,
   query: WorkItemQuery,
-  options: Pick<FetchOptions, 'today'>,
+  options: Pick<FetchOptions, 'today' | 'horizon'>,
 ): Promise<Map<string, number>> {
   assertAnchored(query);
 
   const result = await tx.execute<{ group_key: string; total: number }>(sql`
     select ${groupExpression(query.groupBy)} as group_key, count(*)::int as total
     from work_item wi${groupFanout(query.groupBy)}
-    where ${wherePredicate(query, options.today)}
+    where ${wherePredicate(query, options.today, options.horizon)}
     group by 1
   `);
 
@@ -396,7 +410,7 @@ export async function countWorkItemsByGroup(
 export async function fetchChangeToken(
   tx: TenantDb,
   query: WorkItemQuery,
-  options: Pick<FetchOptions, 'today'>,
+  options: Pick<FetchOptions, 'today' | 'horizon'>,
 ): Promise<string> {
   assertAnchored(query);
 
@@ -405,7 +419,7 @@ export async function fetchChangeToken(
       coalesce(extract(epoch from max(wi.updated_at))::text, '0')
         || ':' || count(*)::text as token
     from work_item wi
-    where ${wherePredicate(query, options.today)}
+    where ${wherePredicate(query, options.today, options.horizon)}
   `);
 
   return result.rows[0]?.token ?? '0:0';
@@ -426,7 +440,7 @@ export async function fetchWorkItemPages(
 ): Promise<WorkItemGroupPage[]> {
   assertAnchored(query);
 
-  const { groupKeys, cursors = {}, today } = options;
+  const { groupKeys, cursors = {}, today, horizon } = options;
   if (groupKeys.length === 0) return [];
 
   const sort = SORTS[query.sort];
@@ -472,7 +486,7 @@ export async function fetchWorkItemPages(
       cross join lateral (
         select ${COLUMNS}
         from work_item wi
-        where ${wherePredicate(query, today)}
+        where ${wherePredicate(query, today, horizon)}
           and ${groupPredicate(query.groupBy, sql`g.key`)}${keyset}
         order by ${sort.expr} ${direction}, wi.id ${direction}
         limit ${pageSize}
@@ -492,7 +506,7 @@ export async function fetchWorkItemPages(
     buckets.push(sql`(
       select ${NONE} as group_key, ${COLUMNS}
       from work_item wi
-      where ${wherePredicate(query, today)} and ${empty}${noneKeyset}
+      where ${wherePredicate(query, today, horizon)} and ${empty}${noneKeyset}
       order by ${sort.expr} ${direction}, wi.id ${direction}
       limit ${pageSize}
     )`);
@@ -536,7 +550,7 @@ export async function fetchWorkItemGroups(
 ): Promise<WorkItemGroupPage[]> {
   const [pages, totals] = await Promise.all([
     fetchWorkItemPages(tx, query, options),
-    countWorkItemsByGroup(tx, query, { today: options.today }),
+    countWorkItemsByGroup(tx, query, { today: options.today, horizon: options.horizon }),
   ]);
 
   return pages.map((page) => ({ ...page, total: totals.get(page.key) ?? 0 }));

@@ -1,3 +1,4 @@
+import type { NotificationKind } from '@/lib/notification-kinds';
 import type { DomainEvent, EventOf, EventType } from './types';
 
 /**
@@ -33,6 +34,33 @@ export type AuditSpec<T extends EventType> = {
  */
 export type ActivitySpec<T extends EventType> = (event: EventOf<T>) => ActivityDraft[];
 
+/**
+ * Who an event concerns, and what kind of thing it is to them (§7.8, slice 9).
+ *
+ * A *list*, like the activity projector and for a related reason: one event can
+ * be two different things to two groups of people. A comment naming Sophea is a
+ * `mention` to her and a `comment` to whoever else is assigned, and those are
+ * separate rows in the preference table — one person's "stop emailing me about
+ * every comment" must not switch off being named.
+ *
+ * Recipients are **member** ids. The actor is not filtered here: this function
+ * is pure and has no idea who is acting. `UnitOfWork.flush` removes them, which
+ * is the one place that knows — and §7.8's "an actor never hears about their own
+ * action" is then enforced once rather than in thirty entries.
+ */
+export type NotifySpec<T extends EventType> = (event: EventOf<T>) => NotifyDraft[];
+
+export type NotifyDraft = {
+  kind: NotificationKind;
+  /** Member ids, before the actor is removed. Duplicates are collapsed downstream. */
+  recipientMemberIds: readonly string[];
+  workItemId: string;
+  /** The comment to deep-link to. §7.8: the click lands on the comment, not just the item. */
+  commentId: string | null;
+  /** Ids and values for the renderer. Never a name and never a sentence (§13). */
+  data: Record<string, unknown>;
+};
+
 export type RegistryEntry<T extends EventType> = {
   audit: AuditSpec<T> | false;
   /**
@@ -42,6 +70,13 @@ export type RegistryEntry<T extends EventType> = {
    * renders in the feed.
    */
   activity: ActivitySpec<T> | false;
+  /**
+   * The outbox projector (§8, §14 slice 9) — the third and last sink named in
+   * the plan's diagram. Same mechanism, same reason: an event type that could
+   * reach somebody's inbox and mailbox should not be able to arrive without
+   * anyone deciding whether it does.
+   */
+  notify: NotifySpec<T> | false;
 };
 
 /**
@@ -62,6 +97,31 @@ export type ActivityDraft = {
 
 /** Nothing about a work item happened, so nothing lands in any item's feed. */
 const noActivity = false as const;
+
+/**
+ * Nobody is told about this.
+ *
+ * The common answer, and not a lazy one. §7.8 notifies people about the item
+ * they are on and the comment that names them; a workspace whose bell lights up
+ * because somebody renamed a label is a workspace where the bell stops meaning
+ * anything. Everything administrative is audited instead, which is where a
+ * record of it belongs.
+ */
+const noNotify = false as const;
+
+/**
+ * The item's assignees, minus anyone already receiving a more specific message
+ * about the same event.
+ *
+ * §7.8 says "every assignee except the person who made the change, **plus**
+ * anyone mentioned" — so somebody who is both an assignee and mentioned is one
+ * person receiving one notification, and it should be the mention. Two rows
+ * would be two lines in an inbox about one comment.
+ */
+const othersAmong = (
+  assigneeIds: readonly string[],
+  already: readonly string[],
+): readonly string[] => assigneeIds.filter((id) => !already.includes(id));
 
 /**
  * One feed line for an event that already names its item and project.
@@ -91,6 +151,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ slug: e.slug, name: e.name }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'workspace.renamed': {
     audit: {
@@ -99,6 +160,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ from: e.from, to: e.to }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'workspace_member.added': {
     audit: {
@@ -107,6 +169,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ userId: e.userId, role: e.role }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'workspace_member.role_changed': {
     audit: {
@@ -115,6 +178,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ from: e.from, to: e.to }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'workspace_member.removed': {
     audit: {
@@ -123,6 +187,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ userId: e.userId }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'team.created': {
     audit: {
@@ -131,6 +196,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ slug: e.slug, name: e.name }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'team.renamed': {
     audit: {
@@ -139,6 +205,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ from: e.from, to: e.to }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'team.deleted': {
     audit: {
@@ -147,11 +214,12 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ name: e.name }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   // Team composition changes are ordinary collaboration, visible in the team's
   // own screens. They are activity, not audit.
-  'team.member_added': { audit: false, activity: noActivity },
-  'team.member_removed': { audit: false, activity: noActivity },
+  'team.member_added': { audit: false, activity: noActivity, notify: noNotify },
+  'team.member_removed': { audit: false, activity: noActivity, notify: noNotify },
 
   // Who was invited, by whom, in what role — and who actually walked through
   // the door. This is the sequence an owner reconstructs when they find an
@@ -164,6 +232,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ email: e.email, role: e.role }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'invitation.resent': {
     audit: {
@@ -172,6 +241,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ email: e.email }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'invitation.revoked': {
     audit: {
@@ -180,6 +250,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ email: e.email }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   // A project is where work lives and who can see it, so its lifecycle is
   // audited: created, renamed, archived (which makes it read-only), and above
@@ -192,6 +263,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ slug: e.slug, key: e.key, name: e.name, teamId: e.teamId, visibility: e.visibility }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'project.renamed': {
     audit: {
@@ -200,6 +272,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ from: e.from, to: e.to }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'project.visibility_changed': {
     audit: {
@@ -208,6 +281,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ from: e.from, to: e.to }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'project.archived': {
     audit: {
@@ -216,6 +290,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ name: e.name }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'project.unarchived': {
     audit: {
@@ -224,6 +299,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ name: e.name }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
 
   // Project membership is an access grant — it is how a Guest reaches a private
@@ -236,6 +312,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ projectId: e.projectId, role: e.role }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'project.member_role_changed': {
     audit: {
@@ -244,6 +321,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ projectId: e.projectId, from: e.from, to: e.to }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
   'project.member_removed': {
     audit: {
@@ -252,14 +330,15 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ projectId: e.projectId }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
 
   // Configuring a board is ordinary work a Lead does in the open, and it is
   // frequent — three columns renamed while setting a project up would bury the
   // membership changes the audit log exists for. Activity, not audit (slice 7).
-  'workflow_state.created': { audit: false, activity: noActivity },
-  'workflow_state.updated': { audit: false, activity: noActivity },
-  'workflow_state.reordered': { audit: false, activity: noActivity },
+  'workflow_state.created': { audit: false, activity: noActivity, notify: noNotify },
+  'workflow_state.updated': { audit: false, activity: noActivity, notify: noNotify },
+  'workflow_state.reordered': { audit: false, activity: noActivity, notify: noNotify },
 
   // The exception, and §4 says why: deleting a state that holds items forces a
   // choice about where they go, and that choice moves work nobody else agreed
@@ -275,6 +354,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
 
   // Labels are workspace vocabulary an Owner or Admin maintains. Creating and
@@ -282,8 +362,8 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
   // label from every item carrying it — a change to a body of work made by
   // somebody who was looking at a settings screen, which is exactly the shape
   // of thing the log exists to explain later.
-  'label.created': { audit: false, activity: noActivity },
-  'label.updated': { audit: false, activity: noActivity },
+  'label.created': { audit: false, activity: noActivity, notify: noNotify },
+  'label.updated': { audit: false, activity: noActivity, notify: noNotify },
   'label.deleted': {
     audit: {
       subjectType: 'label',
@@ -291,6 +371,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ name: e.name, detachedFrom: e.detachedFrom }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
 
   // The whole point of §18-11 is that `audit_record` stays readable. Work items
@@ -305,6 +386,20 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // says what it is called and where it sits, and repeating the title here
     // would be the one copy that does not update when somebody renames it.
     activity: (e) => [onItem(e)],
+    // Somebody who is assigned an item as it is created is being handed work,
+    // and that is `assignment` rather than `item_activity` — the same thing
+    // `work_item.assigned` says, arriving through the one event a create emits.
+    // Without this, being given work at creation time is the one assignment
+    // nobody is told about.
+    notify: (e) => [
+      {
+        kind: 'assignment',
+        recipientMemberIds: e.assigneeIds,
+        workItemId: e.workItemId,
+        commentId: null,
+        data: { number: e.number },
+      },
+    ],
   },
   'work_item.updated': {
     audit: false,
@@ -312,6 +407,19 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // "changed the due date" answers the question somebody opened it with;
     // "edited this item" makes them go and compare two screens.
     activity: (e) => e.fields.map((field) => onItem(e, { field })),
+    // One notification for an edit, however many fields it moved. The feed is
+    // the place that itemises; an inbox that turned one save into four lines is
+    // the inbox somebody mutes. `fields` rides along so the renderer can still
+    // say *what* changed.
+    notify: (e) => [
+      {
+        kind: 'item_activity',
+        recipientMemberIds: e.assigneeIds,
+        workItemId: e.workItemId,
+        commentId: null,
+        data: { fields: e.fields },
+      },
+    ],
   },
   'work_item.state_changed': {
     audit: false,
@@ -322,6 +430,15 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // without re-deriving a state's group months later, by which time the state
     // may not exist.
     activity: (e) => [onItem(e, { from: e.from, to: e.to, completed: e.completed })],
+    notify: (e) => [
+      {
+        kind: 'item_activity',
+        recipientMemberIds: e.assigneeIds,
+        workItemId: e.workItemId,
+        commentId: null,
+        data: { from: e.from, to: e.to, completed: e.completed },
+      },
+    ],
   },
 
   // Reordering a backlog is not a consequential act, and a log that records
@@ -335,6 +452,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // looking for off the screen. The event still exists — slice 9's outbox and
     // the board's own revalidation both read the stream, not the projections.
     activity: noActivity,
+    notify: noNotify,
   },
 
   'work_item.assigned': {
@@ -346,6 +464,26 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       ...e.added.map((memberId) => onItem(e, { memberId, assigned: true })),
       ...e.removed.map((memberId) => onItem(e, { memberId, assigned: false })),
     ],
+    /**
+     * The people whose ownership changed, and nobody else.
+     *
+     * §7.8's general rule is "every assignee except the actor", but applying it
+     * here would tell all five people on an item that a sixth was added — and
+     * §4 is specific about what this event owes: "Unassignment notifies the
+     * person removed." Being given work and being taken off it are the two
+     * messages, and both are `assignment`, because a preference that silenced
+     * the second while keeping the first would be a setting for hearing only
+     * good news.
+     */
+    notify: (e) => [
+      {
+        kind: 'assignment',
+        recipientMemberIds: [...e.added, ...e.removed],
+        workItemId: e.workItemId,
+        commentId: null,
+        data: { added: e.added, removed: e.removed },
+      },
+    ],
   },
   'work_item.labelled': {
     audit: false,
@@ -353,6 +491,10 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       ...e.added.map((labelId) => onItem(e, { labelId, applied: true })),
       ...e.removed.map((labelId) => onItem(e, { labelId, applied: false })),
     ],
+    // Labelling is workspace vocabulary being applied, not work changing hands.
+    // It belongs in the feed, where somebody scanning an item's history can see
+    // it, and nowhere near a bell.
+    notify: noNotify,
   },
   'work_item.blocked_changed': {
     audit: false,
@@ -361,6 +503,20 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // row that could be renamed, and the current reason on the item is the
     // *current* one — the feed is where "why was this stuck in March" is asked.
     activity: (e) => [onItem(e, { blocked: e.blocked, reason: e.reason })],
+    // The one `item_activity` that is closer to urgent than to informational:
+    // §7.4's manager loop and §2.1's employee both treat "blocked" as the
+    // signal worth interrupting for. It stays `item_activity` rather than
+    // earning a kind of its own, because a preference screen row that says
+    // "blocked items" is a rules engine (§6-6, Phase 2) by another name.
+    notify: (e) => [
+      {
+        kind: 'item_activity',
+        recipientMemberIds: e.assigneeIds,
+        workItemId: e.workItemId,
+        commentId: null,
+        data: { blocked: e.blocked, reason: e.reason },
+      },
+    ],
   },
 
   // The exception, for the reason `workflow_state.deleted` is one: this is the
@@ -374,6 +530,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ projectId: e.projectId, number: e.number, title: e.title }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
 
   // A comment is ordinary collaboration and the highest-volume thing a person
@@ -385,7 +542,42 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
   //
   // The event still matters: slice 9's notifications read the stream, not the
   // projections, and `mentioned` is how §7.8 reaches the people named in it.
-  'comment.created': { audit: false, activity: noActivity },
+  /**
+   * The event slice 8 wrote `mentioned` for, and the reason it did.
+   *
+   * Two drafts, because one comment is two different things to two groups.
+   * Being named is `mention` — §7.7's whole point, and on by default in both
+   * channels. Everybody else assigned to the item gets `comment`, which is
+   * in-app only by default, because a busy thread should not become a busy
+   * mailbox for people who were not asked anything.
+   *
+   * Somebody who is both mentioned and assigned appears only in the first:
+   * `othersAmong` removes them, so one comment naming one person produces one
+   * line in their inbox.
+   *
+   * `commentId` on both, because §7.8 is specific — the click lands on the
+   * comment, not merely on the item that holds it.
+   */
+  'comment.created': {
+    audit: false,
+    activity: noActivity,
+    notify: (e) => [
+      {
+        kind: 'mention',
+        recipientMemberIds: e.mentioned,
+        workItemId: e.workItemId,
+        commentId: e.commentId,
+        data: {},
+      },
+      {
+        kind: 'comment',
+        recipientMemberIds: othersAmong(e.assigneeIds, e.mentioned),
+        workItemId: e.workItemId,
+        commentId: e.commentId,
+        data: {},
+      },
+    ],
+  },
 
   // The exception, for the reason `work_item.deleted` is one: this destroys
   // something a person wrote rather than changing it. §10 gives Owners, Admins
@@ -404,6 +596,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ workItemId: e.workItemId, projectId: e.projectId, byAuthor: e.byAuthor }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
 
   // A file arriving is ordinary collaboration, so it is not audit — but unlike
@@ -422,6 +615,27 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // no way left to find out which.
     activity: (e) =>
       e.commentId === null ? [onItem(e, { attachmentId: e.attachmentId, filename: e.filename })] : [],
+    /**
+     * Notified on the same condition the feed is, and it is the same argument
+     * one step further on. A file pasted into a comment already produces a
+     * notification — the comment's — and a second one about the file inside it
+     * would be two inbox lines for one act of writing.
+     *
+     * A file dropped on the item itself has nothing else announcing it, so this
+     * is the only thing that will.
+     */
+    notify: (e) =>
+      e.commentId === null
+        ? [
+            {
+              kind: 'item_activity' as const,
+              recipientMemberIds: e.assigneeIds,
+              workItemId: e.workItemId,
+              commentId: null,
+              data: { attachmentId: e.attachmentId, filename: e.filename },
+            },
+          ]
+        : [],
   },
 
   // The exception, and the third member of the family `work_item.deleted` and
@@ -451,6 +665,11 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // then silently stop mentioning it.
     activity: (e) =>
       e.commentId === null ? [onItem(e, { attachmentId: e.attachmentId, filename: e.filename })] : [],
+    // Deliberately not mirrored. The feed mirrors because a history with an
+    // arrival and no departure is misleading; an inbox is not a history, and
+    // "a file you were not looking at is gone" is not news anybody needs
+    // interrupting for. It is audited, which is where the record belongs.
+    notify: noNotify,
   },
 
   'invitation.accepted': {
@@ -463,6 +682,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ email: e.email, userId: e.userId, memberId: e.memberId }),
     },
     activity: noActivity,
+    notify: noNotify,
   },
 };
 
@@ -507,4 +727,26 @@ export function activityRowsFor(event: DomainEvent): ActivityDraft[] {
   if (!spec) return [];
 
   return spec(event);
+}
+
+/**
+ * The outbox drafts an event produces — empty when the registry says nobody is
+ * told, and empty when it says somebody is but the list turned out to have no
+ * one in it (an item with no assignees, a comment naming nobody).
+ *
+ * A list for the same reason `activityRowsFor` returns one: "this event never
+ * notifies" and "this event notified nobody this time" are the same thing to
+ * the caller, and collapsing them leaves `flush` with one branch.
+ *
+ * The actor is still in these lists. Removing them needs to know who they are,
+ * and this function is pure — §7.8's "an actor never hears about their own
+ * action" is applied once, in `UnitOfWork.flush`.
+ */
+export function notifyDraftsFor(event: DomainEvent): NotifyDraft[] {
+  // Same narrowing limitation as the other two accessors.
+  const entry = eventRegistry[event.type] as RegistryEntry<EventType>;
+  const spec = entry.notify as NotifySpec<EventType> | false;
+  if (!spec) return [];
+
+  return spec(event).filter((draft) => draft.recipientMemberIds.length > 0);
 }

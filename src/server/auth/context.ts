@@ -6,6 +6,7 @@ import type { Actor } from '@/server/authz/policy';
 import { withIdentity } from '@/server/db/identity';
 import { projectMember, workspace as workspaceTable, workspaceMember } from '@/server/db/schema';
 import { withActor, type ActorContext } from '@/server/db/tenant';
+import { countUnread } from '@/server/queries/notifications';
 import type { ProjectRole, WorkspaceRole } from '@/server/authz/roles';
 import { readCurrentUser } from './session';
 import type { CurrentUser } from './session';
@@ -83,26 +84,48 @@ export const listMyWorkspaces = cache(
  * project would resolve to whatever the workspace role implies and an explicit
  * Lead would be indistinguishable from a Member.
  */
-async function loadProjectRoles(
+/**
+ * The two things every workspace screen needs from the app connection, in one
+ * transaction.
+ *
+ * They are unrelated questions — §10's explicit project memberships, and §7.8's
+ * unread count for the bell — and they are asked together for the reason slice
+ * 8 folded the mentionable list into `getCommentThread`: each one is a round
+ * trip on every navigation, and the shell renders on *every* screen. Two
+ * transactions per page view was enough to push project creation past its
+ * assertion under a parallel end-to-end run, which is the visible edge of a
+ * cost every real page load was also paying.
+ */
+async function loadShellState(
   context: ActorContext,
   memberId: string,
-): Promise<ReadonlyMap<string, ProjectRole>> {
-  const rows = await withActor(context, async (tx) =>
-    tx
+): Promise<{ projectRoles: ReadonlyMap<string, ProjectRole>; unread: number }> {
+  return withActor(context, async (tx) => {
+    const rows = await tx
       .select({ projectId: projectMember.projectId, role: projectMember.role })
       .from(projectMember)
       .where(
         and(eq(projectMember.workspaceMemberId, memberId), isNull(projectMember.deletedAt)),
-      ),
-  );
+      );
 
-  return new Map(rows.map((row) => [row.projectId, row.role]));
+    return {
+      projectRoles: new Map(rows.map((row) => [row.projectId, row.role])),
+      unread: await countUnread(tx, memberId),
+    };
+  });
 }
 
 export type ResolvedActor = {
   user: CurrentUser;
   workspace: WorkspaceSummary;
   memberId: string;
+  /**
+   * Unread notifications for the bell (§7.8), resolved with the rest of the
+   * shell's state rather than by its own query. Correct as of this request; the
+   * badge moves on the next navigation, which is what §8 already accepts for
+   * everything that is not the board.
+   */
+  unread: number;
   /** For `withActor` — the database's question. */
   context: ActorContext;
   /** For `can` / `assertCan` — the policy module's question. */
@@ -164,8 +187,11 @@ export const resolveActorContext = cache(
       readOnly,
     };
 
+    const shell = await loadShellState(context, found.memberId);
+
     return {
       user,
+      unread: shell.unread,
       workspace: {
         id: found.workspaceId,
         slug: found.slug,
@@ -183,7 +209,7 @@ export const resolveActorContext = cache(
         // implicit roles from this — Owner and Admin are Leads everywhere, a
         // workspace-visible project grants Members a Viewer, Guests get nothing
         // — and none of that is ever written into this map.
-        projectRoles: await loadProjectRoles(context, found.memberId),
+        projectRoles: shell.projectRoles,
         readOnly,
       },
     };

@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { installJobSchema } from '@/server/jobs/install';
 import { createPool } from './pool';
 
 /**
@@ -122,6 +123,14 @@ export async function provisionDatabase(options: {
   const ownerPool = createPool('provision:owner', { connectionString: ownerUrl, max: 2 });
   try {
     await migrate(drizzle(ownerPool), { migrationsFolder: 'drizzle' });
+
+    /**
+     * pg-boss's schema, installed by the owner exactly as `db:migrate` does it
+     * (slice 9). Here as well as there because these two callers "must not
+     * disagree": a test database without the queue schema is one where the job
+     * worker cannot start, and the e2e suite runs a real worker.
+     */
+    await installJobSchema(ownerPool);
   } finally {
     await ownerPool.end();
   }

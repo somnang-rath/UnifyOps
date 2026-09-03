@@ -1,6 +1,14 @@
 import 'server-only';
 
-import { createTranslator } from 'next-intl';
+// From `use-intl/core`, not from `next-intl`. An email template has no React
+// in it, and next-intl's entry pulls the React bindings along with the
+// formatter — which is fatal in the job worker (slice 9): it runs under the
+// `react-server` condition so that `import 'server-only'` resolves to nothing,
+// and React's own react-server build does not export `useEffect`, so loading
+// those bindings crashes the process at startup. `use-intl` is next-intl's own
+// engine and is pinned to the same version, so this is the same translator the
+// UI uses, reached without the part of it that only a component needs.
+import { createTranslator } from 'use-intl/core';
 import { routing } from '@/i18n/routing';
 import type { Locale } from '@/i18n/routing';
 import en from '@/i18n/messages/en.json';
@@ -138,4 +146,149 @@ export function invitationEmail(input: {
     html,
     text,
   };
+}
+
+/**
+ * One item, as a line in a digest.
+ *
+ * `key` is the human identifier (`ENG-142`), which is the only part of a work
+ * item anybody quotes out loud. Latin digits by construction — the identifier
+ * is generated, never localised (§13 pins `numberingSystem: 'latn'` for what a
+ * user reads, and this is not even that).
+ */
+export type DigestLine = {
+  key: string;
+  title: string;
+  url: string;
+  /** `YYYY-MM-DD` in the workspace timezone, already resolved by the caller. */
+  dueDate: string;
+};
+
+/**
+ * A list of links, for the one email that is a list rather than a call to
+ * action.
+ *
+ * Kept beside `layout` rather than folded into it: every other email in the
+ * product asks for exactly one click, and giving that shape an optional list
+ * parameter would invite a second kind of email to grow inside the first.
+ */
+function listLayout(input: {
+  locale: string;
+  heading: string;
+  intro: string;
+  sections: { title: string; lines: DigestLine[] }[];
+  footer: string;
+}): { html: string; text: string } {
+  const lineHeight = input.locale === 'km' ? '1.75' : '1.5';
+  const shown = input.sections.filter((section) => section.lines.length > 0);
+
+  const html = [
+    `<div lang="${escapeHtml(input.locale)}" style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; line-height: ${lineHeight}; max-width: 34em; margin: 0 auto; padding: 24px;">`,
+    `<h1 style="font-size: 20px; font-weight: 600; margin: 0 0 16px;">${escapeHtml(input.heading)}</h1>`,
+    `<p style="margin: 0 0 16px;">${escapeHtml(input.intro)}</p>`,
+    ...shown.flatMap((section) => [
+      `<h2 style="font-size: 15px; font-weight: 600; margin: 20px 0 8px;">${escapeHtml(section.title)}</h2>`,
+      '<ul style="margin: 0; padding-left: 20px;">',
+      ...section.lines.map(
+        (line) =>
+          `<li style="margin: 0 0 6px;"><a href="${escapeHtml(line.url)}">${escapeHtml(line.key)}</a> ${escapeHtml(line.title)}</li>`,
+      ),
+      '</ul>',
+    ]),
+    `<p style="margin: 24px 0 0; font-size: 13px;">${escapeHtml(input.footer)}</p>`,
+    '</div>',
+  ].join('\n');
+
+  const text = [
+    input.heading,
+    '',
+    input.intro,
+    ...shown.flatMap((section) => [
+      '',
+      section.title,
+      ...section.lines.map((line) => `- ${line.key} ${line.title} — ${line.url}`),
+    ]),
+    '',
+    input.footer,
+  ].join('\n');
+
+  return { html, text };
+}
+
+/**
+ * §7.8 — somebody was named, assigned, or something moved on their item.
+ *
+ * One template for all four kinds rather than four templates, because the
+ * difference between them is one sentence and the subject line. Four would be
+ * four places to forget a Khmer string.
+ *
+ * The URL is built by the caller and already carries the comment anchor where
+ * there is one: "click navigates to the item **and the specific comment**".
+ */
+export function notificationEmail(input: {
+  locale: string;
+  kind: 'mention' | 'assignment' | 'item_activity' | 'comment';
+  actorName: string;
+  itemKey: string;
+  itemTitle: string;
+  workspaceName: string;
+  url: string;
+}): Mail {
+  const t = translatorFor(input.locale);
+  const { html, text } = layout({
+    locale: input.locale,
+    heading: t(`notification.${input.kind}.heading`, {
+      actor: input.actorName,
+      key: input.itemKey,
+    }),
+    paragraphs: [input.itemTitle],
+    linkLabel: t('notification.cta'),
+    url: input.url,
+    footer: t('notification.preferences', { workspace: input.workspaceName }),
+  });
+
+  return {
+    to: '',
+    subject: t(`notification.${input.kind}.subject`, {
+      actor: input.actorName,
+      key: input.itemKey,
+    }),
+    html,
+    text,
+  };
+}
+
+/**
+ * §7.8's evening digest — "one digest per person per evening, in the workspace
+ * timezone: what is due tomorrow, and what is already overdue".
+ *
+ * One message listing that person's own work, never one per item: "that is the
+ * fastest way to teach a team to filter the product's mail". The caller has
+ * already refused to build one for an empty list, so this template never has to
+ * render "you have nothing" — an email saying nothing happened is the other way
+ * to teach the same lesson.
+ */
+export function digestEmail(input: {
+  locale: string;
+  workspaceName: string;
+  /** Due on or before the horizon — the next working day, not necessarily tomorrow. */
+  dueSoon: DigestLine[];
+  overdue: DigestLine[];
+  url: string;
+}): Mail {
+  const t = translatorFor(input.locale);
+  const count = input.dueSoon.length + input.overdue.length;
+
+  const { html, text } = listLayout({
+    locale: input.locale,
+    heading: t('digest.heading'),
+    intro: t('digest.intro', { workspace: input.workspaceName, count }),
+    sections: [
+      { title: t('digest.overdue'), lines: input.overdue },
+      { title: t('digest.dueSoon'), lines: input.dueSoon },
+    ],
+    footer: t('digest.preferences'),
+  });
+
+  return { to: '', subject: t('digest.subject', { count }), html, text };
 }

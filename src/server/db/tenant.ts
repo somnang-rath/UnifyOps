@@ -1,10 +1,10 @@
-import { sql } from 'drizzle-orm';
+import { and, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { activityRowsFor, auditRowFor } from '@/server/events/registry';
+import { activityRowsFor, auditRowFor, notifyDraftsFor } from '@/server/events/registry';
 import type { DomainEvent } from '@/server/events/types';
 import type { RawDb, TenantDb } from './client';
 import { rawDb } from './client';
-import { activity, auditRecord } from './schema';
+import { activity, auditRecord, outboxMessage, workspaceMember } from './schema';
 
 /**
  * Who is acting, resolved once per request.
@@ -129,9 +129,91 @@ export class UnitOfWork {
 
     if (feed.length > 0) await tx.insert(activity).values(feed);
 
-    // Slice 9 adds the transactional outbox pg-boss consumes here — a third
-    // sink of the same shape, over these same events, inside this transaction.
+    await this.#writeOutbox(tx);
+
     this.#events.length = 0;
+  }
+
+  /**
+   * The third sink (§8, slice 9): the transactional outbox pg-boss consumes.
+   *
+   * In this transaction with the other two, and that is the whole reason it is
+   * a table rather than a `sendMail` call at the end of the service. An email
+   * sent before the commit is a lie when the transaction rolls back; one sent
+   * after it is lost if the process dies in between. A row written *with* the
+   * data has neither failure, and a worker that never sees the row simply has
+   * not run yet.
+   *
+   * Two things happen here that the registry deliberately cannot do, because it
+   * is pure:
+   *
+   * 1. **Member ids become user ids.** The registry speaks in members, like
+   *    every other "who" in a workspace; delivery speaks in people, because an
+   *    email address hangs off the account and not off the membership.
+   * 2. **The actor is removed.** §7.8: "an actor never hears about their own
+   *    action — self-notification is the most common reason people mute a
+   *    product's email." Doing it once here rather than in thirty registry
+   *    entries is what makes that a property of the system instead of a rule
+   *    somebody has to remember.
+   */
+  async #writeOutbox(tx: RawDb): Promise<void> {
+    const drafts = this.#events.flatMap((event) =>
+      notifyDraftsFor(event).map((draft) => ({ event, draft })),
+    );
+    if (drafts.length === 0) return;
+
+    const memberIds = [...new Set(drafts.flatMap(({ draft }) => draft.recipientMemberIds))];
+
+    /**
+     * One lookup for every recipient of every event in the transaction, not one
+     * per draft. Soft-deleted memberships are excluded here rather than in the
+     * registry: somebody offboarded between the mutation starting and this
+     * flush should not be sent anything, and §7.12 keeps the membership row
+     * around so their past work stays attributed.
+     */
+    const members = await tx
+      .select({ id: workspaceMember.id, userId: workspaceMember.userId })
+      .from(workspaceMember)
+      .where(
+        and(
+          inArray(workspaceMember.id, memberIds),
+          isNull(workspaceMember.deletedAt),
+        ),
+      );
+
+    const userIdOf = new Map(members.map((row) => [row.id, row.userId]));
+
+    const rows = drafts.flatMap(({ event, draft }) => {
+      const recipientUserIds = [
+        ...new Set(
+          draft.recipientMemberIds
+            .map((memberId) => userIdOf.get(memberId))
+            .filter((userId): userId is string => userId !== undefined)
+            // The actor, whoever else they are to this event.
+            .filter((userId) => userId !== this.ctx.actorUserId),
+        ),
+      ];
+
+      // Everybody this event concerned turned out to be the person who caused
+      // it. Common, and not worth a row: an item you are the only assignee of,
+      // edited by you.
+      if (recipientUserIds.length === 0) return [];
+
+      return [
+        {
+          workspaceId: this.ctx.workspaceId,
+          eventType: event.type,
+          payload: event,
+          kind: draft.kind,
+          actorUserId: this.ctx.actorUserId,
+          recipientUserIds,
+          workItemId: draft.workItemId,
+          commentId: draft.commentId,
+        },
+      ];
+    });
+
+    if (rows.length > 0) await tx.insert(outboxMessage).values(rows);
   }
 }
 

@@ -82,24 +82,25 @@ async function loadItemProject(
   tx: TenantDb,
   actor: Actor,
   workItemId: string,
-): Promise<ProjectRow | null> {
+): Promise<{ project: ProjectRow; assigneeIds: string[] } | null> {
   const rows = await tx
-    .select({ projectId: workItem.projectId })
+    .select({ projectId: workItem.projectId, assigneeIds: workItem.assigneeIds })
     .from(workItem)
     .where(and(eq(workItem.id, workItemId), isNull(workItem.deletedAt)))
     .limit(1);
 
-  const projectId = rows[0]?.projectId;
-  if (!projectId) return null;
+  const row = rows[0];
+  if (!row) return null;
 
-  const project = await loadProject(tx, projectId);
+  const project = await loadProject(tx, row.projectId);
   if (!project) return null;
 
   // Asked here rather than trusted from the caller: RLS has scoped the rows to
   // the workspace, and §10 decides whether *this member* may see this project.
   if (!can(actor, 'project.view', projectResource(project))) return null;
 
-  return project;
+  // Carried for `attachment.added`, which hands them to the notify projector.
+  return { project, assigneeIds: row.assigneeIds };
 }
 
 /**
@@ -183,8 +184,9 @@ export async function createUploadTicket(
   if (problem) return { ok: false, problem };
 
   return withActor(resolved.context, async (tx) => {
-    const project = await loadItemProject(tx, resolved.actor, input.workItemId);
-    if (!project) return { ok: false, problem: 'not_found' } as const;
+    const loaded = await loadItemProject(tx, resolved.actor, input.workItemId);
+    if (!loaded) return { ok: false, problem: 'not_found' } as const;
+    const { project } = loaded;
 
     // §4: an archived project is read-only for everybody, including its owner.
     // Not a permission, so it is checked separately and reported separately.
@@ -267,8 +269,9 @@ export async function confirmAttachment(
   input: { workItemId: string; attachmentIds: string[] },
 ): Promise<Ok | Failed> {
   return withActor(resolved.context, async (tx, uow) => {
-    const project = await loadItemProject(tx, resolved.actor, input.workItemId);
-    if (!project) return { ok: false, problem: 'not_found' } as const;
+    const loaded = await loadItemProject(tx, resolved.actor, input.workItemId);
+    if (!loaded) return { ok: false, problem: 'not_found' } as const;
+    const { project, assigneeIds } = loaded;
     if (isArchived(project)) return { ok: false, problem: 'archived' } as const;
     assertCan(resolved.actor, 'comment.create', projectResource(project));
 
@@ -285,6 +288,7 @@ export async function confirmAttachment(
       rows,
       commentId: null,
       workspaceId: resolved.workspace.id,
+      assigneeIds,
     });
 
     return { ok: true } as const;
@@ -317,7 +321,13 @@ export async function claimPendingAttachments(
 export async function markAttachmentsReady(
   tx: TenantDb,
   uow: UnitOfWork,
-  input: { rows: PendingRow[]; commentId: string | null; workspaceId: string },
+  input: {
+    rows: PendingRow[];
+    commentId: string | null;
+    workspaceId: string;
+    /** The item's assignees, for the notify projector (§7.8). */
+    assigneeIds: readonly string[];
+  },
 ): Promise<void> {
   if (input.rows.length === 0) return;
 
@@ -341,6 +351,7 @@ export async function markAttachmentsReady(
       // What the activity projector branches on: a file inside a comment is
       // already rendered by that comment, an inch above the feed.
       commentId: input.commentId,
+      assigneeIds: input.assigneeIds,
       filename: row.filename,
     });
   }

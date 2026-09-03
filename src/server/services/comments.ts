@@ -137,17 +137,17 @@ async function loadItemProject(
   tx: TenantDb,
   actor: Actor,
   workItemId: string,
-): Promise<ProjectRow | null> {
+): Promise<{ project: ProjectRow; assigneeIds: string[] } | null> {
   const rows = await tx
-    .select({ projectId: workItem.projectId })
+    .select({ projectId: workItem.projectId, assigneeIds: workItem.assigneeIds })
     .from(workItem)
     .where(and(eq(workItem.id, workItemId), isNull(workItem.deletedAt)))
     .limit(1);
 
-  const projectId = rows[0]?.projectId;
-  if (!projectId) return null;
+  const row = rows[0];
+  if (!row) return null;
 
-  const project = await loadProject(tx, projectId);
+  const project = await loadProject(tx, row.projectId);
   if (!project) return null;
 
   // Asked here rather than trusted from the caller. RLS has scoped the rows to
@@ -156,7 +156,10 @@ async function loadItemProject(
   // project one comment at a time.
   if (!can(actor, 'project.view', projectResource(project))) return null;
 
-  return project;
+  // The assignees ride along because `comment.created` and `attachment.added`
+  // both carry them to the registry's notify projector (§7.8), and this is
+  // already the query that has the item row open.
+  return { project, assigneeIds: row.assigneeIds };
 }
 
 /**
@@ -270,8 +273,9 @@ export async function getCommentThread(
   input: { workItemId: string; all?: boolean },
 ): Promise<CommentThreadView | null> {
   return withActor(resolved.context, async (tx) => {
-    const project = await loadItemProject(tx, resolved.actor, input.workItemId);
-    if (!project) return null;
+    const loaded = await loadItemProject(tx, resolved.actor, input.workItemId);
+    if (!loaded) return null;
+    const { project } = loaded;
 
     const page = await fetchComments(tx, {
       workItemId: input.workItemId,
@@ -350,8 +354,9 @@ export async function postComment(
   if ([...body].length > MAX_BODY) return { ok: false, problem: 'body_too_long' };
 
   return withActor(resolved.context, async (tx, uow) => {
-    const project = await loadItemProject(tx, resolved.actor, input.workItemId);
-    if (!project) return { ok: false, problem: 'not_found' } as const;
+    const loaded = await loadItemProject(tx, resolved.actor, input.workItemId);
+    if (!loaded) return { ok: false, problem: 'not_found' } as const;
+    const { project, assigneeIds } = loaded;
 
     // §4: an archived project is read-only — "no new items, no edits, no state
     // changes, no comments". Not a permission, so it is checked separately and
@@ -426,6 +431,7 @@ export async function postComment(
       rows: files,
       commentId,
       workspaceId: resolved.workspace.id,
+      assigneeIds,
     });
 
     uow.emit({
@@ -435,6 +441,7 @@ export async function postComment(
       workItemId: input.workItemId,
       commentId,
       mentioned,
+      assigneeIds,
     });
 
     return { ok: true, commentId } as const;

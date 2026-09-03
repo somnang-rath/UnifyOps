@@ -84,6 +84,7 @@ describe('writing activity rows', () => {
           projectId: a.projectId,
           workItemId: itemId,
           fields: ['title', 'dueDate'],
+      assigneeIds: [],
         });
       },
       h.app,
@@ -179,6 +180,7 @@ describe('writing activity rows', () => {
             workItemId: itemId,
             blocked: true,
             reason: 'waiting on the client',
+      assigneeIds: [],
           });
           throw new Error('the mutation failed after emitting');
         },
@@ -207,6 +209,7 @@ describe('activity is scoped, append-only, and refuses a view-as session', () =>
           title: 'A task',
           stateId: a.stateId,
           parentId: null,
+      assigneeIds: [],
         });
       },
       h.app,
@@ -232,6 +235,7 @@ describe('activity is scoped, append-only, and refuses a view-as session', () =>
           title: 'A task',
           stateId: a.stateId,
           parentId: null,
+      assigneeIds: [],
         });
       },
       h.app,
@@ -338,6 +342,7 @@ describe('attribution outlives membership', () => {
           title: 'A task',
           stateId: a.stateId,
           parentId: null,
+      assigneeIds: [],
         });
       },
       h.app,

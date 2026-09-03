@@ -39,6 +39,15 @@ export type TenancyHarness = {
   readonly operator: NodePgDatabase<typeof schema>;
   /** The pre-tenancy handshake role (slice 3). Sign-in and invitation lookup. */
   readonly identity: NodePgDatabase<typeof schema>;
+  /**
+   * The connection strings behind those handles.
+   *
+   * Exposed for slice 9's digest test, which drives the real job — and a job
+   * reads its connections from the environment, like the worker process it runs
+   * inside. Pointing `DATABASE_URL` and `DATABASE_URL_OPERATOR` at the harness
+   * is what makes that the real code path rather than a rehearsal of it.
+   */
+  readonly urls: { app: string; owner: string; operator: string; identity: string };
   readonly stop: () => Promise<void>;
 };
 
@@ -70,6 +79,7 @@ export async function startTenancyHarness(): Promise<TenancyHarness> {
     owner: drizzle(ownerPool, { schema }),
     operator: drizzle(operatorPool, { schema }),
     identity: drizzle(identityPool, { schema }),
+    urls,
     stop: async () => {
       await Promise.all([
         appPool.end(),
@@ -89,6 +99,8 @@ export const SQLSTATE = {
   foreignKeyViolation: '23503',
   /** A CHECK constraint — slice 8's `attachment` invariants live in 0014. */
   checkViolation: '23514',
+  /** A UNIQUE constraint — slice 9's one-notification-per-recipient-per-message. */
+  uniqueViolation: '23505',
 } as const;
 
 export type PgFailure = { code: string; message: string };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityRowsFor, auditRowFor, eventRegistry } from './registry';
+import { activityRowsFor, auditRowFor, eventRegistry, notifyDraftsFor } from './registry';
 import type { DomainEvent, EventType } from './types';
 
 /**
@@ -191,6 +191,7 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     title: 'Ship the invoice export',
     stateId: 's1',
     parentId: null,
+      assigneeIds: [],
   },
   'work_item.updated': {
     type: 'work_item.updated',
@@ -198,6 +199,7 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     projectId: 'p1',
     workItemId: 'wi1',
     fields: ['title', 'dueDate'],
+      assigneeIds: [],
   },
   'work_item.state_changed': {
     type: 'work_item.state_changed',
@@ -207,6 +209,7 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     from: 's1',
     to: 's2',
     completed: false,
+      assigneeIds: [],
   },
   'work_item.moved': {
     type: 'work_item.moved',
@@ -238,6 +241,7 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     workItemId: 'wi1',
     blocked: true,
     reason: 'waiting on the client',
+      assigneeIds: [],
   },
   'work_item.deleted': {
     type: 'work_item.deleted',
@@ -254,6 +258,7 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     workItemId: 'wi1',
     commentId: 'c1',
     mentioned: ['m2'],
+      assigneeIds: [],
   },
   'comment.deleted': {
     type: 'comment.deleted',
@@ -271,6 +276,7 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     attachmentId: 'a1',
     commentId: null,
     filename: 'contract.pdf',
+      assigneeIds: [],
   },
   'attachment.removed': {
     type: 'attachment.removed',
@@ -533,5 +539,153 @@ describe('the activity projectors', () => {
     const [row] = activityRowsFor(sample['work_item.blocked_changed']);
 
     expect(row?.data).toEqual({ blocked: true, reason: 'waiting on the client' });
+  });
+});
+
+/**
+ * The third sink (slice 9). Same shape of guarantee as the other two: the
+ * mapped type makes an undecided event a compile error, so what is left to test
+ * is that the decisions taken are §7.8's, and that the projector stays pure —
+ * it names members, and never tries to work out who not to tell.
+ */
+describe('the notify projectors', () => {
+  const types = Object.keys(eventRegistry) as EventType[];
+
+  it('has a decision for every event type', () => {
+    for (const type of types) {
+      expect(eventRegistry[type], type).toHaveProperty('notify');
+    }
+  });
+
+  it('notifies only about work items, comments and files on them', () => {
+    const notifying = types.filter((type) => eventRegistry[type].notify !== false);
+
+    expect(notifying.sort()).toEqual(
+      [
+        'attachment.added',
+        'comment.created',
+        'work_item.assigned',
+        'work_item.blocked_changed',
+        'work_item.created',
+        'work_item.state_changed',
+        'work_item.updated',
+      ].sort(),
+    );
+  });
+
+  it('says nothing about a label, a reorder or a deletion', () => {
+    expect(notifyDraftsFor(sample['work_item.labelled'])).toEqual([]);
+    expect(notifyDraftsFor(sample['work_item.moved'])).toEqual([]);
+    expect(notifyDraftsFor(sample['work_item.deleted'])).toEqual([]);
+    expect(notifyDraftsFor(sample['attachment.removed'])).toEqual([]);
+  });
+
+  it('tells the item assignees when it changes, as item activity', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['work_item.state_changed'],
+      assigneeIds: ['m1', 'm2'],
+    });
+
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.kind).toBe('item_activity');
+    expect(drafts[0]?.recipientMemberIds).toEqual(['m1', 'm2']);
+    expect(drafts[0]?.commentId).toBeNull();
+  });
+
+  it('turns one edit into one notification, however many fields moved', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['work_item.updated'],
+      fields: ['title', 'dueDate', 'priority'],
+      assigneeIds: ['m1'],
+    });
+
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.data).toEqual({ fields: ['title', 'dueDate', 'priority'] });
+  });
+
+  it('tells only the people whose assignment changed, not everyone on the item', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['work_item.assigned'],
+      added: ['m2'],
+      removed: ['m3'],
+    });
+
+    // §4: "Unassignment notifies the person removed." And nobody else on the
+    // item hears that a colleague was added.
+    expect(drafts[0]?.kind).toBe('assignment');
+    expect(drafts[0]?.recipientMemberIds).toEqual(['m2', 'm3']);
+  });
+
+  it('notifies the people assigned at creation, which is the only event a create emits', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['work_item.created'],
+      assigneeIds: ['m2'],
+    });
+
+    expect(drafts[0]?.kind).toBe('assignment');
+    expect(drafts[0]?.recipientMemberIds).toEqual(['m2']);
+  });
+
+  it('splits a comment into a mention and a comment, and never both for one person', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['comment.created'],
+      commentId: 'c1',
+      mentioned: ['m2'],
+      // m2 is mentioned *and* assigned; m3 is only assigned.
+      assigneeIds: ['m2', 'm3'],
+    });
+
+    expect(drafts.map((draft) => draft.kind)).toEqual(['mention', 'comment']);
+    expect(drafts[0]?.recipientMemberIds).toEqual(['m2']);
+    expect(drafts[1]?.recipientMemberIds).toEqual(['m3']);
+  });
+
+  it('carries the comment id, so the click lands on the comment (§7.8)', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['comment.created'],
+      commentId: 'c1',
+      mentioned: ['m2'],
+      assigneeIds: [],
+    });
+
+    expect(drafts[0]?.commentId).toBe('c1');
+  });
+
+  it('drops a draft addressed to nobody rather than emitting an empty one', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['comment.created'],
+      mentioned: [],
+      assigneeIds: [],
+    });
+
+    expect(drafts).toEqual([]);
+  });
+
+  it('stays quiet about a file pasted into a comment, which the comment announces', () => {
+    const inComment = notifyDraftsFor({
+      ...sample['attachment.added'],
+      commentId: 'c1',
+      assigneeIds: ['m2'],
+    });
+    const onItem = notifyDraftsFor({
+      ...sample['attachment.added'],
+      commentId: null,
+      assigneeIds: ['m2'],
+    });
+
+    expect(inComment).toEqual([]);
+    expect(onItem).toHaveLength(1);
+  });
+
+  it('does not remove the actor — that is the unit of work, which knows who they are', () => {
+    // The projector is pure and has no actor to compare against. §7.8's "an
+    // actor never hears about their own action" is applied once, in
+    // `UnitOfWork.flush`, and this test pins the division of labour.
+    const drafts = notifyDraftsFor({
+      ...sample['work_item.state_changed'],
+      assigneeIds: ['m1', 'm2', 'm3'],
+    });
+
+    expect(drafts[0]?.recipientMemberIds).toHaveLength(3);
   });
 });

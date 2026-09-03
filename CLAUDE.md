@@ -2,26 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: approved for build, slice 8 landed in full (comments, mentions and attachments)
+## Status: approved for build, slice 9 landed (notifications, pg-boss, email, the due-date digest)
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
 records are a second sink on the event registry, and **#12** the platform operator gets its own read-only
 database role. Both are implemented — see below. The remaining open questions (#5, #6, #7, #9, #10) do not
-block anything before slice 8.
+block anything now. **§18-10 (holiday calendar maintenance) is still open and is now load-bearing**: slice 9
+created the `workspace_holiday` table the digest reads, so the question is no longer hypothetical — it is
+where the first year of rows comes from.
 
 Slices are still built **one at a time, in §14's order, on request**. The approval was to start, not a
-standing licence to run ahead. Slice 8 is **complete**: comments, mentions and attachments. **§18-5 and
-§18-6 were answered on 2026-09-03** — attachment storage is **Cloudflare R2** and there is **no known
-data-residency requirement**, revisited with the pilot customer (§18-7) — and both `PLAN.en.md` and
-`PLAN.km.md` now record them as RESOLVED rather than OPEN. **Slice 9 (notifications, pg-boss, email, the
-due-date digest) is next**, and it inherits two things slice 8 deliberately left for it: the outbox as a
-third field on the `eventRegistry` entry, and the periodic job that sweeps abandoned uploads.
-§14 named slices **1, 2, 5 and 6** the four places a wrong decision is expensive to reverse. All four are
-behind us, and slice 7 did what it was always going to: added a second field to the `eventRegistry` entry
-that slices 1 through 6 had been filling in all along.
+standing licence to run ahead. **§18-5 and §18-6 were answered on 2026-09-03** — attachment storage is
+**Cloudflare R2** and there is **no known data-residency requirement**, revisited with the pilot customer
+(§18-7) — and both `PLAN.en.md` and `PLAN.km.md` record them as RESOLVED rather than OPEN.
 
-What exists: **slices 0 through 7** — the i18n scaffold, the design-token layer, the tenancy foundation
+§14 named slices **1, 2, 5 and 6** the four places a wrong decision is expensive to reverse. All four are
+behind us. Slice 7 added a second field to the `eventRegistry` entry that slices 1 through 6 had been
+filling in all along, and **slice 9 added the third and last one** — the outbox. The entry is now complete
+as §8 draws it: audit, activity, notify.
+
+**Slice 9 left one thing it was expected to do.** The periodic job that sweeps abandoned uploads (slice 8's
+`pending` attachment rows) was not built. The worker and its schedule now exist, so it is a handler and a
+cron line rather than any new machinery — but it is not done, and an abandoned upload still occupies storage
+indefinitely.
+
+What exists: **slices 0 through 9** — the i18n scaffold, the design-token layer, the tenancy foundation
 (`src/server/db`, `drizzle/`), the policy module (`src/server/authz/`), authentication, workspace creation,
 teams and invitations (`src/server/auth`, `src/server/services`), projects, project membership and workflow
 states, work items, labels, the §9 list query and the List view (`src/lib/work-item-query.ts`,
@@ -37,13 +43,15 @@ mentions — the `comment` and `comment_mention` tables, the thread and its comp
 attachments — the `attachment` table, the S3-compatible storage port and its two drivers, the ticket and
 download route handlers, and the file panel (`src/lib/attachments.ts`, `src/server/storage/`,
 `src/server/queries/attachments.ts`, `src/server/services/attachments.ts`, `src/app/api/internal/upload/`,
-and the `attachment-*.tsx` components under `src/components/work-item/`). All the `db:*` scripts work once
-`pnpm db:setup` has run.
+and the `attachment-*.tsx` components under `src/components/work-item/`), and now notifications — the
+transactional outbox, the inbox and its bell, per-user preferences, and the evening due-date digest
+(`src/lib/notification-kinds.ts`, `src/server/db/schema/notification.ts`, `src/server/queries/notifications.ts`,
+`src/server/services/notifications.ts`, `src/server/jobs/`, the `notifications/` components, and the
+`inbox/` and `settings/notifications/` routes). All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-03 after slice 8 was completed — `typecheck`, `lint`, `test` (205 unit),
-`build`, `test:e2e` (89 across three Playwright projects, 1 pre-existing skip) and `test:tenancy` (120
-against real Postgres 18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a
-promise.
+Every gate passed on 2026-09-03 after slice 9 — `typecheck`, `lint`, `test` (229 unit), `build`, `test:e2e`
+(98 across three Playwright projects, 1 pre-existing skip) and `test:tenancy` (148 against real Postgres
+18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a promise.
 
 Slice 8 fixed a latent race in two earlier e2e tests rather than working around it. `activity.spec.ts` and
 `work-item.spec.ts` both changed a state and then immediately called `page.goto`, which can abort the server
@@ -87,6 +95,7 @@ committed — CI installs with `--frozen-lockfile`.
 | | |
 | --- | --- |
 | `pnpm dev` | Next dev server |
+| `pnpm jobs` | The job worker — §8's **second process type**. Notifications and the digest do not happen without it |
 | `pnpm build` / `pnpm start` | Production build (`output: 'standalone'`) and serve |
 | `pnpm typecheck` | `tsc --noEmit` — the fastest real signal in this repo right now |
 | `pnpm lint` | ESLint 9 flat config; bans `next/link` and `DATABASE_URL_OWNER` in `src/` |
@@ -96,7 +105,7 @@ committed — CI installs with `--frozen-lockfile`.
 | `pnpm test:tenancy` | The RLS suite, on real Postgres. Its own config (`vitest.tenancy.config.ts`), not part of `pnpm test` |
 | `pnpm db:setup` | One-time: create the database and all three roles. Prompts for the superuser password |
 | `pnpm db:generate` | Drizzle migration from `src/server/db/schema/index.ts` |
-| `pnpm db:migrate` / `pnpm db:seed` | `tsx` scripts under `src/server/db/` |
+| `pnpm db:migrate` / `pnpm db:seed` | `tsx` scripts under `src/server/db/`. `db:migrate` also installs pg-boss's schema, as the owner |
 
 Postgres 18.4 is installed locally and listening on 5432 with `scram-sha-256` on every line of `pg_hba.conf`.
 The `unifyops` database and its **four** roles **do not exist yet**: run `pnpm db:setup` once. That reads the
@@ -169,7 +178,8 @@ belong to later slices.
   predicate is false.
 - Events fan out from an `eventRegistry` that is **exhaustive over the event union** by construction — it is
   a mapped type over `DomainEvent['type']`, so adding an event without an entry does not compile. The entry
-  carries two fields, `audit` and `activity`; slice 9 adds the outbox as a third.
+  carries three fields — `audit`, `activity` and `notify` — which is the whole of §8's diagram. Adding an
+  event without deciding all three does not compile.
 - **Audit is not activity** (§18-11), and since slice 7 both tables exist to prove it. `audit_record` is
   workspace-scoped, Owner/Admin-visible, never translated, and **append-only enforced twice**: no
   `UPDATE`/`DELETE` policy, and those privileges revoked from the app role. It carries `actor_user_id` *and*
@@ -206,7 +216,7 @@ The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
 grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
 4, `0007`/`0008` for slice 5. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
-`0004`, `0006`, `0008`, `0010`, `0012` and `0014` are hand-written and must stay that way. A hand-written migration is
+`0004`, `0006`, `0008`, `0010`, `0012`, `0014` and `0016` are hand-written and must stay that way. A hand-written migration is
 scaffolded with `db:generate --custom` so the journal and snapshot stay consistent. **Renaming a generated
 migration means editing its `tag` in `drizzle/meta/_journal.json` too, and deleting one means deleting its
 snapshot** — drizzle-kit diffs against the highest snapshot it finds, so a stale `000N_snapshot.json` makes
@@ -618,6 +628,125 @@ phone-heavy market where data costs money — and not a number to raise quietly.
 the one size label in the product that stayed English in a Khmer workspace (§13). Filenames are truncated by
 grapheme with the extension preserved, for the same reason every other truncation in the product is.
 
+
+## Notifications, the outbox, and the second process
+
+Slice 9. `src/lib/notification-kinds.ts`, `src/server/db/schema/notification.ts`, the `notify` field on
+`eventRegistry`, `UnitOfWork.#writeOutbox`, `src/server/jobs/`, `src/server/queries/notifications.ts`,
+`src/server/services/notifications.ts`, the `notifications/` components, and the `inbox/` and
+`settings/notifications/` routes.
+
+**The registry entry is now complete.** `audit`, `activity`, `notify` — §8's diagram, one field each, all
+three exhaustive over the event union. A new event type cannot reach an inbox without somebody deciding
+that it should, and cannot fail to reach one by omission either.
+
+**The projector is pure, so the events carry their assignees.** §7.8's rule is "every assignee except the
+person who made the change, plus anyone mentioned", and answering it from the event alone means six events
+gained an `assigneeIds` field. That is the same call slice 8 made when `attachment.added` started carrying
+its `commentId` — "carried rather than looked up because the registry is pure". The alternative was a
+registry that queries the database on every mutation, which stops it being a decision table.
+
+**"Never notify yourself" lives in exactly one place.** `UnitOfWork.#writeOutbox` translates member ids to
+user ids and drops the actor, because it is the one layer that knows who the actor is. Doing it in the
+registry would mean thirty entries each remembering the same rule — and §7.8 is blunt about the cost of
+forgetting it: "self-notification is the most common reason people mute a product's email."
+
+**The outbox is written in the mutation's transaction; nothing else is.** An email sent before the commit
+is a lie when the transaction rolls back, and one sent after it is lost if the process dies in between. A
+row written *with* the data has neither failure, and `notifications.test.ts` asserts the rollback case
+directly — the mutation throws, and no notification about it survives.
+
+**The worker is a real second process and the e2e suite runs one.** `pnpm jobs`, same image as the web
+process, different entry point (§8). `e2e/support/serve.ts` starts one beside Next, because half of §7.8
+lives in it: every unit test in this repo passes with the outbox row written and nothing ever reading it,
+and an inbox that stays empty is what that failure looks like on screen.
+
+**The worker holds two credentials, and the split is the point.** Enumeration — "which outbox rows are
+undelivered", "which companies exist, in which timezone" — spans workspaces, so no tenant scope can answer
+it; that runs on `DATABASE_URL_OPERATOR`, which is `SELECT`-only at the role level (§18-12) and therefore
+cannot write anything anywhere. Everything the worker *writes* goes through `withActor` on the app role, in
+a real member's scope, exactly like a request. The digest reads a person's due work **as that person**, so
+an email cannot describe an item its recipient is not allowed to open. That property is free from RLS and
+would have to be re-implemented, and eventually got wrong, by a worker reading as an omniscient system user.
+
+**pg-boss's schema is installed by the owner, not by pg-boss.** `boss.start()` normally runs its own DDL,
+which would put a `CREATE`-capable credential in a long-lived process — the one thing the four-role split
+exists to prevent, and a worker is not exempt from it. `src/server/jobs/install.ts` applies pg-boss's own
+published plans from `pnpm db:migrate`, and the worker starts with `migrate: false`. It is the one module
+under `src/server` deliberately **without** `import 'server-only'`, because `provision.ts` imports it and
+that runs under plain `tsx`.
+
+**The sweep is an interval; delivery is a job.** Cron's finest granularity is a minute, and a mention that
+takes a minute to reach an inbox feels broken — so the worker polls the outbox's partial index every 5s and
+enqueues one pg-boss job per message. pg-boss earns its place on the delivery side, where retries with
+backoff and a dead-letter queue are worth having. Discovery is deliberately *not* an enqueue from the web
+process: that would put the queue on the request path and lose any row whose enqueue failed after the
+commit. Polling one nearly-always-empty index is self-healing by construction.
+
+**Delivery is at-least-once, and the schema makes it idempotent.** `unique (outbox_message_id,
+recipient_member_id)` turns a retry's re-insert into a no-op, so what a retry retries is the part that
+failed. Email is the one thing that is not exactly-once, and that is the right way round: a duplicated
+mention email is an annoyance, a missing one is somebody never learning they were asked a question.
+
+**The digest is a tick, not a schedule per workspace.** One hourly cron job asks every workspace whether it
+is 18:00 *there*. Per-workspace pg-boss schedules would have to be created at signup, updated on a timezone
+change, and repaired after any of that happened while the worker was down — and a missed repair is a
+company that silently never gets a digest again. §6-6 defers "digest scheduling" to Phase 2, so the hour is
+a constant.
+
+**§7.8's non-working-day rule is implemented as its contrapositive.** The plan says the digest "moves to the
+last working evening before"; what the code does is send **only on a working evening, covering work due
+through the next working day**. Identical in effect, and it removes the arithmetic — Friday's horizon is
+Monday, so Friday evening carries Monday's work across the weekend on its own, and no two evenings can both
+decide they are the last one.
+
+**Working days and holidays landed here rather than in slice 15**, for the reason `workspace.timezone`
+landed in slice 5: the rule above needs to know which days those are. `workspace.working_days` is a
+seven-bit mask defaulting to **63 — Monday to Saturday**, the market §2.5 describes rather than a European
+five-day assumption, and `workspace_holiday` is the per-company calendar §17-18 asks for. The three SQL
+functions in migration 0016 (`is_working_day`, `next_working_day`, `business_days_between`) are §9's "one
+SQL function" that staleness, the digest and cycle progress must all share; the digest is the first caller
+and slices 11 and 13 inherit them. **They are in SQL on purpose** — a working-day calculation done in
+TypeScript is done again, differently, by whoever writes the next query that needs one. The settings screen
+that edits any of it is still slice 15's.
+
+**The `soon` due window was added to the §9 DSL rather than beside it.** §7.8's digest is "what is due
+tomorrow, and what is already overdue", which is one predicate — `due_date <= horizon and completed_at is
+null` — and one ordering. The horizon is a fetch option beside `today`, not a URL parameter, because a
+company's next working day on one evening is not a question anybody would want frozen into a shared link.
+
+**§6-6's "per event type" is read as a closed set of five kinds**, not as the thirty members of
+`DomainEvent`. Nobody wants a preference row for `work_item.blocked_changed`; they want to turn off "changes
+to items I'm on" and keep mentions. The event-to-kind mapping lives in the registry beside the other two
+decisions. An absent preference row means **the default**, never "off" — a product whose notifications are
+opt-in is a product with no notifications.
+
+**There is no §10 row for notifications and none was invented** — the third time this decision has been
+made, after labels in slice 5 and attachments in slice 8. What stops one person reaching another's inbox is
+not a role: every query is keyed on the acting member's own id in the predicate, underneath RLS that has
+already scoped the rows to the workspace.
+
+**The unread count rides in `resolveActorContext`.** The bell is on every workspace screen, so a service
+opening its own transaction for it put one extra round trip on every navigation in the product — enough,
+under a parallel e2e run, to push project creation past its own assertion. `loadShellState` asks both
+questions in the one `withActor` that was already open. This is the same trap slice 8 hit with
+`getCommentThread`, and it is worth assuming the next per-screen query will hit it too.
+
+**Email templates import `createTranslator` from `use-intl/core`, not from `next-intl`.** An email has no
+React in it, and next-intl's entry pulls the React bindings along with the formatter — which is fatal in
+the worker: it runs under `--conditions=react-server` so that `import 'server-only'` resolves to nothing,
+and React's own react-server build does not export `useEffect`. `use-intl` is next-intl's engine, pinned to
+the same version, so it is the same translator without the part only a component needs.
+
+**The worker needs `NEXT_PUBLIC_APP_URL` in its environment.** Unlike the Next process it has no build step
+to inline it, and without it the deep link throws *after* the inbox row is written — which reads as "the
+notification works but the mail never arrives". `pnpm jobs` passes `--env-file=.env`; `e2e/support/serve.ts`
+sets it explicitly.
+
+**§12's Switch is still not built, and the preference grid does not pre-empt it.** The toggles are native
+checkboxes: a checkbox already carries the role, the keyboard behaviour and the label association a Switch
+would have to be given by hand, and building a one-off Switch for one screen is how a design system ends up
+with two of them.
 
 ## Bilingual invariants
 

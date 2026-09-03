@@ -57,8 +57,16 @@ export type SortDirection = 'asc' | 'desc';
  * They are names rather than dates on purpose: a URL holding `d=overdue` still
  * means "overdue" tomorrow, while one holding a resolved date silently becomes
  * a different question overnight.
+ *
+ * `soon` is §7.8's digest window and the one that takes a second date: open work
+ * due on or before a **horizon** the caller supplies, which is where "and what
+ * is already overdue" comes from — everything late is on or before any horizon
+ * at or after today. The horizon is a fetch option beside `today` rather than a
+ * URL parameter, for the reason above: the digest's horizon is the workspace's
+ * next *working* day, which is a fact about a company's calendar on one evening
+ * and not a question anybody would want frozen into a shared link.
  */
-export const DUE_WINDOWS = ['overdue', 'today', 'week', 'none', 'any'] as const;
+export const DUE_WINDOWS = ['overdue', 'today', 'week', 'soon', 'none', 'any'] as const;
 export type DueWindow = (typeof DUE_WINDOWS)[number];
 
 const uuid = z.string().uuid();

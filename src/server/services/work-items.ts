@@ -445,6 +445,11 @@ export async function createWorkItem(
       title,
       stateId: state.id,
       parentId: input.parentId ?? null,
+      // The people handed this work as it was created. `work_item.assigned`
+      // never fires for them — a create writes its assignees and emits one
+      // event — so without this the one assignment nobody hears about is the
+      // one that comes with the item.
+      assigneeIds: [...new Set(input.assigneeMemberIds ?? [])],
     });
 
     return { ok: true, workItemId, number } as const;
@@ -549,6 +554,7 @@ export async function updateWorkItem(
       projectId: item.projectId,
       workItemId: input.workItemId,
       fields,
+      assigneeIds: item.assigneeIds,
     });
 
     return { ok: true } as const;
@@ -611,6 +617,7 @@ export async function setWorkItemState(
       from: item.stateId,
       to: state.id,
       completed: closing,
+      assigneeIds: item.assigneeIds,
     });
 
     return { ok: true } as const;
@@ -787,6 +794,7 @@ export async function moveWorkItem(
             from: item.stateId,
             to: state.id,
             completed: closing,
+            assigneeIds: item.assigneeIds,
           },
     );
 
@@ -920,6 +928,7 @@ export async function setWorkItemBlocked(
       workItemId: input.workItemId,
       blocked: input.blocked,
       reason,
+      assigneeIds: item.assigneeIds,
     });
 
     return { ok: true } as const;

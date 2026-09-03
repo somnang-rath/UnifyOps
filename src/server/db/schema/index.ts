@@ -11,7 +11,10 @@
  * label joins, the workspace's labels, and the per-project counter behind
  * `ENG-142`. Slice 7 adds `activity`, the second sink on the event registry
  * beside `audit_record`. Slice 8 adds comments, the mentions in them, and the
- * attachments that hang off either an item or a comment. The rest arrive in their own slices (§14) — each one adds
+ * attachments that hang off either an item or a comment. Slice 9 adds the
+ * transactional outbox, the inbox it feeds, per-user notification preferences,
+ * and the holiday calendar §7.8's evening digest has to consult before it sends
+ * anything. The rest arrive in their own slices (§14) — each one adds
  * `...tenantPolicies()` and gets FORCE RLS from the hardening step, or it does
  * not ship.
  */
@@ -27,3 +30,4 @@ export * from './work-item';
 export * from './activity';
 export * from './comment';
 export * from './attachment';
+export * from './notification';

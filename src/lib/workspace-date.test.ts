@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, daysBetween, dueBucket, isOverdue, isTimeZone, todayIn } from './workspace-date';
+import {
+  addDays,
+  daysBetween,
+  dueBucket,
+  hourIn,
+  isOverdue,
+  isTimeZone,
+  todayIn,
+} from './workspace-date';
 
 /**
  * §17-13: "Overdue had no timezone authority — RESOLVED. Workspace timezone,
@@ -77,5 +85,35 @@ describe('dueBucket', () => {
   it('treats the seventh day out as later, so "this week" is a week', () => {
     expect(dueBucket('2026-09-08', today)).toBe('week');
     expect(dueBucket('2026-09-09', today)).toBe('later');
+  });
+});
+
+/**
+ * §7.8's digest goes out "per person per evening, in the workspace timezone",
+ * and the hourly tick that decides whose evening it is asks this.
+ */
+describe('hourIn', () => {
+  it('answers in the company timezone, like every other date question here', () => {
+    // 11:00 UTC is 18:00 in Phnom Penh — the digest hour there, and the middle
+    // of the morning in Los Angeles.
+    const instant = new Date('2026-09-03T11:00:00Z');
+
+    expect(hourIn('Asia/Phnom_Penh', instant)).toBe(18);
+    expect(hourIn('UTC', instant)).toBe(11);
+    expect(hourIn('America/Los_Angeles', instant)).toBe(4);
+  });
+
+  it('reports midnight as 0, not 24', () => {
+    // `h23` is pinned for exactly this: some runtimes render midnight as 24
+    // under the default hour cycle, and an hourly tick comparing against a
+    // constant would then never fire at midnight or fire twice at noon.
+    expect(hourIn('UTC', new Date('2026-09-03T00:00:00Z'))).toBe(0);
+    expect(hourIn('UTC', new Date('2026-09-03T23:59:00Z'))).toBe(23);
+  });
+
+  it('handles a half-hour offset without rounding the hour the wrong way', () => {
+    // +05:45. A zone whose offset is not a whole hour is where a naive
+    // implementation using arithmetic on the UTC hour goes wrong.
+    expect(hourIn('Asia/Kathmandu', new Date('2026-09-03T12:20:00Z'))).toBe(18);
   });
 });

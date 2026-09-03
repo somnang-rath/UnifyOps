@@ -11,6 +11,18 @@
  * Slice 4 adds projects and their workflow states. Slice 5 adds work items and
  * the workspace's labels. Slice 8 adds comments, the mentions in them, and attachments.
  * Later slices extend the union; the compile error is the point.
+ *
+ * **Slice 9 added `assigneeIds` to the six events that can notify somebody**,
+ * and it is carried rather than looked up for the reason `attachment.added`
+ * already carries its `commentId`: the registry is pure. §7.8's rule — "on any
+ * item change, every assignee except the person who made the change" — has to
+ * be answerable from the event alone, or the third sink stops being a decision
+ * table and becomes a thing that queries the database on every mutation.
+ *
+ * These are **member** ids, like `mentioned` and like `work_item.assignee_ids`
+ * itself. They are the item's assignees *at the moment of the change*, which is
+ * the list §7.8 means — not whoever happens to be assigned when a worker picks
+ * the message up some seconds later.
  */
 export type DomainEvent =
   | { type: 'workspace.created'; workspaceId: string; slug: string; name: string }
@@ -142,6 +154,7 @@ export type DomainEvent =
       title: string;
       stateId: string;
       parentId: string | null;
+      assigneeIds: readonly string[];
     }
   | {
       type: 'work_item.updated';
@@ -150,6 +163,7 @@ export type DomainEvent =
       workItemId: string;
       /** Which fields changed. The activity feed (slice 7) renders one line per name. */
       fields: readonly string[];
+      assigneeIds: readonly string[];
     }
   | {
       type: 'work_item.state_changed';
@@ -160,6 +174,7 @@ export type DomainEvent =
       to: string;
       /** True when the new state's group closes the item — §4 derives this from the group. */
       completed: boolean;
+      assigneeIds: readonly string[];
     }
   | {
       /**
@@ -200,6 +215,7 @@ export type DomainEvent =
       workItemId: string;
       blocked: boolean;
       reason: string | null;
+      assigneeIds: readonly string[];
     }
   | {
       type: 'work_item.deleted';
@@ -226,6 +242,7 @@ export type DomainEvent =
       workItemId: string;
       commentId: string;
       mentioned: readonly string[];
+      assigneeIds: readonly string[];
     }
   | {
       type: 'comment.deleted';
@@ -261,6 +278,7 @@ export type DomainEvent =
       /** Null when the file hangs on the item itself rather than on a comment. */
       commentId: string | null;
       filename: string;
+      assigneeIds: readonly string[];
     }
   | {
       type: 'attachment.removed';

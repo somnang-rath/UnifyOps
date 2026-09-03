@@ -18,6 +18,13 @@ import { E2E_DATABASE, EMAIL_LOG_FILE } from './constants';
  *
  * Postgres comes from `TENANCY_SUPERUSER_URL` if it is set, and from
  * Testcontainers otherwise. Same rule, same variable, one thing to know.
+ *
+ * From slice 9 it starts a **second** process beside Next: the job worker, which
+ * is §8's other process type. Notifications and the digest are not something the
+ * web process does — an outbox row is written by a request and turned into an
+ * inbox entry and an email by a worker — so a suite with no worker running would
+ * be asserting that half of §7.8 exists. Same image, same environment, different
+ * entry point, exactly as it is deployed.
  */
 
 const port = process.env.E2E_PORT ?? '3100';
@@ -32,22 +39,61 @@ async function main(): Promise<void> {
   mkdirSync(dirname(logPath), { recursive: true });
   rmSync(logPath, { force: true });
 
+  const env = {
+    ...process.env,
+    DATABASE_URL: urls.app,
+    DATABASE_URL_OWNER: urls.owner,
+    DATABASE_URL_OPERATOR: urls.operator,
+    DATABASE_URL_IDENTITY: urls.identity,
+    // No RESEND_API_KEY: the logging transport is deliberately what runs, so
+    // the invitation link — and, from slice 9, every notification and digest —
+    // lands in a file the specs can read.
+    EMAIL_LOG_FILE: logPath,
+    /**
+     * The worker builds absolute deep links from this, and unlike the Next
+     * process it has no build step to inline it — a worker without it throws
+     * while rendering the email, *after* the inbox row is written, which reads
+     * as "the notification works but the mail never arrives".
+     */
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? `http://127.0.0.1:${port}`,
+  };
+
   const child = spawn('pnpm', ['exec', 'next', 'start', '-p', port], {
     stdio: 'inherit',
     shell: true,
-    env: {
-      ...process.env,
-      DATABASE_URL: urls.app,
-      DATABASE_URL_OWNER: urls.owner,
-      DATABASE_URL_OPERATOR: urls.operator,
-      DATABASE_URL_IDENTITY: urls.identity,
-      // No RESEND_API_KEY: the logging transport is deliberately what runs, so
-      // the invitation link lands in a file the specs can read.
-      EMAIL_LOG_FILE: logPath,
-    },
+    env,
   });
 
-  child.on('exit', (code) => process.exit(code ?? 0));
+  /**
+   * The worker holds the operator credential to enumerate undelivered outbox
+   * rows, and the app credential to write each notification in its recipient's
+   * own scope. Both are in `env` above; nothing here is a test-only shortcut.
+   */
+  const worker = spawn(
+    'pnpm',
+    // `--conditions=react-server`, like `pnpm db:seed` and `pnpm jobs`: the job
+    // modules carry `import 'server-only'`, which throws under a plain Node
+    // resolution and resolves to nothing under this one.
+    ['exec', 'tsx', '--conditions=react-server', 'src/server/jobs/worker.ts'],
+    {
+      stdio: 'inherit',
+      shell: true,
+      env,
+    },
+  );
+
+  const stopWorker = () => {
+    if (!worker.killed) worker.kill();
+  };
+
+  process.on('exit', stopWorker);
+  process.on('SIGINT', stopWorker);
+  process.on('SIGTERM', stopWorker);
+
+  child.on('exit', (code) => {
+    stopWorker();
+    process.exit(code ?? 0);
+  });
 }
 
 main().catch((error: unknown) => {
