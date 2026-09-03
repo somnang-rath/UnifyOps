@@ -34,10 +34,24 @@ export const user = pgTable(
     uniqueIndex('app_user_email_key').on(sql`lower(${t.email})`),
 
     /**
-     * A user row is visible only to workspaces the user actually belongs to.
-     * Without this the app role could enumerate every account in the product
-     * — a tenancy leak in a table that has no `workspace_id` of its own to
-     * key on.
+     * A user row is visible only to workspaces the user actually belongs to —
+     * or belonged to. Without this the app role could enumerate every account
+     * in the product, a tenancy leak in a table that has no `workspace_id` of
+     * its own to key on.
+     *
+     * Membership is *not* filtered on `deleted_at`, and slice 7 is where that
+     * stopped being a detail. §7.12 offboards a member by soft-deleting the
+     * membership and keeping "their comments and activity history preserved and
+     * **attributed**" — which the narrower predicate quietly made impossible:
+     * their name became unreadable the moment they left, and every screen that
+     * had recorded their work would have shown it done by nobody.
+     *
+     * The scope this policy exists to enforce is unchanged. A row is reachable
+     * only from a workspace the person actually joined; what widened is time,
+     * not tenancy. Every caller that means *current* members says so already —
+     * `listMembers` filters `workspace_member.deleted_at` itself, which is the
+     * right place for it, because that question is about membership rather than
+     * about who is allowed to read a name.
      */
     pgPolicy('user_select', {
       for: 'select',
@@ -46,7 +60,6 @@ export const user = pgTable(
         select 1 from workspace_member wm
         where wm.user_id = "app_user"."id"
           and wm.workspace_id = tenancy.workspace_id()
-          and wm.deleted_at is null
       )`,
     }),
 

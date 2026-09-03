@@ -1,12 +1,17 @@
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Alert, Badge } from '@/components/ui/feedback';
+import { ActivityFeed } from '@/components/work-item/activity-feed';
+import { AttachmentPanel } from '@/components/work-item/attachment-panel';
+import { CommentThread } from '@/components/work-item/comment-thread';
 import { StatePill } from '@/components/ui/state-pill';
 import { ItemEditor } from '@/components/work-item/item-editor';
 import { StateSelect, type StateOption } from '@/components/work-item/state-select';
 import { resolveActorContext } from '@/server/auth/context';
 import { listLabels } from '@/server/services/labels';
 import { listMembers } from '@/server/services/members';
+import { getActivityFeed } from '@/server/services/activity';
+import { getCommentThread } from '@/server/services/comments';
 import { getProjectBySlug } from '@/server/services/projects';
 import { getWorkItem } from '@/server/services/work-items';
 import { displayName } from '@/lib/seeded-name';
@@ -28,11 +33,16 @@ import { Link } from '@/i18n/navigation';
  * rather than hiding it, so somebody looking at a stale tab can see *why* they
  * cannot type.
  *
- * Comments, attachments and the activity feed arrive in slice 8 and belong on
- * this page. It is laid out to take them.
+ * Below the editor: the item's files, then the comment thread (slice 8), then
+ * the activity feed (slice 7). That order is deliberate — a file attached to
+ * the item is a property of the work, the conversation is what somebody opening
+ * an item is usually looking for, and the history is context for both. Files
+ * pasted into a comment render inside that comment rather than in the panel,
+ * which is what keeps the two lists meaning different things.
  */
 export default async function WorkItemPage({
   params,
+  searchParams,
 }: {
   params: Promise<{
     locale: string;
@@ -40,6 +50,15 @@ export default async function WorkItemPage({
     projectSlug: string;
     number: string;
   }>;
+  /**
+   * `?activity=all` widens the feed and `?comments=all` widens the thread.
+   * Links rather than buttons, because nothing about either needs the client:
+   * each is the same page with a longer window, so both are shareable,
+   * back-buttonable and work with JavaScript off — and they stay out of the
+   * filter DSL, which describes a *query* over many items and has no business
+   * carrying one item's scroll depth.
+   */
+  searchParams: Promise<{ activity?: string; comments?: string }>;
 }) {
   const { locale, workspaceSlug, projectSlug, number } = await params;
   setRequestLocale(locale);
@@ -57,11 +76,18 @@ export default async function WorkItemPage({
   // everywhere else, because telling them apart says what exists.
   if (!item) notFound();
 
-  const [t, project, members, labels] = await Promise.all([
+  const search = await searchParams;
+  const allActivity = search.activity === 'all';
+  const allComments = search.comments === 'all';
+
+  const [t, project, members, labels, activity, thread] = await Promise.all([
     getTranslations(),
     getProjectBySlug(resolved, projectSlug),
     listMembers(resolved.context),
     listLabels(resolved.context),
+    getActivityFeed(resolved, { workItemId: item.id, all: allActivity }),
+    // Carries its own mentionable list, resolved in the same transaction (§7.7).
+    getCommentThread(resolved, { workItemId: item.id, all: allComments }),
   ]);
 
   if (!project) notFound();
@@ -74,6 +100,32 @@ export default async function WorkItemPage({
 
   const currentState = states.find((state) => state.id === item.stateId);
   const overdue = isOverdue(item.dueDate, item.today, { completed: item.completedAt !== null });
+
+  /**
+   * A widening link that keeps whatever is already widened.
+   *
+   * Built from the current params rather than written literally, because the
+   * two panels each own a search param and a link that named only its own would
+   * silently collapse the other one the moment somebody used both.
+   */
+  const widen = (next: Record<string, string>) => {
+    const params = new URLSearchParams({
+      ...(allActivity ? { activity: 'all' } : {}),
+      ...(allComments ? { comments: 'all' } : {}),
+      ...next,
+    });
+    return `/${workspaceSlug}/projects/${projectSlug}/${item.number}?${params.toString()}`;
+  };
+
+  /** What every client control on this page needs to post back. Built once:
+   * the files panel, the thread and the composer all take the same one. */
+  const itemContext = {
+    workspaceSlug,
+    projectSlug,
+    locale,
+    workItemId: item.id,
+    number: item.number,
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -139,6 +191,33 @@ export default async function WorkItemPage({
         labels={labels}
         canEdit={item.canEdit}
       />
+
+      {thread && (
+        <AttachmentPanel
+          files={thread.itemFiles}
+          context={itemContext}
+          // The same answer the composer gets: a Viewer and an archived project
+          // both see the files and no way to add one.
+          canUpload={thread.canComment}
+        />
+      )}
+
+      {thread && (
+        <CommentThread
+          thread={thread}
+          context={itemContext}
+          timezone={resolved.workspace.timezone}
+          showAllHref={allComments ? null : widen({ comments: 'all' })}
+        />
+      )}
+
+      {activity && (
+        <ActivityFeed
+          feed={activity}
+          timezone={resolved.workspace.timezone}
+          showAllHref={allActivity ? null : widen({ activity: 'all' })}
+        />
+      )}
     </div>
   );
 }

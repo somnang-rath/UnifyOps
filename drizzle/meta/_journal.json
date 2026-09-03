@@ -64,6 +64,48 @@
       "when": 1788339357145,
       "tag": "0008_slice5_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788404655959,
+      "tag": "0009_slice7_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788404663468,
+      "tag": "0010_slice7_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788406458059,
+      "tag": "0011_slice8_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788406469639,
+      "tag": "0012_slice8_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788411293172,
+      "tag": "0013_slice8_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788411309177,
+      "tag": "0014_slice8_attachment_hardening",
+      "breakpoints": true
     }
   ]
 }

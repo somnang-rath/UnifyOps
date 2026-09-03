@@ -3,7 +3,17 @@
 import { revalidatePath } from 'next/cache';
 import { resolveActorContext } from '@/server/auth/context';
 import { ForbiddenError } from '@/server/authz/policy';
-import type { FormState, RowActionState } from '@/lib/form-state';
+import type { CommentFormState, FormState, RowActionState } from '@/lib/form-state';
+import {
+  deleteComment,
+  postComment,
+  type CommentProblem,
+} from '@/server/services/comments';
+import {
+  confirmAttachment,
+  deleteAttachment,
+  type AttachmentServiceProblem,
+} from '@/server/services/attachments';
 import {
   createWorkItem,
   deleteWorkItem,
@@ -298,4 +308,146 @@ export async function deleteWorkItemAction(
     href: `/${context.workspaceSlug}/projects/${context.projectSlug}`,
     locale: context.locale,
   });
+}
+
+/**
+ * Comment problems to message keys, in their own map (§13).
+ *
+ * Separate from `KEYS` above because `CommentProblem` is its own union — a
+ * shared map would have to widen to the union of both and would then accept a
+ * work-item problem here, which is exactly the kind of mistake the identifiers
+ * exist to prevent.
+ */
+const COMMENT_KEYS: Record<CommentProblem, string> = {
+  not_found: 'workItems.errors.notFound',
+  archived: 'projects.errors.archived',
+  body_required: 'comments.errors.bodyRequired',
+  body_too_long: 'comments.errors.bodyTooLong',
+  mention_not_visible: 'comments.errors.mentionNotVisible',
+};
+
+/**
+ * §7.7: post a comment.
+ *
+ * On failure this returns a key and nothing else — deliberately. The typed text
+ * stays in the composer's own state, because a server action that handed the
+ * draft back would lose it the moment the network was the thing that failed,
+ * which is the case §7.7 is written about.
+ */
+export async function postCommentAction(
+  _previous: CommentFormState,
+  formData: FormData,
+): Promise<CommentFormState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const outcome = await guarded(() =>
+    postComment(resolved, {
+      workItemId: String(formData.get('workItemId') ?? ''),
+      body: String(formData.get('body') ?? ''),
+      // The files the composer uploaded while this comment was being typed.
+      // Ids only: the rows already exist and already belong to this member, so
+      // there is nothing here to trust beyond "which of mine did you mean".
+      attachmentIds: formData.getAll('attachmentId').map(String).filter(Boolean),
+    }),
+  );
+
+  if ('error' in outcome) return outcome;
+  if (!outcome.ok) return { error: COMMENT_KEYS[outcome.problem], names: outcome.names };
+
+  revalidateItem(context, Number(formData.get('number')));
+  // A timestamp rather than a boolean: two successful posts in a row must look
+  // different to the composer, or the second one does not clear the box.
+  return { postedAt: Date.now() };
+}
+
+/**
+ * Delete a comment — the author retracting their own, or §10's Lead power over
+ * somebody else's. The service decides which of the two is being asked for.
+ */
+export async function deleteCommentAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const outcome = await guarded(() =>
+    deleteComment(resolved, { commentId: String(formData.get('commentId') ?? '') }),
+  );
+
+  if ('error' in outcome) return outcome;
+  if (!outcome.ok) return { error: COMMENT_KEYS[outcome.problem] };
+
+  revalidateItem(context, Number(formData.get('number')));
+  return { done: true };
+}
+
+
+/**
+ * Attachment problems to message keys, in their own map (§13).
+ *
+ * A third map beside `KEYS` and `COMMENT_KEYS`, for the reason the second one
+ * exists: each is exhaustive over its own problem union, and merging them would
+ * produce a map that accepted a work-item problem where a file problem was
+ * meant — which is the mistake the identifiers exist to prevent.
+ */
+const ATTACHMENT_KEYS: Record<AttachmentServiceProblem, string> = {
+  not_found: 'workItems.errors.notFound',
+  archived: 'projects.errors.archived',
+  filename_required: 'attachments.errors.filenameRequired',
+  file_empty: 'attachments.errors.fileEmpty',
+  file_too_large: 'attachments.errors.fileTooLarge',
+  file_type: 'attachments.errors.fileType',
+};
+
+/**
+ * §2.4: the bytes have landed in the store, so the file becomes visible.
+ *
+ * The second half of an upload, and a server action rather than a route handler
+ * because this one *is* a revalidation: the page has to re-render with the file
+ * in it, which is exactly what a server action does and what the ticket
+ * endpoint deliberately does not.
+ */
+export async function confirmAttachmentAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const outcome = await guarded(() =>
+    confirmAttachment(resolved, {
+      workItemId: String(formData.get('workItemId') ?? ''),
+      attachmentIds: formData.getAll('attachmentId').map(String).filter(Boolean),
+    }),
+  );
+
+  if ('error' in outcome) return outcome;
+  if (!outcome.ok) return { error: ATTACHMENT_KEYS[outcome.problem] };
+
+  revalidateItem(context, Number(formData.get('number')));
+  return { done: true };
+}
+
+/**
+ * Remove a file — the uploader retracting their own, or §10's Lead power over
+ * somebody else's. The service decides which of the two is being asked for.
+ */
+export async function deleteAttachmentAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const outcome = await guarded(() =>
+    deleteAttachment(resolved, { attachmentId: String(formData.get('attachmentId') ?? '') }),
+  );
+
+  if ('error' in outcome) return outcome;
+  if (!outcome.ok) return { error: ATTACHMENT_KEYS[outcome.problem] };
+
+  revalidateItem(context, Number(formData.get('number')));
+  return { done: true };
 }

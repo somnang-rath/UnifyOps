@@ -108,3 +108,52 @@ export function emailConfig(): { apiKey: string; from: string } | null {
   if (!apiKey || !from) return null;
   return { apiKey, from };
 }
+
+/**
+ * Object storage for attachments (§8, §18-5).
+ *
+ * Optional and deliberately not a throw, exactly like `emailConfig` above: a
+ * development machine with no Cloudflare account still has to be able to run
+ * the whole of §7.7, and `pnpm test:e2e` has to be able to drive a real upload
+ * through the real route. Returning null is what lets the local driver be a
+ * stated choice rather than a swallowed misconfiguration — `objectStore()`
+ * reports which driver answered.
+ *
+ * §18-5 chose **Cloudflare R2**, and §18-6 recorded that there is no
+ * data-residency requirement to place the bucket against; both were answered
+ * on 2026-09-03. Nothing here is R2-specific, because nothing needs to be —
+ * the driver speaks the S3 API, so a MinIO endpoint is the same four values.
+ */
+export function attachmentStoreConfig(): {
+  endpoint: string;
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+} | null {
+  const endpoint = process.env.S3_ENDPOINT;
+  const bucket = process.env.S3_BUCKET;
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+
+  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
+
+  return {
+    // A trailing slash would produce `//bucket/key` in the signed path, which
+    // is a different object from the one the signature covers.
+    endpoint: endpoint.replace(/\/+$/, ''),
+    bucket,
+    // R2 documents `auto`; the value still has to enter the credential scope.
+    region: process.env.S3_REGION ?? 'auto',
+    accessKeyId,
+    secretAccessKey,
+  };
+}
+
+/**
+ * Where the local driver keeps bytes. Development and test only — gitignored,
+ * and never consulted when R2 is configured.
+ */
+export function localAttachmentDir(): string {
+  return process.env.ATTACHMENT_DIR ?? '.attachments';
+}

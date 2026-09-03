@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: approved for build, slice 6 landed
+## Status: approved for build, slice 8 landed in full (comments, mentions and attachments)
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -11,23 +11,46 @@ database role. Both are implemented — see below. The remaining open questions 
 block anything before slice 8.
 
 Slices are still built **one at a time, in §14's order, on request**. The approval was to start, not a
-standing licence to run ahead — slice 7 (events, activity, unit of work) is next and has not been started.
-§14 named slices **1, 2, 5 and 6** the four places a wrong decision is expensive to reverse. All four are now
-behind us, and everything after this sits on machinery that already exists: slice 7 adds a second field to
-the `eventRegistry` entry that slices 1 and 6 have been filling in all along.
+standing licence to run ahead. Slice 8 is **complete**: comments, mentions and attachments. **§18-5 and
+§18-6 were answered on 2026-09-03** — attachment storage is **Cloudflare R2** and there is **no known
+data-residency requirement**, revisited with the pilot customer (§18-7) — and both `PLAN.en.md` and
+`PLAN.km.md` now record them as RESOLVED rather than OPEN. **Slice 9 (notifications, pg-boss, email, the
+due-date digest) is next**, and it inherits two things slice 8 deliberately left for it: the outbox as a
+third field on the `eventRegistry` entry, and the periodic job that sweeps abandoned uploads.
+§14 named slices **1, 2, 5 and 6** the four places a wrong decision is expensive to reverse. All four are
+behind us, and slice 7 did what it was always going to: added a second field to the `eventRegistry` entry
+that slices 1 through 6 had been filling in all along.
 
-What exists: **slices 0 through 6** — the i18n scaffold, the design-token layer, the tenancy foundation
+What exists: **slices 0 through 7** — the i18n scaffold, the design-token layer, the tenancy foundation
 (`src/server/db`, `drizzle/`), the policy module (`src/server/authz/`), authentication, workspace creation,
 teams and invitations (`src/server/auth`, `src/server/services`), projects, project membership and workflow
 states, work items, labels, the §9 list query and the List view (`src/lib/work-item-query.ts`,
 `src/server/queries/work-items.ts`, `src/server/services/work-items.ts`, `labels.ts`, and the routes under
 `src/app/[locale]/[workspaceSlug]/projects/`), and now the board, fractional ranking and the Toast
 (`src/components/views/board-view.tsx`, `use-board-sync.ts`, `src/components/ui/toast.tsx`,
-`moveWorkItem` and `src/app/api/internal/reorder/`). All the `db:*` scripts work once `pnpm db:setup` has run.
+`moveWorkItem` and `src/app/api/internal/reorder/`), and the activity feed — the projector half of the event
+registry, the `activity` table, and the history panel on the item page (`src/server/queries/activity.ts`,
+`src/server/services/activity.ts`, `src/components/work-item/activity-feed.tsx`), and now comments and
+mentions — the `comment` and `comment_mention` tables, the thread and its composer (`src/lib/mentions.ts`,
+`src/server/queries/comments.ts`, `src/server/services/comments.ts`,
+`src/components/work-item/comment-thread.tsx`, `comment-composer.tsx`, `comment-delete.tsx`), and
+attachments — the `attachment` table, the S3-compatible storage port and its two drivers, the ticket and
+download route handlers, and the file panel (`src/lib/attachments.ts`, `src/server/storage/`,
+`src/server/queries/attachments.ts`, `src/server/services/attachments.ts`, `src/app/api/internal/upload/`,
+and the `attachment-*.tsx` components under `src/components/work-item/`). All the `db:*` scripts work once
+`pnpm db:setup` has run.
 
-Every gate passed on 2026-09-03 — `typecheck`, `lint`, `test` (154 unit), `build`, `test:e2e` (71 across
-three Playwright projects, 1 pre-existing skip) and `test:tenancy` (92 against real Postgres 18.4). **Re-run
-them rather than trusting this line**; it is a snapshot, not a promise.
+Every gate passed on 2026-09-03 after slice 8 was completed — `typecheck`, `lint`, `test` (205 unit),
+`build`, `test:e2e` (89 across three Playwright projects, 1 pre-existing skip) and `test:tenancy` (120
+against real Postgres 18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a
+promise.
+
+Slice 8 fixed a latent race in two earlier e2e tests rather than working around it. `activity.spec.ts` and
+`work-item.spec.ts` both changed a state and then immediately called `page.goto`, which can abort the server
+action mid-flight — visible in the server log as `The destination stream closed early`, and on screen as a
+mutation that silently did not happen. Both now wait for `StateSelect` to re-enable itself first, which is
+the signal that the transition committed. It only ever failed on `mobile-km`, and only under parallel load;
+adding a second panel to the item page was enough to expose it.
 
 **`pnpm test:e2e` now needs a database.** From slice 3 the flows §15 asks to be tested in a browser are flows
 through one, so the Playwright web server provisions its own before starting Next — see
@@ -145,20 +168,22 @@ belong to later slices.
   returns zero rows rather than another company's data, because the tenancy GUC is unset and every policy
   predicate is false.
 - Events fan out from an `eventRegistry` that is **exhaustive over the event union** by construction — it is
-  a mapped type over `DomainEvent['type']`, so adding an event without an entry does not compile. Today the
-  entry carries one field, `audit`; slice 7 adds the activity projector to the same entry and slice 9 the
-  outbox.
-- **Audit is not activity** (§18-11). `audit_record` is workspace-scoped, Owner/Admin-visible, never
-  translated, and **append-only enforced twice**: no `UPDATE`/`DELETE` policy, and those privileges revoked
-  from the app role. It carries `actor_user_id` *and* `on_behalf_of_user_id` so a view-as session is visible
-  in the log that exists to record it. It is also the one table whose `INSERT` policy has no
-  `not read_only` clause — a view-as session refuses mutations but must still be recorded.
+  a mapped type over `DomainEvent['type']`, so adding an event without an entry does not compile. The entry
+  carries two fields, `audit` and `activity`; slice 9 adds the outbox as a third.
+- **Audit is not activity** (§18-11), and since slice 7 both tables exist to prove it. `audit_record` is
+  workspace-scoped, Owner/Admin-visible, never translated, and **append-only enforced twice**: no
+  `UPDATE`/`DELETE` policy, and those privileges revoked from the app role. It carries `actor_user_id` *and*
+  `on_behalf_of_user_id` so a view-as session is visible in the log that exists to record it. It is also the
+  one table whose `INSERT` policy has no `not read_only` clause — a view-as session refuses mutations but
+  must still be recorded. `activity` is the opposite on that last point and the same on every other.
 - **View-as is enforced at the database, not only in the policy module.** `withActor` sets
   `unifyops.read_only`, and every tenant table's `INSERT`/`UPDATE`/`DELETE` policy carries
   `and not tenancy.is_read_only()`.
 - Adding a table is three things, not one: `...tenantPolicies()` in the schema, a `FORCE ROW LEVEL SECURITY`
   line in a hardening migration, and a `workspace_id` column. `invariants.test.ts` fails if any table in
-  `public` is missing one — that is the gate, not a review checklist.
+  `public` is missing one — that is the gate, not a review checklist. `audit_record` and `activity` are the
+  two tables that write their policies by hand rather than calling `tenantPolicies()`, because both are
+  append-only and the helper grants all five.
 - The list query is one Zod filter DSL, one builder, two queries (counts + `LATERAL` per-group page, because
   a board needs a page *per column*). Keyset cursors only; an `invariant` refuses to emit an unanchored
   workspace-wide scan.
@@ -181,8 +206,11 @@ The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
 grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
 4, `0007`/`0008` for slice 5. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
-`0004`, `0006` and `0008` are hand-written and must stay that way. A hand-written migration is scaffolded with
-`db:generate --custom` so the journal and snapshot stay consistent.
+`0004`, `0006`, `0008`, `0010`, `0012` and `0014` are hand-written and must stay that way. A hand-written migration is
+scaffolded with `db:generate --custom` so the journal and snapshot stay consistent. **Renaming a generated
+migration means editing its `tag` in `drizzle/meta/_journal.json` too, and deleting one means deleting its
+snapshot** — drizzle-kit diffs against the highest snapshot it finds, so a stale `000N_snapshot.json` makes
+the next generation silently emit nothing for a table it thinks already exists.
 
 Three conventions that surprise people:
 
@@ -407,6 +435,188 @@ would be dropped the first time anyone touched a filter. **The board is always g
 `by=` says, because a column you drag into has to mean something the drop can change and the drop changes a
 state. And **the drag handle is not the whole card** — a card is also a link to the item, and dnd-kit's
 `KeyboardSensor` needs a focusable element to start from, which is what makes §11's mouse-free loop work.
+
+
+## Activity, and the second sink on the registry
+
+Slice 7. `src/server/events/registry.ts` (the `activity` field), `UnitOfWork.flush`, the `activity` table,
+`src/server/queries/activity.ts`, `src/server/services/activity.ts` and
+`src/components/work-item/activity-feed.tsx`.
+
+**Nothing in the service layer writes a feed row.** A service emits an event; the registry decides what that
+event becomes. That is the whole slice, and it is why §14's outcome is the word *automatically* — adding an
+event type without deciding how it renders in the feed is a compile error, the same mechanism `audit` has
+had since slice 1. Slice 9 adds the outbox as a third field on the same entry.
+
+**A projector returns a list, not a row.** One event is often several lines: an edit that moved three fields
+reads as three changes, and assigning two people while unassigning a third is three things that happened to
+three people. The event stays the unit of intent; the feed is the unit of reading.
+
+**Two work-item events deliberately project to nothing.** `work_item.moved` — a card nudged up its own column
+would push the state change somebody is looking for off the screen, and it is already `audit: false` for the
+matching reason. And `work_item.deleted`, because the item's feed goes with the item; that one is audited
+instead, which is where a record of a destroyed thing has to live.
+
+**`data` holds ids, never names.** A state renamed to "QA" reads as QA in the line that recorded a move into
+it three months ago, and a seeded name stays translatable — a string frozen into the row would be English
+forever in a Khmer workspace (§13). The cost is real and is paid at the one place it bites: a workflow state
+is *hard*-deleted (§4 migrates its items first), so an old line naming it resolves to a translated
+"a deleted state" rather than to a uuid. The one exception is a blocked reason, which is free text a person
+typed about that moment and is not a reference to anything.
+
+**Ordering is by id, not by timestamp.** `occurred_at` defaults to `now()`, which is transaction start, so
+every line one mutation produced shares it. The tiebreak is the UUIDv7 primary key, generated per row in the
+order the projectors emitted — without it a three-line edit shuffles between reads.
+
+**`activity` is append-only and refuses a read-only session**, which is the one place it differs from
+`audit_record`: a view-as session must still be *audited*, and must never appear in somebody's item history
+as though they had done something themselves. `uow.emit` refuses first; the `INSERT` policy refuses again
+underneath, and `activity.test.ts` asserts the second layer with the first one bypassed.
+
+**Slice 7 widened one slice-1 policy, and it is worth knowing why.** `app_user`'s `user_select` required a
+*live* membership, which made §7.12's "activity history is preserved and attributed" unimplementable — the
+moment somebody left, every line they had written became the work of nobody. Migration 0009 drops the
+`deleted_at is null` clause: a row is still reachable only from a workspace the person actually joined, so
+what widened is time, not tenancy. Callers that mean *current* members already say so themselves
+(`listMembers` filters the membership, which is the right place for it).
+
+**The feed is a server component and the "show all" control is a `Link`.** `?activity=all` widens the window
+from 40 lines to 500. A search param rather than an entry in the filter DSL, because the DSL describes a
+query over many items and has no business carrying one item's scroll depth — and a link rather than a button
+because the result is shareable, back-buttonable and needs no client at all.
+
+
+## Comments, mentions, and the editor decision
+
+Slice 8. `src/lib/mentions.ts`, `src/server/db/schema/comment.ts`,
+`src/server/queries/comments.ts`, `src/server/services/comments.ts` and the three components under
+`src/components/work-item/comment-*.tsx`. Attachments are built, and are the section below.
+
+**A mention stores a member id and resolves to a name at render.** The body holds `@[<uuid>]` tokens and
+never a name — the same rule `activity.data` follows, for the same two reasons: somebody who changes their
+display name should read correctly in a comment written last March, and a name frozen into the row is the
+one string a Khmer workspace could never fix (§13). `mentions.ts` is in `lib` because both sides run it: the
+composer parses as you type to drive the picker, the server parses the same body on submit to write the
+mention rows. One implementation, so the chips a person sees cannot promise a notification the server will
+not send.
+
+**The editor question `work_item.description` deferred is now answered: plain text.** §12's inventory names
+Textarea and no editor; a rich-text editor is a dependency, a storage decision (HTML? a document tree?) and a
+sanitiser, none of which §12 specifies. What §7.7 actually needs is mentions, and the token format gives them
+without any of it. Both columns stay `text`, so the richer editor §4 gestures at is a renderer change rather
+than a migration.
+
+**`comment.created` projects to nothing, and it is the one `false` in the registry that is about the screen
+rather than the log.** The thread renders directly above the feed on the same page, so a line reading "Sophea
+commented" would sit an inch below Sophea's comment. The event still exists and still carries `mentioned` —
+slice 9's notifications read the stream, not the projections. **`comment.deleted` is audited**, joining
+`work_item.deleted` and `workflow_state.deleted` as the actions that destroy rather than change; `byAuthor`
+separates a person retracting their own from §10's Lead power over somebody else's. The audit row
+deliberately does not copy the body: the log is Owner-visible and permanent, and a retracted comment should
+not survive in it.
+
+**Deleting is soft and leaves a tombstone.** A thread that silently closed over a removed comment would read
+as though the exchange never happened, which is the one thing a moderated conversation must not do. This is
+also why `comment` takes all five `tenantPolicies()` rather than copying `activity`'s hand-written append-only
+set — a comment is something a person wrote and may retract, not a projection of an event.
+
+**Mentioning somebody who cannot see the project is refused, and the refusal names them.** §7.7 allows either
+that or offering to add them; this is the first. The picker is filtered to people who can already see the
+project, so the refusal is a backstop against a hand-typed token or a membership that changed while the
+composer was open. Both the filter and the refusal ask **the policy module** about the mentioned member —
+building a one-project `Actor` and calling `can(…, 'project.view', …)` — rather than re-deriving visibility,
+which would be a second implementation of §10's composition rules for the two to drift apart.
+
+**The composer keeps the draft on failure.** §7.7 is emphatic — "never lose typed text" — which is why the
+textarea is controlled and why the action returns a `postedAt` timestamp rather than a boolean: two
+successful posts in a row must look different, or the second one leaves the first comment's text in the box.
+The picker is **not** §12's Combobox and that is deliberate: a Combobox is a form control with a value, this
+is an inline autocomplete anchored to a caret that cannot take focus without stopping the typing that drives
+it. It borrows the Combobox's keyboard contract and announces itself through the ARIA combobox pattern on the
+textarea itself.
+
+**`getCommentThread` carries its own mentionable list.** It was briefly a second service call and a second
+`withActor` transaction on every item page view; folding it in is the same question about the same project,
+and it is skipped entirely when the actor cannot comment. Three transactions per item page render was enough
+extra latency to expose the e2e race described above.
+
+**One §13 gap this slice did not close, because it is not this slice's to close.** A comment body is free
+user text that may be in either script, but it renders inside the page's `lang`, so a Khmer comment in an
+English workspace inherits `lang="en"` and clips its diacritics. That is equally true of item titles,
+descriptions and project names today — nothing in the product does per-content script detection. It should be
+fixed once, for all user content, probably alongside §13's search routing, which needs the same detection.
+
+## Attachments, and why an upload is two steps
+
+The last third of slice 8. `src/lib/attachments.ts`, `src/server/storage/` (`sigv4.ts`, `store.ts`,
+`local-fs.ts`), `src/server/db/schema/attachment.ts`, `src/server/queries/attachments.ts`,
+`src/server/services/attachments.ts`, `src/app/api/internal/upload/` and the four components
+`attachment-panel.tsx`, `attachment-list.tsx`, `attachment-uploader.tsx`, `upload-queue.tsx` plus
+`use-uploads.ts` and `attachment-delete.tsx`.
+
+**§8's rule is that no byte passes through the app server, and everything else follows from it.** The browser
+PUTs straight to the store, so the only moment the server can refuse an upload is *before* one is
+authorised — which is why a row exists before its bytes do. `createUploadTicket` asks §10, applies §4's
+archived rule, validates name, size and type, writes a `pending` row and signs a URL scoped to that one key
+with that exact `content-length` and `content-type`. The store then rejects a PUT that disagrees, so **the
+size limit is enforced by the thing receiving the bytes** rather than by an `if` the bytes never reach.
+
+**`pending` is what makes an abandoned upload harmless**, and it is the reason there is no cancel endpoint. A
+ticket nobody used, or a comment drafted with a file and never posted, leaves a row nothing renders and bytes
+nothing references. Sweeping those is **slice 9's**, which is the slice that introduces pg-boss.
+
+**A file becomes visible in exactly one place, and that place emits the event.** `confirmAttachment` for a
+file on the item; `postComment` for one pasted into a comment, which claims the pending rows *before* it
+writes the comment — so an empty body whose files turn out to be nobody's is refused with nothing committed
+rather than rolled back. A comment with no text and one screenshot is legitimate (§2.4); a comment with
+neither is not.
+
+**SigV4 is ours, and it is a known-answer test rather than a leap of faith.** `sigv4.test.ts` asserts the
+exact signature AWS publishes for its own worked presigned-GET example. That is what makes the absence of
+`@aws-sdk/*` a decision rather than a shortcut — the same bargain `mailer.ts` makes by calling Resend over
+`fetch`. Do not "fix" it by adding the SDK.
+
+**Two drivers, chosen by configuration, exactly like the mailer.** R2 when `S3_*` is set; otherwise a local
+driver that writes under a gitignored `.attachments/` and serves the bytes back through the same route.
+Bytes *do* pass through the app server there, and that is the one deliberate difference — the no-bytes rule
+is about production cost, and a laptop with no cloud credentials still has to run the whole of §7.7 while
+`pnpm test:e2e` drives a real file through the real ticket, the real PUT and the real confirm. Both drivers
+return the same ticket shape, so the browser's upload code is one `fetch` either way.
+
+**The local driver's URLs are relative, and the download redirect sets `Location` verbatim.** Both are scars.
+Building an absolute URL from `NEXT_PUBLIC_APP_URL` sent every e2e upload to port 3000 while the test server
+was on 3100; resolving the redirect against `request.url` then pointed at `localhost` while the page was on
+`127.0.0.1`, which is a cross-origin redirect and reaches the browser as an unexplained CORS failure — in
+production that is a broken image preview with nothing in any log. Neither the app's configured base URL nor
+`request.url` is a reliable origin. A relative URL does not have to be right about one.
+
+**§10 has no attachment row and none was invented** — the same decision slice 5 made for labels. An
+attachment is a contribution to an item's conversation, so it falls under the rows that already govern one:
+`comment.create` to add a file, `comment.delete_others` for §10's Lead power over somebody else's. Both
+resolve to the rule the matrix already states, so nothing new is claimed on a table a non-technical owner is
+shown.
+
+**`attachment.added` projects to activity only when the file is not part of a comment**, and
+`attachment.removed` mirrors it. A file pasted into a comment is already rendered inside that comment, an
+inch above the feed — the same redundancy `comment.created` refuses. `attachment.removed` is additionally
+**audited**, joining `work_item.deleted`, `comment.deleted` and `workflow_state.deleted` as the actions that
+destroy rather than change. It **keeps the filename** where `comment.deleted` withholds the body, and that is
+not inconsistency: a body is the content, and a filename is the identifier of the thing removed. A log that
+cannot say which file went records nothing worth keeping.
+
+**Deletion is soft and the bytes outlive the row.** A delete that called Cloudflare inside the transaction
+would fail whenever Cloudflare had a bad minute, and removing a file somebody should not have posted is the
+one moment that must not depend on a third party being up.
+
+**SVG is refused though it is an image**, and HTML with it: both are documents that can carry script, the one
+place anybody opens an attachment is a browser, and the development driver serves bytes from the app's own
+origin. The allowlist is in `src/lib/attachments.ts` with the 25 MiB cap, which is a §2.5 decision — a
+phone-heavy market where data costs money — and not a number to raise quietly.
+
+**Sizes cross the wire as a number and a unit key, never a formatted string.** `describeSize` returns
+`{ value, unit }` and the component translates the unit, because "1.4 MB" returned from a function would be
+the one size label in the product that stayed English in a Khmer workspace (§13). Filenames are truncated by
+grapheme with the extension preserved, for the same reason every other truncation in the product is.
 
 
 ## Bilingual invariants

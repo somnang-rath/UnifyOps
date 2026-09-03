@@ -23,3 +23,6 @@ UnifyCharge_Brand_Assets/
 
 # Playwright browsers cache is machine-local
 .playwright/
+
+# Local attachment storage (development driver — see src/server/storage/store.ts)
+.attachments/

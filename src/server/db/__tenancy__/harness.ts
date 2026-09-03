@@ -87,6 +87,8 @@ export const SQLSTATE = {
   /** Both "permission denied for table" and "violates row-level security policy". */
   insufficientPrivilege: '42501',
   foreignKeyViolation: '23503',
+  /** A CHECK constraint — slice 8's `attachment` invariants live in 0014. */
+  checkViolation: '23514',
 } as const;
 
 export type PgFailure = { code: string; message: string };

@@ -45,3 +45,22 @@ export const INVITE_IDLE: InviteFormState = {};
 export type RowActionState = { error?: string; done?: boolean };
 
 export const ROW_IDLE: RowActionState = {};
+
+/**
+ * The comment composer's result (§7.7).
+ *
+ * `names` carries the people a refused mention named, so the message can say
+ * *who* rather than how many — "block with a clear reason" is only clear if it
+ * says whose access is missing.
+ *
+ * `postedAt` is what tells the composer a new success happened, and it exists
+ * because of the rule beside it: §7.7 says a failed post keeps the typed text,
+ * so the box cannot clear itself on every submit. It clears when this changes.
+ */
+export type CommentFormState = {
+  error?: string;
+  names?: string[];
+  postedAt?: number;
+};
+
+export const COMMENT_IDLE: CommentFormState = {};

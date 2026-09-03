@@ -1,10 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { auditRowFor } from '@/server/events/registry';
+import { activityRowsFor, auditRowFor } from '@/server/events/registry';
 import type { DomainEvent } from '@/server/events/types';
 import type { RawDb, TenantDb } from './client';
 import { rawDb } from './client';
-import { auditRecord } from './schema';
+import { activity, auditRecord } from './schema';
 
 /**
  * Who is acting, resolved once per request.
@@ -101,9 +101,36 @@ export class UnitOfWork {
 
     if (rows.length > 0) await tx.insert(auditRecord).values(rows);
 
-    // Slice 7 adds the activity projector here, and slice 9 the transactional
-    // outbox pg-boss consumes. Both are the same shape: a second sink over
-    // these same events, inside this same transaction (§8).
+    /**
+     * The second sink (§8, slice 7). Same events, same transaction, different
+     * question: audit asks what a company's administrators need to reconstruct,
+     * activity asks what happened to one work item.
+     *
+     * Ordered by the projectors, then inserted in one statement, so the ids —
+     * UUIDv7, generated per row in this order — break the tie that `occurred_at`
+     * leaves. Every row of one transaction shares a timestamp, because `now()`
+     * is transaction start; without a tiebreak the feed would shuffle three
+     * field changes into a different order on every read.
+     *
+     * Emitted while read-only, this would be a lie about who did something —
+     * which is why `emit` refuses before any of it runs, and the table's INSERT
+     * policy refuses again underneath.
+     */
+    const feed = this.#events.flatMap((event) =>
+      activityRowsFor(event).map((draft) => ({
+        workspaceId: this.ctx.workspaceId,
+        projectId: draft.projectId,
+        workItemId: draft.workItemId,
+        actorUserId: this.ctx.actorUserId,
+        action: draft.action,
+        data: draft.data,
+      })),
+    );
+
+    if (feed.length > 0) await tx.insert(activity).values(feed);
+
+    // Slice 9 adds the transactional outbox pg-boss consumes here — a third
+    // sink of the same shape, over these same events, inside this transaction.
     this.#events.length = 0;
   }
 }

@@ -9,7 +9,9 @@
  * exchanged for the workspace it names. Slice 4 adds projects, project
  * membership and workflow states. Slice 5 adds work items, their assignment and
  * label joins, the workspace's labels, and the per-project counter behind
- * `ENG-142`. The rest arrive in their own slices (§14) — each one adds
+ * `ENG-142`. Slice 7 adds `activity`, the second sink on the event registry
+ * beside `audit_record`. Slice 8 adds comments, the mentions in them, and the
+ * attachments that hang off either an item or a comment. The rest arrive in their own slices (§14) — each one adds
  * `...tenantPolicies()` and gets FORCE RLS from the hardening step, or it does
  * not ship.
  */
@@ -22,3 +24,6 @@ export * from './audit';
 export * from './auth';
 export * from './invitation';
 export * from './work-item';
+export * from './activity';
+export * from './comment';
+export * from './attachment';

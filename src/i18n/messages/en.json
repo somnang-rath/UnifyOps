@@ -437,5 +437,78 @@
     "dismiss": "Dismiss",
     "undo": "Undo",
     "region": "Notifications"
+  },
+  "activity": {
+    "heading": "Activity",
+    "empty": "Nothing has been recorded for this item yet.",
+    "truncated": "Older entries are not shown.",
+    "showAll": "Show the full history",
+    "deletedState": "a deleted state",
+    "deletedLabel": "a deleted label",
+    "formerMember": "a former member",
+    "someone": "Someone",
+    "created": "{actor} created this item",
+    "stateChanged": "{actor} moved this from {from} to {to}",
+    "stateCompleted": "{actor} completed this in {to}",
+    "assigned": "{actor} assigned {person}",
+    "unassigned": "{actor} unassigned {person}",
+    "labelled": "{actor} added the label {label}",
+    "unlabelled": "{actor} removed the label {label}",
+    "blocked": "{actor} marked this blocked — {reason}",
+    "unblocked": "{actor} cleared the blocked flag",
+    "changed": "{actor} changed this item",
+    "field": {
+      "title": "{actor} changed the title",
+      "description": "{actor} changed the description",
+      "priority": "{actor} changed the priority",
+      "startDate": "{actor} changed the start date",
+      "dueDate": "{actor} changed the due date",
+      "estimate": "{actor} changed the estimate"
+    }
+  },
+  "comments": {
+    "heading": "Comments",
+    "label": "Add a comment",
+    "hint": "Type @ to mention someone. Press Ctrl+Enter to post.",
+    "post": "Post",
+    "retry": "Retry",
+    "delete": "Delete",
+    "deleteLabel": "Delete {author}'s comment",
+    "deleted": "This comment was deleted.",
+    "empty": "No comments yet. Start the conversation.",
+    "truncated": "Earlier comments are not shown.",
+    "showAll": "Show the whole conversation",
+    "formerMember": "A former member",
+    "mentionListLabel": "People you can mention",
+    "cannotCommentArchived": "This project is archived, so its items are read-only. Unarchive it to comment.",
+    "cannotCommentForbidden": "You do not have permission to comment on this item.",
+    "errors": {
+      "bodyRequired": "Write something before posting.",
+      "bodyTooLong": "That comment is too long. Try splitting it into two.",
+      "mentionNotVisible": "Not posted — these people cannot see this project:"
+    }
+  },
+  "attachments": {
+    "heading": "Files",
+    "empty": "No files yet. Drop one here, or paste a screenshot.",
+    "add": "Attach a file",
+    "dropHint": "Drop files here, paste a screenshot, or choose one. Up to {limit} each.",
+    "uploading": "Uploading",
+    "remove": "Remove",
+    "removeLabel": "Remove {filename}",
+    "queueLabel": "Files being uploaded",
+    "inComment": "Files attached by {author}",
+    "size": {
+      "bytes": "{value} B",
+      "kb": "{value} KB",
+      "mb": "{value} MB"
+    },
+    "errors": {
+      "filenameRequired": "That file has no usable name.",
+      "fileEmpty": "That file is empty.",
+      "fileTooLarge": "That file is too large.",
+      "fileType": "That file type is not accepted.",
+      "uploadFailed": "The upload did not finish. Check your connection and try again."
+    }
   }
 }

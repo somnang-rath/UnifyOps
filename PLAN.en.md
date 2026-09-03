@@ -1108,10 +1108,14 @@ are answered below and built in slice 1. The rest never blocked it — #5 and #6
    and without an abuse plan (§17-4). Slice 3 is unblocked.
 4. **Estimate unit — RESOLVED.** Points, hidden by default. Hours would claim a precision the product cannot
    back while it has no time tracking.
-5. **Attachment storage — OPEN.** Cloudflare R2 or self-hosted MinIO. Does not affect starting the build;
-   needed before slice 8, so it can be decided later.
-6. **Hosting and data residency — OPEN.** Needs your input: where the container runs, and whether Cambodian
-   customers carry a residency requirement. Needed before slice 8, alongside #5.
+5. **Attachment storage — RESOLVED (2026-09-03).** **Cloudflare R2.** Nothing in the implementation is
+   R2-specific: the driver speaks the S3 API, so a MinIO endpoint is the same four environment variables,
+   and switching is a configuration change rather than a code change. Slice 8's attachments are unblocked
+   and built.
+6. **Hosting and data residency — RESOLVED (2026-09-03).** **No known residency requirement**, to be
+   revisited with the pilot customer (#7) — an agency handling government or bank work is the case that
+   would change the answer. Until then the bucket is placed for latency rather than jurisdiction. This is
+   the answer that let #5 settle.
 7. **Pilot customer — OPEN.** A business decision: which real company uses this first. §2's personas are
    reasoned, not researched — one real pilot team would validate or kill several assumptions cheaply. The
    answer also settles #8.

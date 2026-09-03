@@ -9,7 +9,7 @@
  * Slice 1 carried only the events the tenancy foundation itself can emit; slice
  * 3 adds the membership lifecycle — invitations, teams, joining and leaving.
  * Slice 4 adds projects and their workflow states. Slice 5 adds work items and
- * the workspace's labels.
+ * the workspace's labels. Slice 8 adds comments, the mentions in them, and attachments.
  * Later slices extend the union; the compile error is the point.
  */
 export type DomainEvent =
@@ -209,6 +209,72 @@ export type DomainEvent =
       /** The human identifier, which is never reused (§4) — so the log can still name it. */
       number: number;
       title: string;
+    }
+  | {
+      /**
+       * Somebody wrote a comment (§7.7).
+       *
+       * `mentioned` carries member ids because slice 9's notifications are the
+       * event stream's consumer, and §7.8's rule — every assignee except the
+       * actor, plus anyone mentioned — needs the mention list at the moment the
+       * comment was written, not as re-parsed from a body that may since have
+       * been deleted.
+       */
+      type: 'comment.created';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      commentId: string;
+      mentioned: readonly string[];
+    }
+  | {
+      type: 'comment.deleted';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      commentId: string;
+      /**
+       * False when a Lead, Admin or Owner removed somebody else's comment —
+       * the §10 row that makes this event worth auditing at all.
+       */
+      byAuthor: boolean;
+    }
+  | {
+      /**
+       * A file became visible on an item (§7.7, §2.4).
+       *
+       * Emitted when the attachment becomes *readable*, not when it was asked
+       * for: a ticket writes a `pending` row that nothing renders, and only the
+       * step that makes the file visible — confirming an item attachment, or
+       * posting the comment a file was pasted into — emits this. An event for
+       * an upload that was abandoned halfway would tell slice 9 to notify
+       * people about a file that does not exist.
+       *
+       * `commentId` is what the projectors branch on, and it is carried rather
+       * than looked up because the registry is pure.
+       */
+      type: 'attachment.added';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      attachmentId: string;
+      /** Null when the file hangs on the item itself rather than on a comment. */
+      commentId: string | null;
+      filename: string;
+    }
+  | {
+      type: 'attachment.removed';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      attachmentId: string;
+      commentId: string | null;
+      filename: string;
+      /**
+       * False when a Lead, Admin or Owner removed somebody else's file — the
+       * same distinction `comment.deleted` carries, and for the same reason.
+       */
+      byUploader: boolean;
     }
   | {
       type: 'invitation.accepted';

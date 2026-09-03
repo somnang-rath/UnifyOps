@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { auditRowFor, eventRegistry } from './registry';
+import { activityRowsFor, auditRowFor, eventRegistry } from './registry';
 import type { DomainEvent, EventType } from './types';
 
 /**
@@ -247,6 +247,41 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     number: 142,
     title: 'Ship the invoice export',
   },
+  'comment.created': {
+    type: 'comment.created',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'wi1',
+    commentId: 'c1',
+    mentioned: ['m2'],
+  },
+  'comment.deleted': {
+    type: 'comment.deleted',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'wi1',
+    commentId: 'c1',
+    byAuthor: false,
+  },
+  'attachment.added': {
+    type: 'attachment.added',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'wi1',
+    attachmentId: 'a1',
+    commentId: null,
+    filename: 'contract.pdf',
+  },
+  'attachment.removed': {
+    type: 'attachment.removed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'wi1',
+    attachmentId: 'a1',
+    commentId: null,
+    filename: 'contract.pdf',
+    byUploader: false,
+  },
   'invitation.accepted': {
     type: 'invitation.accepted',
     workspaceId: 'w1',
@@ -315,6 +350,11 @@ describe('the event registry', () => {
         // something rather than change it.
         'label.deleted',
         'work_item.deleted',
+        // Slice 8's two, and the third and fourth of the same kind: each
+        // destroys something a person contributed, and §10 lets somebody other
+        // than its author do it.
+        'attachment.removed',
+        'comment.deleted',
         'invitation.resent',
         'invitation.revoked',
         'invitation.sent',
@@ -337,5 +377,161 @@ describe('the event registry', () => {
   it('records who accepted an invitation, not only who was invited', () => {
     const row = auditRowFor(sample['invitation.accepted']);
     expect(row?.data).toMatchObject({ email: 'sophea@example.com', userId: 'u2' });
+  });
+});
+
+/**
+ * The activity projectors (slice 7).
+ *
+ * As with `audit`, the mapped type is the real guarantee — a new event without
+ * an `activity` decision does not compile. These cover the half a type cannot:
+ * that the decisions made are the ones §8 and §9 describe, and that a projected
+ * row can actually be written.
+ */
+describe('the activity projectors', () => {
+  it('projects work-item events, and nothing else', () => {
+    const projected = everyEvent
+      .filter((e) => activityRowsFor(e).length > 0 || eventRegistry[e.type].activity !== false)
+      .map((e) => e.type);
+
+    // Activity hangs under WorkItem in §9's hierarchy, so a feed exists per
+    // item and nowhere else. Everything about a workspace, a team, a project or
+    // an invitation is either audit or nothing.
+    expect(projected.sort()).toEqual(
+      [
+        'work_item.created',
+        'work_item.updated',
+        'work_item.state_changed',
+        'work_item.assigned',
+        'work_item.labelled',
+        'work_item.blocked_changed',
+        // Slice 8's two. They have a projector rather than `false`, and it is
+        // the projector — not the registry entry — that decides to stay quiet
+        // about a file posted inside a comment. The test below pins that.
+        'attachment.added',
+        'attachment.removed',
+      ].sort(),
+    );
+  });
+
+  // The two work-item events that deliberately project to nothing, each for a
+  // reason written at its registry entry: a reorder is noise in a history, and
+  // a deleted item takes its history with it.
+  it('says nothing about a reorder or a deletion', () => {
+    expect(activityRowsFor(sample['work_item.moved'])).toEqual([]);
+    expect(activityRowsFor(sample['work_item.deleted'])).toEqual([]);
+  });
+
+  // Slice 8, and the one `false` here that is about the screen rather than the
+  // log: the thread renders directly above the feed, so a line saying somebody
+  // commented sits an inch below the comment itself.
+  it('says nothing about a comment, which the thread above it already shows', () => {
+    expect(activityRowsFor(sample['comment.created'])).toEqual([]);
+    expect(activityRowsFor(sample['comment.deleted'])).toEqual([]);
+  });
+
+  // The audit row records that a comment was destroyed and whether its author
+  // did it. It deliberately does not copy the body: the log is Owner-visible
+  // and permanent, and a retracted comment should not survive in it.
+  it('audits a deleted comment without keeping its text', () => {
+    const row = auditRowFor(sample['comment.deleted']);
+
+    expect(row?.subjectType).toBe('comment');
+    expect(row?.data).toMatchObject({ workItemId: 'wi1', byAuthor: false });
+    expect(JSON.stringify(row?.data)).not.toContain('body');
+  });
+
+  /**
+   * The condition that keeps the feed honest about files. A file dropped on the
+   * item is announced by nothing else; a file pasted into a comment is already
+   * rendered inside that comment, an inch above the feed.
+   */
+  it('projects a file on the item but stays quiet about one inside a comment', () => {
+    expect(activityRowsFor(sample['attachment.added'])).toEqual([
+      {
+        workItemId: 'wi1',
+        projectId: 'p1',
+        action: 'attachment.added',
+        data: { attachmentId: 'a1', filename: 'contract.pdf' },
+      },
+    ]);
+
+    expect(
+      activityRowsFor({ ...sample['attachment.added'], commentId: 'c1' }),
+    ).toEqual([]);
+    expect(
+      activityRowsFor({ ...sample['attachment.removed'], commentId: 'c1' }),
+    ).toEqual([]);
+  });
+
+  /**
+   * The filename is kept where `comment.deleted` withholds the body, and the
+   * difference is the point: a filename identifies the thing that was removed,
+   * a body *is* the thing. A log that cannot say which file went records
+   * nothing worth keeping.
+   */
+  it('audits a removed file by name, and says whether its uploader did it', () => {
+    const row = auditRowFor(sample['attachment.removed']);
+
+    expect(row?.subjectType).toBe('attachment');
+    expect(row?.subjectId).toBe('a1');
+    expect(row?.data).toMatchObject({ filename: 'contract.pdf', byUploader: false });
+  });
+
+  it('anchors every row to an item, a project and its own event type', () => {
+    for (const event of everyEvent) {
+      for (const row of activityRowsFor(event)) {
+        expect(row.workItemId, event.type).toBeTruthy();
+        expect(row.projectId, event.type).toBeTruthy();
+        expect(row.action, event.type).toBe(event.type);
+        expect(typeof row.data, event.type).toBe('object');
+      }
+    }
+  });
+
+  // §8: "one line per name". An edit that moved two fields is two things a
+  // reader wants to see, not one line saying the item was edited.
+  it('fans an edit out into one row per field', () => {
+    const rows = activityRowsFor(sample['work_item.updated']);
+
+    expect(rows.map((r) => r.data.field)).toEqual(['title', 'dueDate']);
+  });
+
+  // Assignment is a set operation carrying a diff, and each side of the diff
+  // happened to a different person — §4 notifies them separately for the same
+  // reason.
+  it('fans assignment out per person, saying which way', () => {
+    const rows = activityRowsFor({
+      type: 'work_item.assigned',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      workItemId: 'wi1',
+      added: ['m2', 'm3'],
+      removed: ['m4'],
+    });
+
+    expect(rows.map((r) => r.data)).toEqual([
+      { memberId: 'm2', assigned: true },
+      { memberId: 'm3', assigned: true },
+      { memberId: 'm4', assigned: false },
+    ]);
+  });
+
+  // §13: what is stored is an id and the renderer owns the sentence. A name
+  // written here would freeze at this moment and read as English forever in a
+  // Khmer workspace — and would not follow a rename.
+  it('stores state ids, not state names', () => {
+    const [row] = activityRowsFor(sample['work_item.state_changed']);
+
+    expect(row?.data).toEqual({ from: 's1', to: 's2', completed: false });
+  });
+
+  // The one exception, and it is not a reference: a blocked reason is free text
+  // a person typed about this moment, so the feed keeps the words they used
+  // rather than whatever the item says today.
+  it('keeps the words of a blocked reason', () => {
+    const [row] = activityRowsFor(sample['work_item.blocked_changed']);
+
+    expect(row?.data).toEqual({ blocked: true, reason: 'waiting on the client' });
   });
 });

@@ -179,6 +179,14 @@ test.describe('work items', () => {
     const target = await options[2]!.getAttribute('value');
     await rowState.selectOption(target!);
 
+    // The select disables itself while the transition is in flight (see
+    // `state-select.tsx`), so waiting for it to come back is what makes the
+    // navigation below assert a committed write rather than race it. Without
+    // this, `goto` can abort the server action mid-flight — which shows up in
+    // the server log as "The destination stream closed early" and here as a
+    // state change that silently did not happen.
+    await expect(rowState).toBeEnabled();
+
     await page.goto(`/${locale}/${slug}/projects/${projectSlug}`);
     // Reloaded from the server, so this asserts the write landed rather than
     // that the optimistic update rendered.
