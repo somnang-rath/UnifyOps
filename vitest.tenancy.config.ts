@@ -12,7 +12,21 @@ import { fileURLToPath } from 'node:url';
  */
 export default defineConfig({
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      /**
+       * `server-only` is a two-file package: an empty module under the
+       * `react-server` condition, and one that throws everywhere else. Vitest
+       * runs plain Node, so importing anything from `src/server` that carries
+       * the guard would throw at import time — which says nothing about the
+       * code under test.
+       *
+       * Aliasing it to the empty half here does not weaken the guarantee. The
+       * guard exists so a *client bundle* that imports server code fails to
+       * build, and Next still applies the real condition when it builds one.
+       */
+      'server-only': fileURLToPath(new URL('./node_modules/server-only/empty.js', import.meta.url)),
+    },
   },
   test: {
     environment: 'node',

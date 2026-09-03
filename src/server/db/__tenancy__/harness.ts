@@ -1,6 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
 import { uuidv7 } from 'uuidv7';
 import * as schema from '../schema';
 import {
@@ -14,6 +13,7 @@ import {
   workspaceMember,
 } from '../schema';
 import { provisionDatabase, superuserConnection } from '../provision';
+import { createPool } from '../pool';
 import { withActor } from '../tenant';
 
 /**
@@ -60,10 +60,10 @@ export async function startTenancyHarness(): Promise<TenancyHarness> {
   const { url, stop: stopContainer } = await superuserConnection();
   const urls = await provisionDatabase({ superuserUrl: url, database: TEST_DB });
 
-  const ownerPool = new Pool({ connectionString: urls.owner, max: 2 });
-  const appPool = new Pool({ connectionString: urls.app, max: 4 });
-  const operatorPool = new Pool({ connectionString: urls.operator, max: 2 });
-  const identityPool = new Pool({ connectionString: urls.identity, max: 2 });
+  const ownerPool = createPool('harness:owner', { connectionString: urls.owner, max: 2 });
+  const appPool = createPool('harness:app', { connectionString: urls.app, max: 4 });
+  const operatorPool = createPool('harness:operator', { connectionString: urls.operator, max: 2 });
+  const identityPool = createPool('harness:identity', { connectionString: urls.identity, max: 2 });
 
   return {
     app: drizzle(appPool, { schema }),

@@ -39,6 +39,23 @@ export const workspace = pgTable(
     id: primaryId(),
     slug: text('slug').notNull(),
     name: text('name').notNull(),
+
+    /**
+     * The company's timezone (§6-1), and the authority for every date the
+     * product asserts something about.
+     *
+     * Here in slice 5 rather than with the rest of company settings in slice 15,
+     * because slice 5 is where "overdue" is first computed and §17-13 is
+     * explicit about what happens without it: evaluated on the viewer's device,
+     * an item is late for the employee and on time for their manager, and a
+     * shared number becomes an argument. The column is the decision; the
+     * settings screen that edits it is slice 15's.
+     *
+     * An IANA name, defaulted to the market §2.5 describes. Validated in the
+     * service against `Intl.supportedValuesOf('timeZone')` rather than by a
+     * check constraint — the tz database changes without the schema.
+     */
+    timezone: text('timezone').notNull().default('Asia/Phnom_Penh'),
     ...timestamps,
   },
   (t) => [

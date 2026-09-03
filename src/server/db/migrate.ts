@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { Pool } from 'pg';
 import { ownerDatabaseUrl } from '@/env';
+import { createPool } from './pool';
 
 /**
  * Applies migrations as the OWNER role.
@@ -11,7 +11,7 @@ import { ownerDatabaseUrl } from '@/env';
  * is FORCE ROW LEVEL SECURITY (drizzle/0002). Run with `pnpm db:migrate`.
  */
 async function main(): Promise<void> {
-  const pool = new Pool({ connectionString: ownerDatabaseUrl(), max: 1 });
+  const pool = createPool('migrate', { connectionString: ownerDatabaseUrl(), max: 1 });
 
   try {
     await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });

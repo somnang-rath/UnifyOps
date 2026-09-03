@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { Pool } from 'pg';
+import { createPool } from './pool';
 
 /**
  * Building a UnifyOps database from nothing: roles, grants, schema.
@@ -65,7 +65,7 @@ export async function provisionDatabase(options: {
 }): Promise<ProvisionedUrls> {
   const { superuserUrl, database } = options;
 
-  const admin = new Pool({ connectionString: superuserUrl, max: 1 });
+  const admin = createPool('provision:admin', { connectionString: superuserUrl, max: 1 });
   try {
     for (const { role, sqlName } of ROLES) {
       const password = TEST_ROLE_PASSWORDS[role];
@@ -91,7 +91,7 @@ export async function provisionDatabase(options: {
   }
 
   const dbUrl = withDatabase(superuserUrl, database);
-  const setup = new Pool({ connectionString: dbUrl, max: 1 });
+  const setup = createPool('provision:setup', { connectionString: dbUrl, max: 1 });
   try {
     for (const statement of [
       'create extension if not exists pg_trgm',
@@ -119,7 +119,7 @@ export async function provisionDatabase(options: {
   }
 
   const ownerUrl = asRole(dbUrl, 'unifyops_owner', TEST_ROLE_PASSWORDS.owner);
-  const ownerPool = new Pool({ connectionString: ownerUrl, max: 2 });
+  const ownerPool = createPool('provision:owner', { connectionString: ownerUrl, max: 2 });
   try {
     await migrate(drizzle(ownerPool), { migrationsFolder: 'drizzle' });
   } finally {

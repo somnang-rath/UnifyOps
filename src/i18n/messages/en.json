@@ -28,7 +28,8 @@
     "high": "High",
     "medium": "Medium",
     "low": "Low",
-    "none": "No priority"
+    "none": "No priority",
+    "label": "Priority: {value}"
   },
   "stateGroup": {
     "backlog": "Backlog",
@@ -269,7 +270,8 @@
       "nameRequired": "Enter a state name.",
       "nameTaken": "This project already has a state with that name.",
       "lastState": "A project keeps at least one state.",
-      "unknownState": "That state no longer exists."
+      "unknownState": "That state no longer exists.",
+      "hasItems": "This state still holds work. Choose where those items go."
     }
   },
   "workspace": {
@@ -300,5 +302,114 @@
     "heading": "UnifyOps",
     "body": "Multi-company work management. Bilingual from day one.",
     "status": "Slice 3 — accounts, companies, teams and invitations."
+  },
+  "labelColor": {
+    "ink": "Grey",
+    "sky": "Light blue",
+    "navy": "Dark blue",
+    "lilac": "Lilac",
+    "chartreuse": "Lime",
+    "warning": "Amber",
+    "success": "Green",
+    "danger": "Red"
+  },
+  "workItems": {
+    "title": "Title",
+    "description": "Description",
+    "descriptionHint": "Plain text for now. Formatting arrives with comments.",
+    "priority": "Priority",
+    "estimate": "Estimate",
+    "estimateHint": "In points.",
+    "startDate": "Start date",
+    "dueDate": "Due date",
+    "dueDateHint": "Counted in the company timezone.",
+    "state": "State",
+    "stateOf": "State of {item}",
+    "assignees": "Assignees",
+    "saveAssignees": "Save assignees",
+    "labels": "Labels",
+    "saveLabels": "Save labels",
+    "noMembers": "Nobody has joined this workspace yet.",
+    "noLabels": "No labels yet. An owner or admin creates them in workspace settings.",
+    "blocked": "Blocked",
+    "blockedTitle": "Blocked",
+    "blockedReason": "What is blocking this?",
+    "block": "Mark blocked",
+    "unblock": "Clear blocked",
+    "overdue": "Overdue",
+    "delete": "Delete this item",
+    "deleteHint": "Deleted items can be recovered for 30 days. The identifier is never reused.",
+    "addPlaceholder": "Add a task…",
+    "loadMore": "Load more",
+    "groupEmpty": "Nothing here.",
+    "groupBy": "Group by",
+    "sortBy": "Sort by",
+    "groups": {
+      "state": "State",
+      "assignee": "Assignee",
+      "priority": "Priority",
+      "label": "Label",
+      "project": "Project",
+      "none": "Everything"
+    },
+    "sorts": {
+      "rank": "Manual",
+      "created": "Created",
+      "updated": "Updated",
+      "due": "Due date",
+      "priority": "Priority",
+      "number": "Number"
+    },
+    "due": {
+      "overdue": "Overdue",
+      "today": "Due today",
+      "week": "Due this week",
+      "none": "No due date",
+      "any": "Any due date"
+    },
+    "filters": {
+      "state": "State",
+      "assignee": "Assignee",
+      "label": "Label",
+      "priority": "Priority",
+      "due": "Due",
+      "blocked": "Blocked",
+      "any": "Any",
+      "unassigned": "Unassigned",
+      "unlabelled": "No label",
+      "blockedOnly": "Blocked only",
+      "notBlocked": "Not blocked",
+      "clear": "Clear filters"
+    },
+    "errors": {
+      "titleRequired": "Enter a title.",
+      "unknownState": "That state no longer exists.",
+      "unknownParent": "That parent item no longer exists.",
+      "tooDeep": "Sub-items go three levels deep at most.",
+      "unknownMember": "That person is no longer in this workspace.",
+      "unknownLabel": "That label no longer exists.",
+      "blockedReasonRequired": "Say what is blocking this.",
+      "notFound": "That item no longer exists.",
+      "readOnly": "You are viewing as someone else, so nothing can be changed.",
+      "forbidden": "You do not have permission to change this item.",
+      "loadMore": "Could not load more. Try again."
+    }
+  },
+  "labels": {
+    "title": "Labels",
+    "subtitle": "Labels are shared across every project in this workspace.",
+    "name": "Label name",
+    "color": "Colour",
+    "add": "Add label",
+    "empty": "No labels yet. Add the first one above.",
+    "readOnly": "Only an owner or admin can change labels.",
+    "confirmDelete": "Delete and remove from items",
+    "errors": {
+      "nameRequired": "Enter a label name.",
+      "nameTaken": "This workspace already has a label with that name.",
+      "notFound": "That label no longer exists.",
+      "inUse": "This label is still on some items. Confirm to remove it from them.",
+      "forbidden": "You do not have permission to change labels."
+    }
   }
 }

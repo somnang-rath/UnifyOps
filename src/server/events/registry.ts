@@ -206,6 +206,46 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     },
   },
 
+  // Labels are workspace vocabulary an Owner or Admin maintains. Creating and
+  // renaming one is ordinary upkeep; deleting one is not, because it strips the
+  // label from every item carrying it — a change to a body of work made by
+  // somebody who was looking at a settings screen, which is exactly the shape
+  // of thing the log exists to explain later.
+  'label.created': { audit: false },
+  'label.updated': { audit: false },
+  'label.deleted': {
+    audit: {
+      subjectType: 'label',
+      subject: (e) => e.labelId,
+      data: (e) => ({ name: e.name, detachedFrom: e.detachedFrom }),
+    },
+  },
+
+  // The whole point of §18-11 is that `audit_record` stays readable. Work items
+  // change constantly — a title edited, a card dragged, an assignee swapped —
+  // and routing that stream into the log an owner opens to ask "who removed
+  // Sophea's access" would bury the answer under a day's ordinary work. All of
+  // it is activity (slice 7), which is per-item, translated, and where somebody
+  // actually goes looking for it.
+  'work_item.created': { audit: false },
+  'work_item.updated': { audit: false },
+  'work_item.state_changed': { audit: false },
+  'work_item.assigned': { audit: false },
+  'work_item.labelled': { audit: false },
+  'work_item.blocked_changed': { audit: false },
+
+  // The exception, for the reason `workflow_state.deleted` is one: this is the
+  // only work-item action that destroys work rather than changing it, and the
+  // item's own activity feed disappears along with it — so the record has to
+  // live somewhere the item does not.
+  'work_item.deleted': {
+    audit: {
+      subjectType: 'work_item',
+      subject: (e) => e.workItemId,
+      data: (e) => ({ projectId: e.projectId, number: e.number, title: e.title }),
+    },
+  },
+
   'invitation.accepted': {
     audit: {
       subjectType: 'invitation',

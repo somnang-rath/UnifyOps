@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
 import { uuidv7 } from 'uuidv7';
 import { appDatabaseUrl, ownerDatabaseUrl } from '@/env';
+import { createPool } from './pool';
 import * as schema from './schema';
 import { project, projectMember, team, teamMember, user, workspace, workspaceMember } from './schema';
 import { seedDefaultStates } from '@/server/services/workflow-states';
@@ -53,8 +53,8 @@ const WORKSPACES = [
 ];
 
 async function main(): Promise<void> {
-  const ownerPool = new Pool({ connectionString: ownerDatabaseUrl(), max: 1 });
-  const appPool = new Pool({ connectionString: appDatabaseUrl(), max: 2 });
+  const ownerPool = createPool('seed:owner', { connectionString: ownerDatabaseUrl(), max: 1 });
+  const appPool = createPool('seed:app', { connectionString: appDatabaseUrl(), max: 2 });
   const asOwner = drizzle(ownerPool, { schema });
   const asApp = drizzle(appPool, { schema });
 

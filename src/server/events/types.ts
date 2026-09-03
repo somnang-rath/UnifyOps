@@ -8,7 +8,8 @@
  *
  * Slice 1 carried only the events the tenancy foundation itself can emit; slice
  * 3 adds the membership lifecycle — invitations, teams, joining and leaving.
- * Slice 4 adds projects and their workflow states.
+ * Slice 4 adds projects and their workflow states. Slice 5 adds work items and
+ * the workspace's labels.
  * Later slices extend the union; the compile error is the point.
  */
 export type DomainEvent =
@@ -113,6 +114,86 @@ export type DomainEvent =
       name: string;
       /** Where the items went. Null only when the state held none. */
       migratedToStateId: string | null;
+    }
+  | { type: 'label.created'; workspaceId: string; labelId: string; name: string; color: string }
+  | {
+      type: 'label.updated';
+      workspaceId: string;
+      labelId: string;
+      name: string;
+      color: string;
+      /** Set only when this update was a rename, so the log can show both. */
+      previousName: string | null;
+    }
+  | {
+      type: 'label.deleted';
+      workspaceId: string;
+      labelId: string;
+      name: string;
+      /** How many items lost the label. The reason this one is audited. */
+      detachedFrom: number;
+    }
+  | {
+      type: 'work_item.created';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      number: number;
+      title: string;
+      stateId: string;
+      parentId: string | null;
+    }
+  | {
+      type: 'work_item.updated';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      /** Which fields changed. The activity feed (slice 7) renders one line per name. */
+      fields: readonly string[];
+    }
+  | {
+      type: 'work_item.state_changed';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      from: string;
+      to: string;
+      /** True when the new state's group closes the item — §4 derives this from the group. */
+      completed: boolean;
+    }
+  | {
+      type: 'work_item.assigned';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      /** §4: notifications reach every assignee except the actor, and unassignment notifies the person removed. */
+      added: readonly string[];
+      removed: readonly string[];
+    }
+  | {
+      type: 'work_item.labelled';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      added: readonly string[];
+      removed: readonly string[];
+    }
+  | {
+      type: 'work_item.blocked_changed';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      blocked: boolean;
+      reason: string | null;
+    }
+  | {
+      type: 'work_item.deleted';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      /** The human identifier, which is never reused (§4) — so the log can still name it. */
+      number: number;
+      title: string;
     }
   | {
       type: 'invitation.accepted';

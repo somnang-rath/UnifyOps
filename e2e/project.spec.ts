@@ -69,23 +69,28 @@ test.describe('projects', () => {
 
     await page.getByRole('button', { name: /create project|បង្កើតគម្រោង/i }).click();
 
-    // §7.1: land on the BOARD, six default states already present.
+    // §7.1: land on the project's work, six default states already present.
+    // Slice 5 made that landing the List view — one titled group per state —
+    // where slice 4 drew a board frame. Slice 6 adds the board back as a second
+    // view over the same query.
     await expect(page).toHaveURL(new RegExp(`/${locale}/${slug}/projects/website-redesign$`));
 
-    const board = page.getByRole('list', { name: /board|ក្តារការងារ/i });
-    await expect(board.getByRole('listitem')).toHaveCount(6);
+    // Each group is a titled <section>, so six states are six regions.
+    const groups = page.getByRole('region');
+    await expect(groups).toHaveCount(6);
 
     // The names themselves, per locale. Asserting the count alone would pass
-    // with six columns all reading "defaultState.todo".
+    // with six groups all reading "defaultState.todo".
+    const body = page.locator('body');
     if (locale === 'km') {
       // The catalogue's own values rather than a guess at them — km.json is
       // the authority on what "In Progress" and "Done" read as in Khmer.
-      await expect(board).toContainText('កំពុងដំណើរការ');
-      await expect(board).toContainText('បានបញ្ចប់');
-      await expect(board).not.toContainText('In Progress');
+      await expect(body).toContainText('កំពុងដំណើរការ');
+      await expect(body).toContainText('បានបញ្ចប់');
+      await expect(body).not.toContainText('In Progress');
     } else {
-      await expect(board).toContainText('In Progress');
-      await expect(board).toContainText('Done');
+      await expect(body).toContainText('In Progress');
+      await expect(body).toContainText('Done');
     }
   });
 

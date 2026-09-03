@@ -19,9 +19,9 @@
     "test:tenancy": "vitest run --config vitest.tenancy.config.ts",
     "db:setup": "node scripts/db-setup.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/server/db/migrate.ts",
+    "db:migrate": "tsx --env-file=.env src/server/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx src/server/db/seed.ts"
+    "db:seed": "tsx --env-file=.env --conditions=react-server src/server/db/seed.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

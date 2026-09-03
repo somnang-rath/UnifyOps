@@ -52,6 +52,7 @@ const STATE_KEYS: Record<WorkflowStateProblem, string> = {
   name_taken: 'states.errors.nameTaken',
   last_state: 'states.errors.lastState',
   unknown_state: 'states.errors.unknownState',
+  state_has_items: 'states.errors.hasItems',
 };
 
 /** Which field a project problem belongs on, so §11's error lands where the fix is. */

@@ -1,7 +1,8 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 import { appDatabaseUrl } from '@/env';
+import { createPool } from './pool';
 import * as schema from './schema';
 
 export type Schema = typeof schema;
@@ -33,7 +34,7 @@ let pool: Pool | undefined;
  * — never opens a socket in a process that only needed the types.
  */
 export function appPool(): Pool {
-  pool ??= new Pool({
+  pool ??= createPool('app', {
     connectionString: appDatabaseUrl(),
     // Tenancy variables are transaction-local, so a pooled connection cannot
     // carry one request's scope into the next. That property is what makes

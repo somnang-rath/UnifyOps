@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 import { identityDatabaseUrl } from '@/env';
+import { createPool } from './pool';
 import * as schema from './schema';
 import type { Schema } from './client';
 
@@ -45,7 +46,7 @@ let pool: Pool | undefined;
  * connections for a path that is nearly idle.
  */
 function identityPool(): Pool {
-  pool ??= new Pool({
+  pool ??= createPool('identity', {
     connectionString: identityDatabaseUrl(),
     max: 4,
     idleTimeoutMillis: 30_000,

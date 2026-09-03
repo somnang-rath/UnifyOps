@@ -176,6 +176,45 @@
   --state-success: var(--color-success-600);
   --state-danger: var(--color-crimson-600);
 
+  /* Priority (slice 5). §12 assigns these five outright — danger, warning, sky,
+     and two neutral steps — so the mapping is a token family rather than a
+     lookup written at a call site. They colour an icon beside a title, never
+     the title itself, so the target is 3:1 against the surface. */
+  --priority-urgent: var(--color-crimson-600);
+  --priority-high: var(--color-warning-600);
+  --priority-medium: var(--color-sky-600);
+  --priority-low: var(--color-ink-400);
+  --priority-none: var(--color-ink-300);
+
+  /* Label colours (slice 5). Deliberately a wider set than --state-*: this is
+     the one place §12 puts the two decorative brand colours to work, because a
+     label is a company's own vocabulary rather than a meaning the product
+     assigns. Like a state colour, it is stored as a token name — a hex written
+     into a row in 2026 cannot resolve differently in dark mode. */
+  --label-ink: var(--color-ink-500);
+  --label-sky: var(--color-sky-600);
+  --label-navy: var(--color-navy-800);
+  --label-lilac: var(--color-lilac-600);
+  --label-chartreuse: var(--color-chartreuse-600);
+  --label-warning: var(--color-warning-600);
+  --label-success: var(--color-success-600);
+  --label-danger: var(--color-crimson-600);
+
+  /* Avatar fills (slice 5). §12: "initials fallback on a deterministic colour
+     from user ID" — so the same person is the same colour everywhere, and the
+     initials are always drawn in --bg. A separate family from --label-* rather
+     than a reuse of it, because these carry *text* and so owe 4.5:1 rather than
+     3:1: the label steps are 3.8–4.3:1 against Ivory and would fail. Every pair
+     below is 5.7:1 or better in both themes. */
+  --avatar-1: var(--color-ink-700);
+  --avatar-2: var(--color-sky-800);
+  --avatar-3: var(--color-navy-800);
+  --avatar-4: var(--color-lilac-800);
+  --avatar-5: var(--color-chartreuse-800);
+  --avatar-6: var(--color-warning-700);
+  --avatar-7: var(--color-success-700);
+  --avatar-8: var(--color-crimson-800);
+
   --shadow-sm: 0 1px 2px 0 rgb(33 46 59 / 0.06);
   --shadow-md: 0 2px 8px -1px rgb(33 46 59 / 0.10), 0 1px 3px -1px rgb(33 46 59 / 0.06);
   --shadow-lg: 0 12px 32px -8px rgb(33 46 59 / 0.18);
@@ -230,6 +269,33 @@
   --state-success: var(--color-success-300);
   --state-danger: var(--color-crimson-400);
 
+  /* Lightened against Charcoal, for the same reason the state family is. "none"
+     stays one step dimmer than "low" in both themes, which on this ramp means
+     a lower number in light and a higher one in dark. */
+  --priority-urgent: var(--color-crimson-400);
+  --priority-high: var(--color-warning-300);
+  --priority-medium: var(--color-sky-400);
+  --priority-low: var(--color-ink-400);
+  --priority-none: var(--color-ink-500);
+
+  --label-ink: var(--color-ink-400);
+  --label-sky: var(--color-sky-400);
+  --label-navy: var(--color-navy-300);
+  --label-lilac: var(--color-lilac-300);
+  --label-chartreuse: var(--color-chartreuse-300);
+  --label-warning: var(--color-warning-300);
+  --label-success: var(--color-success-300);
+  --label-danger: var(--color-crimson-400);
+
+  --avatar-1: var(--color-ink-300);
+  --avatar-2: var(--color-sky-300);
+  --avatar-3: var(--color-navy-300);
+  --avatar-4: var(--color-lilac-300);
+  --avatar-5: var(--color-chartreuse-300);
+  --avatar-6: var(--color-warning-300);
+  --avatar-7: var(--color-success-300);
+  --avatar-8: var(--color-crimson-300);
+
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.30);
   --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.45);
   --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.60);
@@ -270,6 +336,30 @@
   --color-state-warning: var(--state-warning);
   --color-state-success: var(--state-success);
   --color-state-danger: var(--state-danger);
+
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-low: var(--priority-low);
+  --color-priority-none: var(--priority-none);
+
+  --color-label-ink: var(--label-ink);
+  --color-label-sky: var(--label-sky);
+  --color-label-navy: var(--label-navy);
+  --color-label-lilac: var(--label-lilac);
+  --color-label-chartreuse: var(--label-chartreuse);
+  --color-label-warning: var(--label-warning);
+  --color-label-success: var(--label-success);
+  --color-label-danger: var(--label-danger);
+
+  --color-avatar-1: var(--avatar-1);
+  --color-avatar-2: var(--avatar-2);
+  --color-avatar-3: var(--avatar-3);
+  --color-avatar-4: var(--avatar-4);
+  --color-avatar-5: var(--avatar-5);
+  --color-avatar-6: var(--avatar-6);
+  --color-avatar-7: var(--avatar-7);
+  --color-avatar-8: var(--avatar-8);
 
   /* Without these, Tailwind's `shadow-sm` resolves to Tailwind's own default
      rather than the token above, and every component has to write

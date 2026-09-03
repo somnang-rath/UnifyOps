@@ -32,6 +32,13 @@ export type WorkspaceSummary = {
   slug: string;
   name: string;
   role: WorkspaceRole;
+  /**
+   * The company's timezone (§6-1), carried on every resolved actor because
+   * every date the product asserts something about is evaluated in it (§4).
+   * Resolved once here rather than fetched by whichever screen needs it, so no
+   * screen can quietly fall back to the viewer's device (§17-13).
+   */
+  timezone: string;
 };
 
 /**
@@ -51,6 +58,7 @@ export const listMyWorkspaces = cache(
             id: workspaceTable.id,
             slug: workspaceTable.slug,
             name: workspaceTable.name,
+            timezone: workspaceTable.timezone,
             role: workspaceMember.role,
           })
           .from(workspaceMember)
@@ -121,6 +129,7 @@ export const resolveActorContext = cache(
             workspaceId: workspaceTable.id,
             slug: workspaceTable.slug,
             name: workspaceTable.name,
+            timezone: workspaceTable.timezone,
             memberId: workspaceMember.id,
             role: workspaceMember.role,
           })
@@ -161,6 +170,7 @@ export const resolveActorContext = cache(
         id: found.workspaceId,
         slug: found.slug,
         name: found.name,
+        timezone: found.timezone,
         role: found.role,
       },
       memberId: found.memberId,

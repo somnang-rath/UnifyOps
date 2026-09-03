@@ -16,6 +16,7 @@ import {
   type StateGroup,
 } from '@/lib/state-groups';
 import { isArchived, loadProject, projectResource, type ProjectProblem } from './project-access';
+import { countItemsInState, migrateItemsBetweenStates } from './work-items';
 
 /**
  * Workflow states — the columns of a board, and §6-3's v1 customization: "add,
@@ -70,7 +71,9 @@ export type WorkflowStateProblem =
   | ProjectProblem
   | 'name_taken'
   | 'last_state'
-  | 'unknown_state';
+  | 'unknown_state'
+  /** §4: a state holding items cannot be deleted without saying where they go. */
+  | 'state_has_items';
 
 /**
  * A success, carrying whatever the caller needs back — usually nothing, and
@@ -326,6 +329,13 @@ export async function reorderWorkflowStates(
  * column, not a record of work, and a soft-deleted one would keep its name
  * reserved by `workflow_state_project_name_key` — so a team that deleted
  * "Blocked" by mistake could never create it again.
+ *
+ * Slice 5 closed the guard this function was left holding open: the items now
+ * exist, so a state that holds any is refused unless the caller names where
+ * they go, and the move happens inside this same transaction. `work_item`'s
+ * foreign key onto the state is `ON DELETE RESTRICT` for the same reason — if
+ * this check were ever bypassed, the database refuses rather than orphaning
+ * work.
  */
 export async function deleteWorkflowState(
   resolved: ResolvedActor,
@@ -350,10 +360,16 @@ export async function deleteWorkflowState(
       return { ok: false, problem: 'unknown_state' } as const;
     }
 
-    // Slice 5 moves the work items here, and turns "no target given" into a
-    // refusal when the state holds any. Until work items exist there is nothing
-    // to move and nothing to require — writing that guard against a table that
-    // does not exist yet would be a guess, not a check.
+    // §4: "Deleting a state holding items requires choosing a migration
+    // target. The one place we insist on a confirmation dialog, because the
+    // alternative is orphaned work." The count is what lets the dialog say how
+    // many, which is the number that makes the choice a real one.
+    const held = await countItemsInState(tx, input.stateId);
+    if (held > 0) {
+      if (migrateTo === null) return { ok: false, problem: 'state_has_items' } as const;
+      await migrateItemsBetweenStates(tx, input.stateId, migrateTo);
+    }
+
     await tx.delete(workflowState).where(eq(workflowState.id, input.stateId));
 
     uow.emit({

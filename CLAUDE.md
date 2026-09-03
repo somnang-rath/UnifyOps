@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: approved for build, slice 4 landed
+## Status: approved for build, slice 5 landed
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -11,17 +11,19 @@ database role. Both are implemented — see below. The remaining open questions 
 block anything before slice 8.
 
 Slices are still built **one at a time, in §14's order, on request**. The approval was to start, not a
-standing licence to run ahead — slice 5 (work items, the list query, List view) is next and has not been
-started. §14 calls slices 5 and 6 the other two places a wrong decision is expensive to reverse.
+standing licence to run ahead — slice 6 (board + ranking) is next and has not been started. §14 called
+slices 5 and 6 the other two places a wrong decision is expensive to reverse; slice 5 is now behind us, and
+slice 6 inherits most of its machinery.
 
-What exists: **slices 0, 1, 2, 3 and 4** — the i18n scaffold, the design-token layer, the tenancy foundation
+What exists: **slices 0 through 5** — the i18n scaffold, the design-token layer, the tenancy foundation
 (`src/server/db`, `drizzle/`), the policy module (`src/server/authz/`), authentication, workspace creation,
-teams and invitations (`src/server/auth`, `src/server/services`), and now projects, project membership and
-workflow states (`src/server/services/projects.ts`, `workflow-states.ts`, and the routes under
+teams and invitations (`src/server/auth`, `src/server/services`), projects, project membership and workflow
+states, and now work items, labels, the §9 list query and the List view (`src/lib/work-item-query.ts`,
+`src/server/queries/work-items.ts`, `src/server/services/work-items.ts`, `labels.ts`, and the routes under
 `src/app/[locale]/[workspaceSlug]/projects/`). All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-02 — `typecheck`, `lint`, `test` (115 unit), `build`, `test:e2e` (53 across
-three Playwright projects, 1 pre-existing skip) and `test:tenancy` (63 against real Postgres 18.4). **Re-run
+Every gate passed on 2026-09-03 — `typecheck`, `lint`, `test` (154 unit), `build`, `test:e2e` (62 across
+three Playwright projects, 1 pre-existing skip) and `test:tenancy` (90 against real Postgres 18.4). **Re-run
 them rather than trusting this line**; it is a snapshot, not a promise.
 
 **`pnpm test:e2e` now needs a database.** From slice 3 the flows §15 asks to be tested in a browser are flows
@@ -97,8 +99,8 @@ the usual response to that is to skip it — which is the one suite that must ne
 
   Its reach is short enough to state in a sentence, and `invariants.test.ts` asserts the grant list
   **exactly**: `app_user`, `workspace`, the `auth_*` tables, `invitation` by token, and on `workspace_member`
-  only the rows of the user it has already authenticated. Slice 4's three tables are deliberately **not** on
-  that list — which is why `resolveActorContext` loads a member's project roles through `withActor` on the
+  only the rows of the user it has already authenticated. The tables slices 4 and 5 add are deliberately
+  **not** on that list — which is why `resolveActorContext` loads a member's project roles through `withActor` on the
   app connection rather than adding them to the handshake. It cannot read one row of what a company is
   *doing*, and it has no `CREATE` anywhere. `bootstrap.sql` gives it no default privileges on purpose, so a
   tenant table added in a later slice is outside it by construction rather than by anyone remembering.
@@ -117,6 +119,17 @@ If you ever find yourself reaching for the owner connection at runtime to make s
 bug — not the RLS policy. The identity role is not a loophole in that rule: it is a separate credential with
 a separate, short, asserted grant list, and it has to be asked for by name (`withIdentity`, whose handle is
 branded `IdentityDb` exactly as `withActor`'s is branded `TenantDb`).
+
+**Every pool is built by `createPool` (`src/server/db/pool.ts`), never by `new Pool` directly.** A `pg.Pool`
+is an EventEmitter, and it emits `'error'` when a client sitting *idle* in it loses its backend — Postgres
+restarted, an admin terminated the session, a socket was dropped. An `'error'` event with no listener is
+rethrown by Node as an uncaughtException, so a dropped idle connection does not fail a query: it kills the
+process. Under `next dev` the process it kills is the render worker, and what the browser is shown is
+jest-worker's obituary — `Jest worker encountered 2 child process exceptions, exceeding retry limit`, with no
+stack, no route and no mention of Postgres, usually followed by `write EPIPE` in the terminal. If you ever
+see that message, this is the first thing to check. `pool.test.ts` pins the listener; the log line carries
+the message and SQLSTATE only, because a `pg` error carries the whole `Client` and printing it prints the
+password.
 
 Supporting mechanisms, all specified in `PLAN.en.md` §8–§9. The first three are **built** (slice 1); the rest
 belong to later slices.
@@ -164,8 +177,8 @@ carries `import 'server-only'` at the top so a mistaken client import is a build
 The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*` functions **before** `0001`
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
 grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
-4. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`, `0004` and `0006` are
-hand-written and must stay that way. A hand-written migration is scaffolded with
+4, `0007`/`0008` for slice 5. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
+`0004`, `0006` and `0008` are hand-written and must stay that way. A hand-written migration is scaffolded with
 `db:generate --custom` so the journal and snapshot stay consistent.
 
 Three conventions that surprise people:
@@ -285,6 +298,62 @@ otherwise keep a deleted state's name reserved forever.
 `MAR`, because no rule short of a dictionary produces that contraction. The field is editable, which is what
 makes an approximation acceptable — the same bargain `slug.ts` makes for Khmer romanisation.
 
+## Work items and the list query
+
+Slice 5, and §14 called it one of the two remaining places a wrong decision is expensive to reverse. Most of
+what is here is §9 carried out literally; these are the parts that will look arbitrary later.
+
+**The query is split across the `lib`/`server` line on purpose.** `src/lib/work-item-query.ts` is the Zod
+filter DSL, its URL codec and its cursors — pure, and in `lib` because the filter bar builds a URL in the
+browser and the server parses that same URL back. `src/server/queries/work-items.ts` is the only thing that
+emits SQL. One DSL, one builder: the board (slice 6), My Work, Needs Attention, saved views and the Phase 2
+MCP server all go through them rather than writing a second query beside them.
+
+- **Two queries, never one** — a counts query and a `LATERAL` per-group page query, because a board needs a
+  page *per column*. The header count is the group's real total, not the page's length.
+- **Keyset cursors only, and not in the URL.** A filter is a description worth sharing (§5); a cursor is one
+  person's scroll position. Cursors ride in the `/api/internal/list` body instead.
+- **`assertAnchored` refuses a query with no project, assignee or parent.** §16's "query that takes
+  production down at 3am". A workspace-wide "all work" view is a §4 should-have and must arrive with its own
+  anchor rather than by deleting the invariant.
+- **Interpolating a JS array into a `sql` template spreads it into one placeholder per element.** Every array
+  in the builder is bound with `sql.param`, or Postgres sees `any(($3)::uuid[])` holding a bare uuid and
+  refuses it as a malformed array literal. This cost an hour.
+
+**Three invariants live in the database, not in the service** (migration `0008`), because a row written by a
+seed script, an importer or a Phase 2 MCP tool has to be as correct as one written by `work-items.ts`:
+`root_id`/`depth` with the three-level cap and its subtree propagation, and the `assignee_ids`/`label_ids`
+arrays that mirror the join tables. `rank` is additionally pinned to `COLLATE "C"` — the fractional index is
+a string whose *lexicographic* order is the board's order, and every collation but `C` applies language
+rules. `src/lib/rank.ts` narrows the alphabet to lowercase base-36 so the two halves cannot disagree.
+
+**Columns exist ahead of the UI that fills them, deliberately.** `rank` (slice 6 drags it), `completed_at`
+(slice 11's burndown cannot backfill history that was never recorded), `parent_id`/`root_id`/`depth` (no
+sub-item UI yet). Adding a NOT NULL ordering column to a table already holding a workspace's work is a
+backfill under a lock; adding it now costs one column.
+
+**`workspace.timezone` landed here rather than in slice 15**, where §6-1 puts company settings. Slice 5 is
+where "overdue" is first computed, and §17-13 is explicit about the alternative: evaluated on the viewer's
+device, an item is late for the employee and on time for their manager. `src/lib/workspace-date.ts` takes the
+zone as an argument and has no default — a function that falls back to the host's zone works in development
+and is wrong in production. The settings screen that edits the column is still slice 15's.
+
+**`GroupList` does not seed `useState` from its props.** Only the pages it fetched live in state; the first
+page stays a prop, and a `seed` string resets the appended ones when the server sends something different.
+Seeding from props looked simpler and silently froze the list at whatever it held on mount — a created item
+appeared in the group's count and nowhere else.
+
+Two smaller decisions. **Labels are workspace vocabulary**, managed under `workspace.settings` rather than
+behind a new §10 row: the matrix has no label line, and inventing one puts a rule in the code that the table
+a non-technical owner is shown does not contain. Applying an existing label is `work_item.edit`. And
+**`deleteWorkflowState` now enforces §4's migration target** — the guard slice 4 left open because there was
+no table to count; `work_item`'s foreign key onto the state is `ON DELETE RESTRICT` as the second layer.
+
+The **FilterBar is single-select per filter this slice**. The DSL takes arrays throughout and the builder ORs
+them, so multi-select is a UI change and not a data change — it needs §12's Combobox, which is not built.
+There is also no Toast yet; a refused mutation reports in the row that caused it. Both belong with slice 6,
+where a rejected drag needs a toast by name (§7.5).
+
 ## Bilingual invariants
 
 English and Khmer ship together or not at all; Khmer is never the degraded path. Retrofitting this is
@@ -319,6 +388,19 @@ Slice 4 added a sixth family to layers 2 and 3: `--state-ink` · `-sky` · `-nav
 · `-danger`, exposed as `bg-state-*`. They exist because a company may recolour a workflow state (§6-3) and
 the choice is stored — a hex written into a row in 2026 cannot resolve differently in dark mode, so what is
 stored is a token name and `StatePill` is the only place it becomes a class.
+
+Slice 5 added three more, on the same principle:
+
+- `--priority-*` (five), because §12 assigns priority colours outright and a lookup at a call site would
+  reach past layer 3. `PriorityIcon` also varies the *shape* — a five-step scale distinguished only by hue is
+  the most common accessibility failure in a tracker.
+- `--label-*` (eight), a deliberately wider set than `--state-*`: this is the one place §12 puts Lilac and
+  Chartreuse to work, because a label is a company's own vocabulary rather than a meaning the product
+  assigns. `LabelChip` is the only place one becomes a class, and — like `StatePill` — the dot carries the
+  colour while the text stays `text-text`, because at 11px several of these fail AA against the surface.
+- `--avatar-*` (eight), and **not** a reuse of `--label-*`: an avatar carries text, so it owes 4.5:1 rather
+  than 3:1, and the label steps sit at 3.8–4.3:1 against Ivory. The avatar steps are the deep end of each
+  ramp with initials drawn in `--bg`, which inverts with the theme; the worst pair is 5.78:1.
 
 Components use semantic utilities only; never a raw ramp value and never a literal hex. All three shadow
 tokens and both ring tokens are exposed through `@theme inline`, so `shadow-sm` resolves to the token rather
