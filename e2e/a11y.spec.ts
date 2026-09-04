@@ -61,7 +61,14 @@ test.describe('§11 — every control has an accessible name', () => {
   test('the pre-tenancy screens', async ({ page }, testInfo) => {
     const locale = testInfo.project.name.startsWith('km') ? 'km' : 'en';
 
-    for (const path of ['', '/sign-in', '/sign-up']) {
+    // The reset screen is swept in its unusable state, which is the one a
+    // bare URL can reach: a live token needs a mail round trip, and the
+    // form behind one is driven by accessible name throughout
+    // password-reset.spec.ts, which is the same assertion made where the
+    // token exists.
+    const paths = ['', '/sign-in', '/sign-up', '/forgot-password', `/reset/${'x'.repeat(43)}`];
+
+    for (const path of paths) {
       await page.goto(`/${locale}${path}`);
       await expectEveryControlNamed(page, path || '/');
     }

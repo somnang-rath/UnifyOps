@@ -16,7 +16,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     <main
       id="main"
       tabIndex={-1}
-      className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-8 px-6 py-16"
+      className="app-ambient mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-8 px-6 py-16"
     >
       <header className="flex items-start justify-between gap-4">
         <div className="space-y-2">

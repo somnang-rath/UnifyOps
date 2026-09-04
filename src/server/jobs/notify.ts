@@ -6,6 +6,7 @@ import { appUrl } from '@/env';
 import { wants } from '@/lib/notification-kinds';
 import type { NotificationChannel, NotificationKind } from '@/lib/notification-kinds';
 import type { TenantDb } from '@/server/db/client';
+import { inSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
 import {
   notification,
@@ -353,39 +354,43 @@ async function loadRecipient(tx: TenantDb, userId: string): Promise<Recipient | 
  * opens the preference screen, and a product whose notifications are opt-in is a
  * product with no notifications.
  *
- * Both rows are read in one round trip, not two, because this runs once per
- * recipient per message: a workspace of forty people on one item is forty
- * lookups either way, and eighty is twice a cost the worker pays on the hot
- * path of every mention.
+ * Both rows are read on the caller's transaction, which is one client and so
+ * one query at a time (see `inSequence`) — this was written as a `Promise.all`
+ * on the belief that the two went out together, and they never did. It runs once
+ * per recipient per message, so if the second lookup ever shows up in the
+ * worker's profile the fix is one `union all` over the two tables rather than a
+ * concurrency the connection cannot give.
  */
 export async function channelsFor(
   tx: TenantDb,
   memberId: string,
   kind: NotificationKind,
 ): Promise<NotificationChannel[]> {
-  const [[row], [fallback]] = await Promise.all([
-    tx
-      .select({ channels: notificationPreference.channels })
-      .from(notificationPreference)
-      .where(
-        and(
-          eq(notificationPreference.workspaceMemberId, memberId),
-          eq(notificationPreference.kind, kind),
-          isNull(notificationPreference.deletedAt),
-        ),
-      )
-      .limit(1),
-    tx
-      .select({ channels: workspaceNotificationDefault.channels })
-      .from(workspaceNotificationDefault)
-      .where(
-        and(
-          eq(workspaceNotificationDefault.kind, kind),
-          isNull(workspaceNotificationDefault.deletedAt),
-        ),
-      )
-      .limit(1),
-  ]);
+  const [[row], [fallback]] = await inSequence(
+    () =>
+      tx
+        .select({ channels: notificationPreference.channels })
+        .from(notificationPreference)
+        .where(
+          and(
+            eq(notificationPreference.workspaceMemberId, memberId),
+            eq(notificationPreference.kind, kind),
+            isNull(notificationPreference.deletedAt),
+          ),
+        )
+        .limit(1),
+    () =>
+      tx
+        .select({ channels: workspaceNotificationDefault.channels })
+        .from(workspaceNotificationDefault)
+        .where(
+          and(
+            eq(workspaceNotificationDefault.kind, kind),
+            isNull(workspaceNotificationDefault.deletedAt),
+          ),
+        )
+        .limit(1),
+  );
 
   const saved = row ? { [kind]: row.channels } : {};
   const companyDefaults = fallback ? { [kind]: fallback.channels } : {};

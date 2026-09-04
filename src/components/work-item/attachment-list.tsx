@@ -86,7 +86,14 @@ async function Attachment({
           {file.filename}
         </a>
 
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-text-subtle">
+        {/* A <div>, not a <p>, and the delete control is why: `DeleteAttachment`
+            renders a <form>, which is flow content, and the HTML parser closes
+            an open <p> the moment it meets some. The server's markup and the
+            browser's tree then disagree about who the button's parent is, which
+            React reports as a hydration error on the one panel this row belongs
+            to. The comment thread's identical metadata row already uses a
+            <div>; this was the one that did not. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-text-subtle">
           <Size bytes={file.sizeBytes} />
           <span aria-hidden>·</span>
           <span>{who}</span>
@@ -102,7 +109,7 @@ async function Attachment({
               filename={file.filename}
             />
           )}
-        </p>
+        </div>
       </div>
     </li>
   );

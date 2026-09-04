@@ -258,3 +258,53 @@ export async function consumeVerificationToken(
     return { ok: true, userId: row.userId } as const;
   });
 }
+
+/**
+ * Checks a one-time link **without** spending it.
+ *
+ * This exists because a password reset link is followed twice — once by the
+ * GET that renders the form, and once by the POST that sets the password — and
+ * only the second may consume it. Consuming on the GET would break the flow
+ * for anyone whose mail is scanned before they read it: Outlook Safe Links,
+ * corporate gateways and most mobile mail clients fetch every URL in a message
+ * to preview or vet it, so the person would open a link that had already been
+ * spent by their own employer's proxy and be told to request another one, for
+ * ever.
+ *
+ * Email verification consumes on the GET and is right to: there the prefetch
+ * *performs* the intended action, and the user arriving second sees a confirmed
+ * address. A reset has a second step, so the two cannot share the rule.
+ *
+ * Nothing is committed here, so this is not a check-then-act race: the POST
+ * still consumes conditionally, and remains the only thing that decides.
+ */
+export async function inspectVerificationToken(
+  token: string,
+  purpose: VerificationPurpose,
+): Promise<TokenOutcome> {
+  const tokenHash = hashToken(token);
+
+  return withIdentity(async (tx) => {
+    const rows = await tx
+      .select({
+        userId: authVerificationToken.userId,
+        expiresAt: authVerificationToken.expiresAt,
+        consumedAt: authVerificationToken.consumedAt,
+      })
+      .from(authVerificationToken)
+      .where(
+        and(
+          eq(authVerificationToken.tokenHash, tokenHash),
+          eq(authVerificationToken.purpose, purpose),
+        ),
+      )
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return { ok: false, reason: 'unknown' } as const;
+    if (row.consumedAt) return { ok: false, reason: 'already_used' } as const;
+    if (row.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' } as const;
+
+    return { ok: true, userId: row.userId } as const;
+  });
+}

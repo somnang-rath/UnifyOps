@@ -174,6 +174,24 @@
      already dark and 45% would read as a shrug. */
   --overlay: color-mix(in srgb, var(--color-ink-900) 45%, transparent);
 
+  /* The ambient field (`.app-ambient`, at the foot of this file) — three wide
+     washes and a hairline grid painted *over* `--bg`.
+
+     These are strengths, not colours, and that is not a shortcut. Two of the
+     three washes mix from `--accent-ring` and `--accent`, which §6-7 lets a
+     workspace override on a wrapper deep inside the layout — and a custom
+     property substitutes its `var()`s at the element that *declares* it, not
+     at the element that uses it. A `color-mix()` written here would therefore
+     compute against this block's Navy and freeze the product's own accent into
+     every company's background. So the mix is written at the point of use and
+     only its weight lives in layer 2 — which is the half that genuinely flips:
+     a wash that reads as a tint on Ivory reads as a headlight on Charcoal. */
+  --ambient-a: 30%;
+  --ambient-b: 20%;
+  --ambient-c: 9%;
+  --ambient-grid: color-mix(in srgb, var(--color-ink-900) 6%, transparent);
+  --ambient-grid-size: 48px;
+
   /* Workflow-state colours (slice 4). Six named choices a company may recolour
      a state to, resolved as tokens rather than stored as hex — a colour picked
      in 2026 still has to work in dark mode. They mark dots and chips, never
@@ -269,6 +287,13 @@
   --focus-ring: var(--color-sky-300);
 
   --overlay: color-mix(in srgb, var(--color-ink-950) 70%, transparent);
+
+  /* Lower throughout — the same weight that tints Ivory glows on Charcoal —
+     and the grid inverts, because a dark ground is ruled with light. */
+  --ambient-a: 18%;
+  --ambient-b: 13%;
+  --ambient-c: 16%;
+  --ambient-grid: color-mix(in srgb, var(--color-ink-0) 5%, transparent);
 
   /* Lightened against Charcoal. Navy in particular is invisible on a dark
      ground, which is the whole reason a state's colour is a token name in the
@@ -559,6 +584,108 @@
   }
 }
 
+/* ==========================================================================
+   The ambient background — `.app-ambient`
+   ==========================================================================
+
+   Every screen paints `--bg` and stands opaque surfaces on it. That is right
+   for a board with six columns of cards and reads as unfinished on the six
+   screens that are mostly empty: sign in, the invitation page, the workspace
+   picker, the landing page, "create your company", and any workspace screen
+   whose whole content is one panel in the middle of a viewport.
+
+   So `--bg` stays the page's real background — it is what the `theme-color`
+   meta, the print stylesheet and the browser's own rubber-band scroll all read
+   — and this class paints a field *over* it: three wide radial washes and one
+   hairline grid, every value composed from tokens, nothing opaque anywhere.
+
+   Four things about it are load-bearing.
+
+   **It follows the company's accent.** Two of the three washes mix from
+   `--accent-ring` and `--accent`, so a workspace that chose Lilac in §6-7's
+   settings has a lilac background as well as lilac buttons. That works only
+   because the mix is written here, at the point of use, inside the element
+   carrying `[data-accent]` — the comment on `--ambient-a` in layer 2 says what
+   happens if it is pre-composed instead. It is the second thing slice 15's one
+   attribute recolours for free, and the first that is not a control.
+
+   **The pseudo-elements are `fixed`, not `absolute`.** The field belongs to
+   the viewport rather than to the document: a board scrolled three screens down
+   must not run off the end of its own background. Being out of flow is the
+   other half — a class added to a flex column adds no flex item and no height,
+   and `responsive.spec.ts` skips fixed elements for exactly this reason, so
+   nothing here can widen the document.
+
+   **The grid is masked, which is why it is a second pseudo-element.** A grid
+   ruled edge to edge is a spreadsheet; one that fades before it reaches a
+   corner is depth. A mask on `::before` would take the three washes with it.
+
+   **`z-index: -1`, and the host deliberately creates no stacking context.**
+   The field lands in the root stacking context, above the canvas and below
+   every surface in the product — which is the whole trick, and is why no other
+   component needs a `z-index` to answer it.
+   ========================================================================== */
+
+.app-ambient::before,
+.app-ambient::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Three washes, and which token each one takes is the decision.
+
+   A and C mix from `--accent-ring` and `--accent`, so the field follows §6-7's
+   choice; B is Lilac outright, because §12 calls it decorative and this is the
+   second place — after `LabelChip` — that it does actual work. Two accent
+   washes and one fixed counterpoint rather than three accent washes: a field
+   made of one hue is a colour cast, not depth.
+
+   `--accent` is the low wash in both themes and never the high one. In light it
+   is Navy, which mixed into transparent over Ivory desaturates towards grey —
+   fine as weight along the bottom edge, muddy across the top where somebody is
+   reading. In dark it is Sky and would happily carry the top; keeping the
+   geometry identical in both themes and letting the strengths differ is the
+   same bargain the rest of layer 2 makes. */
+.app-ambient::before {
+  background-image:
+    radial-gradient(
+      76rem 50rem at 6% -16%,
+      color-mix(in srgb, var(--accent-ring) var(--ambient-a), transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      62rem 44rem at 98% -6%,
+      color-mix(in srgb, var(--color-lilac-400) var(--ambient-b), transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      64rem 46rem at 80% 112%,
+      color-mix(in srgb, var(--accent) var(--ambient-c), transparent),
+      transparent 70%
+    );
+}
+
+/* Two repeating gradients rather than an SVG: no request, no asset to keep in
+   step with the palette, and the rule colour is a token like everything else. */
+.app-ambient::after {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--ambient-grid) 0 1px,
+      transparent 1px var(--ambient-grid-size)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--ambient-grid) 0 1px,
+      transparent 1px var(--ambient-grid-size)
+    );
+  -webkit-mask-image: radial-gradient(60rem 46rem at 50% -12%, black, transparent 72%);
+  mask-image: radial-gradient(60rem 46rem at 50% -12%, black, transparent 72%);
+}
+
 /* ---------------------------------------------------------------------------
    Print (§7.4, §17-26)
 
@@ -649,5 +776,12 @@
 
   a {
     text-decoration: none;
+  }
+
+  /* The ambient field is decoration, and on paper decoration is ink somebody
+     paid for. The washes would also print as grey banding on a mono printer. */
+  .app-ambient::before,
+  .app-ambient::after {
+    display: none !important;
   }
 }

@@ -45,9 +45,24 @@ async function main(): Promise<void> {
     DATABASE_URL_OWNER: urls.owner,
     DATABASE_URL_OPERATOR: urls.operator,
     DATABASE_URL_IDENTITY: urls.identity,
-    // No RESEND_API_KEY: the logging transport is deliberately what runs, so
-    // the invitation link — and, from slice 9, every notification and digest —
-    // lands in a file the specs can read.
+    /**
+     * Blanked, not merely left unset.
+     *
+     * The logging transport is deliberately what runs, so the invitation link
+     * — and, from slice 9, every notification and digest — lands in a file the
+     * specs can read. `emailConfig()` picks Resend the moment `RESEND_API_KEY`
+     * and `EMAIL_FROM` are both truthy, and *not setting* them here does not
+     * make them absent: `next start` loads `.env` itself, so a developer who
+     * has put a real key in theirs gets the Resend transport in the child, no
+     * file, and every mail-dependent spec failing with "Mailbox held:
+     * (nothing)" — while CI, which has no `.env`, stays green.
+     *
+     * An empty string is what fixes it rather than `delete`, because
+     * `@next/env` only fills a key whose `typeof` is `undefined`. Present and
+     * empty is present.
+     */
+    RESEND_API_KEY: '',
+    EMAIL_FROM: '',
     EMAIL_LOG_FILE: logPath,
     /**
      * The worker builds absolute deep links from this, and unlike the Next

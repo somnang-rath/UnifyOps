@@ -8,6 +8,7 @@ import type { ProjectRole } from '@/server/authz/roles';
 import type { TenantDb } from '@/server/db/client';
 import { isUniqueViolation } from '@/server/db/errors';
 import { project, projectMember, team, user, workspaceMember } from '@/server/db/schema';
+import { inSequence } from '@/server/db/sequence';
 import { withActor, type ActorContext } from '@/server/db/tenant';
 import { deriveProjectKey, normalizeProjectKey, projectKeyProblem } from '@/lib/project-key';
 import { deriveSlug, slugify, slugProblem } from '@/lib/slug';
@@ -257,19 +258,19 @@ export async function getProjectBySlug(
     // per field and the group-by list offers one entry per groupable field, so
     // a screen holding one request's fields against another's rows would offer
     // a filter for something that is not there.
-    const [states, customFields, cycles, savedViews] = await Promise.all([
-      readWorkflowStates(tx, row.id),
-      fetchCustomFields(tx, row.id),
+    const [states, customFields, cycles, savedViews] = await inSequence(
+      () => readWorkflowStates(tx, row.id),
+      () => fetchCustomFields(tx, row.id),
       // Slice 11, on the same argument: the filter bar draws a control per open
       // cycle and the item panel offers one, so a screen holding one request's
       // cycles against another's rows would offer to plan work into a sprint
       // that has since closed.
-      fetchOpenCycles(tx, row.id, todayIn(resolved.workspace.timezone)),
+      () => fetchOpenCycles(tx, row.id, todayIn(resolved.workspace.timezone)),
       // Slice 12, in the same transaction and for the same reason. A saved view
       // is a query string this render may be *displaying*, so the bar has to be
       // drawn against the same request that produced the rows.
-      fetchSavedViews(tx, { ownerMemberId: resolved.memberId, projectId: row.id }),
-    ]);
+      () => fetchSavedViews(tx, { ownerMemberId: resolved.memberId, projectId: row.id }),
+    );
 
     return {
       ...row,

@@ -7,6 +7,7 @@ import { assertCan, can } from '@/server/authz/policy';
 import type { TenantDb } from '@/server/db/client';
 import { isUniqueViolation } from '@/server/db/errors';
 import { cycle, workItem } from '@/server/db/schema';
+import { inSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
 import {
   fetchBurndown,
@@ -168,23 +169,25 @@ export async function getCycle(
     const resource = projectResource(target);
     if (!can(resolved.actor, 'project.view', resource)) return null;
 
-    const [totals, days, workingDaysLeft, open] = await Promise.all([
-      fetchCycleTotals(tx, cycleId),
-      fetchBurndown(tx, {
-        cycleId,
-        workspaceId: resolved.workspace.id,
-        startDate: row.startDate,
-        endDate: row.endDate,
-        timeZone: resolved.workspace.timezone,
-        today,
-      }),
-      fetchWorkingDaysLeft(tx, {
-        workspaceId: resolved.workspace.id,
-        today,
-        endDate: row.endDate,
-      }),
-      fetchOpenCycles(tx, row.projectId, today),
-    ]);
+    const [totals, days, workingDaysLeft, open] = await inSequence(
+      () => fetchCycleTotals(tx, cycleId),
+      () =>
+        fetchBurndown(tx, {
+          cycleId,
+          workspaceId: resolved.workspace.id,
+          startDate: row.startDate,
+          endDate: row.endDate,
+          timeZone: resolved.workspace.timezone,
+          today,
+        }),
+      () =>
+        fetchWorkingDaysLeft(tx, {
+          workspaceId: resolved.workspace.id,
+          today,
+          endDate: row.endDate,
+        }),
+      () => fetchOpenCycles(tx, row.projectId, today),
+    );
 
     const progress = progressFrom(totals.counts, totals.estimate);
     // The scope the ideal line descends from is the work that counts —

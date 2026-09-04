@@ -82,3 +82,10 @@ export function verifyTokenFrom(mail: SentMail): string {
   if (!match?.[1]) throw new Error(`No verification link in:\n${mail.text}`);
   return match[1];
 }
+
+/** Same, for the password-reset link. */
+export function resetTokenFrom(mail: SentMail): string {
+  const match = mail.text.match(/\/reset\/([A-Za-z0-9_-]+)/);
+  if (!match?.[1]) throw new Error(`No reset link in:\n${mail.text}`);
+  return match[1];
+}

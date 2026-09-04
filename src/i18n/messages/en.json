@@ -100,7 +100,8 @@
       "password": "Password",
       "submit": "Sign in",
       "noAccount": "No account yet?",
-      "createOne": "Create one"
+      "createOne": "Create one",
+      "forgotPassword": "Forgot your password?"
     },
     "signUp": {
       "title": "Create your account",
@@ -113,6 +114,26 @@
       "haveAccount": "Already have an account?",
       "signIn": "Sign in"
     },
+    "forgotPassword": {
+      "title": "Reset your password",
+      "subtitle": "Enter your email and we will send you a link.",
+      "email": "Email",
+      "submit": "Send the link",
+      "sent": "If an account exists for that address, a reset link is on its way. The link works for one hour.",
+      "backToSignIn": "Back to sign in"
+    },
+    "resetPassword": {
+      "title": "Choose a new password",
+      "subtitle": "Saving this signs you out on every other device.",
+      "password": "New password",
+      "confirm": "Confirm new password",
+      "passwordHint": "At least 12 characters.",
+      "submit": "Save and sign in",
+      "expired": "That reset link has expired.",
+      "alreadyUsed": "That reset link has already been used.",
+      "unknown": "That reset link is not valid.",
+      "requestAnother": "Request a new link"
+    },
     "signOut": "Sign out",
     "errors": {
       "required": "This field is required.",
@@ -121,7 +142,8 @@
       "weakPassword": "Use at least 12 characters.",
       "emailTaken": "An account already exists for this address.",
       "invalidCredentials": "That email and password do not match.",
-      "unknown": "Something went wrong. Try again."
+      "unknown": "Something went wrong. Try again.",
+      "passwordMismatch": "Both passwords must match."
     },
     "verify": {
       "title": "Check your email",
@@ -312,6 +334,14 @@
       "expiry": "The link works for 24 hours.",
       "cta": "Confirm my email",
       "ignore": "If you did not create this account, you can ignore this message."
+    },
+    "passwordReset": {
+      "subject": "Reset your password",
+      "heading": "Reset your UnifyOps password",
+      "body": "Hello {name} — use the link below to choose a new password.",
+      "expiry": "The link works for one hour.",
+      "cta": "Choose a new password",
+      "ignore": "If you did not ask for this, you can ignore this message and your password stays as it is."
     },
     "invitation": {
       "subject": "You are invited to {workspace}",
@@ -1040,7 +1070,7 @@
         "chartreuse": "Chartreuse"
       },
       "logo": "Logo",
-      "logoHelp": "Shown in the header. PNG, JPEG or WebP, up to 512 KB.",
+      "logoHelp": "Shown in the header. PNG, JPEG or WebP, up to 2 MB.",
       "logoAlt": "Company logo",
       "noLogo": "None",
       "uploadLogo": "Upload a logo",
@@ -1051,7 +1081,7 @@
         "forbidden": "You do not have permission to change branding.",
         "invalid_accent": "That is not a colour you can choose.",
         "unsupported_type": "Use a PNG, JPEG or WebP image.",
-        "too_large": "That image is larger than 512 KB.",
+        "too_large": "That image is larger than 2 MB.",
         "upload_failed": "The upload did not finish. Try again.",
         "bad_key": "That upload does not belong to this company.",
         "bad_request": "Something about that request was wrong.",

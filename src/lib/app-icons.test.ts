@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -7,6 +7,7 @@ import {
   THEME_COLOR_DARK,
   THEME_COLOR_LIGHT,
   appIcons,
+  favicons,
 } from './app-icons';
 
 /**
@@ -69,20 +70,41 @@ describe('the theme colour', () => {
 
 describe('the icon set', () => {
   /**
-   * CLAUDE.md's rule is that UnifyOps uses the parent Unify mark and that
-   * nothing may be substituted for it; the mark is not in the repo. So the set
-   * is empty, Chrome declines to offer installation, and that is the product
-   * being honest rather than shipping a placeholder to somebody's home screen.
+   * The mark is the UnifyCharge primary logomark, by explicit instruction on
+   * 2026-09-04, and it stays until the parent Unify mark is supplied.
    *
-   * The test is here so that the day it stops being empty, somebody has to come
-   * and change this file on purpose.
+   * **The test that earns its place here is that every icon the manifest and
+   * the metadata name is a file that exists.** A manifest naming a missing PNG
+   * does not fail a build, a render or a page load — Chrome simply declines to
+   * offer installation, and iOS draws a screenshot of the page instead. Both
+   * failures are invisible from inside development, which is exactly the shape
+   * `app-icons.ts` was written to avoid.
    */
-  it('is empty while the mark is missing', () => {
-    expect(MARK_AVAILABLE).toBe(false);
-    expect(appIcons()).toEqual([]);
+  const declared = [
+    ...appIcons().map((icon) => icon.src),
+    ...favicons().map((icon) => icon.url),
+    APPLE_TOUCH_ICON,
+  ];
+
+  it('has a mark', () => {
+    expect(MARK_AVAILABLE).toBe(true);
+    expect(appIcons().length).toBeGreaterThan(0);
+    expect(favicons().length).toBeGreaterThan(0);
+  });
+
+  it.each(declared)('%s is a file in public/', (src) => {
+    expect(existsSync(join(process.cwd(), 'public', src))).toBe(true);
+  });
+
+  it('offers Android a maskable icon, or the mark ships as a sticker', () => {
+    expect(appIcons().some((icon) => icon.purpose === 'maskable')).toBe(true);
   });
 
   it('names an apple-touch-icon, because iOS reads none of the manifest', () => {
     expect(APPLE_TOUCH_ICON).toMatch(/^\/icons\/.+\.png$/);
+  });
+
+  it('offers the vector favicon before the raster one', () => {
+    expect(favicons()[0]?.type).toBe('image/svg+xml');
   });
 });

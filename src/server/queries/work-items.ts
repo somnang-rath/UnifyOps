@@ -2,6 +2,7 @@ import 'server-only';
 
 import { sql, type SQL } from 'drizzle-orm';
 import type { TenantDb } from '@/server/db/client';
+import { inSequence } from '@/server/db/sequence';
 import { customFieldIdOf, type CustomFieldKind } from '@/lib/custom-fields';
 import { PRIORITIES, type Priority } from '@/lib/priorities';
 import { searchRoute, toLikePattern, toTsQuery } from '@/lib/search';
@@ -987,22 +988,25 @@ export async function fetchWorkItemPages(
  * Both queries, joined up: the shape every listing surface actually wants.
  *
  * Two round trips rather than one, deliberately — see the note at the top. They
- * are independent, so they go out together.
+ * are independent of each other, but not of the connection: both run in the
+ * caller's `withActor` transaction, which is one client and so one query at a
+ * time whatever this asks for. See `inSequence`.
  */
 export async function fetchWorkItemGroups(
   tx: TenantDb,
   query: WorkItemQuery,
   options: FetchOptions,
 ): Promise<WorkItemGroupPage[]> {
-  const [pages, totals] = await Promise.all([
-    fetchWorkItemPages(tx, query, options),
-    countWorkItemsByGroup(tx, query, {
-      today: options.today,
-      horizon: options.horizon,
-      fields: options.fields,
-      staleBefore: options.staleBefore,
-    }),
-  ]);
+  const [pages, totals] = await inSequence(
+    () => fetchWorkItemPages(tx, query, options),
+    () =>
+      countWorkItemsByGroup(tx, query, {
+        today: options.today,
+        horizon: options.horizon,
+        fields: options.fields,
+        staleBefore: options.staleBefore,
+      }),
+  );
 
   return pages.map((page) => ({ ...page, total: totals.get(page.key) ?? 0 }));
 }

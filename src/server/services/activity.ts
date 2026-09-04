@@ -5,6 +5,7 @@ import type { ResolvedActor } from '@/server/auth/context';
 import { can } from '@/server/authz/policy';
 import type { TenantDb } from '@/server/db/client';
 import { customField, label, user, workItem, workflowState, workspaceMember } from '@/server/db/schema';
+import { inSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
 import { fetchActivity, type ActivityRow } from '@/server/queries/activity';
 import { loadProject, projectResource } from './project-access';
@@ -80,38 +81,42 @@ async function hydrate(tx: TenantDb, rows: ActivityRow[]): Promise<Omit<Activity
   ];
   const fieldIds = idsOf(rows, 'fieldId');
 
-  const [states, labels, people, fields] = await Promise.all([
-    stateIds.length === 0
-      ? []
-      : tx
-          .select({
-            id: workflowState.id,
-            name: workflowState.name,
-            nameKey: workflowState.nameKey,
-            color: workflowState.color,
-          })
-          .from(workflowState)
-          .where(inArray(workflowState.id, stateIds)),
-    labelIds.length === 0
-      ? []
-      : tx
-          .select({ id: label.id, name: label.name, color: label.color })
-          .from(label)
-          .where(inArray(label.id, labelIds)),
-    memberIds.length === 0
-      ? []
-      : tx
-          .select({ id: workspaceMember.id, name: user.name })
-          .from(workspaceMember)
-          .innerJoin(user, eq(user.id, workspaceMember.userId))
-          .where(inArray(workspaceMember.id, memberIds)),
-    fieldIds.length === 0
-      ? []
-      : tx
-          .select({ id: customField.id, name: customField.name })
-          .from(customField)
-          .where(inArray(customField.id, fieldIds)),
-  ]);
+  const [states, labels, people, fields] = await inSequence(
+    async () =>
+      stateIds.length === 0
+        ? []
+        : tx
+            .select({
+              id: workflowState.id,
+              name: workflowState.name,
+              nameKey: workflowState.nameKey,
+              color: workflowState.color,
+            })
+            .from(workflowState)
+            .where(inArray(workflowState.id, stateIds)),
+    async () =>
+      labelIds.length === 0
+        ? []
+        : tx
+            .select({ id: label.id, name: label.name, color: label.color })
+            .from(label)
+            .where(inArray(label.id, labelIds)),
+    async () =>
+      memberIds.length === 0
+        ? []
+        : tx
+            .select({ id: workspaceMember.id, name: user.name })
+            .from(workspaceMember)
+            .innerJoin(user, eq(user.id, workspaceMember.userId))
+            .where(inArray(workspaceMember.id, memberIds)),
+    async () =>
+      fieldIds.length === 0
+        ? []
+        : tx
+            .select({ id: customField.id, name: customField.name })
+            .from(customField)
+            .where(inArray(customField.id, fieldIds)),
+  );
 
   return {
     states: Object.fromEntries(

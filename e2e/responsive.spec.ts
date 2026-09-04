@@ -94,13 +94,27 @@ test.describe('§15-6 — every screen at 390px', () => {
   test('the pre-tenancy screens', async ({ page }, testInfo) => {
     const locale = 'km';
 
-    for (const path of ['', '/sign-in', '/sign-up']) {
+    // The reset screen is swept in its unusable state, which is the one a
+    // bare URL can reach: a live token needs a mail round trip, and the
+    // form behind one is driven by accessible name throughout
+    // password-reset.spec.ts, which is the same assertion made where the
+    // token exists.
+    const paths = ['', '/sign-in', '/sign-up', '/forgot-password', `/reset/${'x'.repeat(43)}`];
+
+    for (const path of paths) {
       await page.goto(`/${locale}${path}`);
       await expectNoSidewaysScroll(page, path || '/');
     }
 
     // Signing up walks the rest of the pre-tenancy path, so it is measured
     // from the state a stranger is actually in rather than from a bare URL.
+    //
+    // Navigated to explicitly rather than inherited from the loop above. It
+    // used to be wherever the last path left the browser, which was `/sign-up`
+    // by coincidence of ordering — adding a path to that list broke this block
+    // with a timeout thirty lines away from the edit that caused it.
+    await page.goto(`/${locale}/sign-up`);
+
     const company = unique('Narrow', testInfo);
     await page.getByLabel(/name|ឈ្មោះ/i).fill('Narrow Runner');
     await page.getByLabel(/email|អ៊ីមែល/i).fill(`${unique('narrow', testInfo)}@example.com`);

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { ResolvedActor } from '@/server/auth/context';
+import { inSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
 import { can } from '@/server/authz/policy';
 import { fetchWorkItemGroups, type WorkItemRow } from '@/server/queries/work-items';
@@ -222,21 +223,23 @@ export async function searchWorkspace(
 
     const byId = new Map(projects.map((project) => [project.id, project]));
 
-    const [referenceHit, groups, people] = await Promise.all([
-      // Asked in parallel with the text search rather than instead of it: §7.9
+    const [referenceHit, groups, people] = await inSequence(
+      // Asked as well as the text search rather than instead of it: §7.9
       // short-circuits *to* the item, and the palette still shows the sections
       // underneath, so somebody who typed `ENG-14` on the way to `ENG-142` is not
       // left staring at one wrong row.
-      reference === null ? Promise.resolve(null) : findItemByReference(tx, reference.key, reference.number),
-      projectIds.length === 0
-        ? Promise.resolve([])
-        : fetchWorkItemGroups(
-            tx,
-            searchQuery({ text, projectIds, includeArchived: input.includeArchived, limit }),
-            { groupKeys: ['all'], today },
-          ),
-      findPeople(tx, text, limit),
-    ]);
+      async () =>
+        reference === null ? null : findItemByReference(tx, reference.key, reference.number),
+      async () =>
+        projectIds.length === 0
+          ? []
+          : fetchWorkItemGroups(
+              tx,
+              searchQuery({ text, projectIds, includeArchived: input.includeArchived, limit }),
+              { groupKeys: ['all'], today },
+            ),
+      () => findPeople(tx, text, limit),
+    );
 
     const group = groups[0];
     const rows: WorkItemRow[] = group?.rows ?? [];

@@ -59,6 +59,6 @@ describe('the logo', () => {
   it('is capped far below an attachment', () => {
     // A logo renders at 32px in a header on every screen, in a market where data
     // costs money (§2.5). 25 MiB of it is somebody uploading the wrong file.
-    expect(LOGO_MAX_BYTES).toBe(512 * 1024);
+    expect(LOGO_MAX_BYTES).toBe(2 * 1024 * 1024);
   });
 });

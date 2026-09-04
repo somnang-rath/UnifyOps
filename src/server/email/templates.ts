@@ -120,6 +120,33 @@ export function verificationEmail(input: {
   return { to: '', subject: t('verify.subject'), html, text };
 }
 
+/**
+ * §4's "password reset" half of the Identity row.
+ *
+ * The body deliberately says nothing about whether an account exists. This
+ * message is only ever sent to an address that has one, but the *screen* that
+ * triggers it reports the same thing either way, and a mail that opened with
+ * "you do not have an account" would undo that the moment somebody forwarded a
+ * screenshot of it.
+ */
+export function passwordResetEmail(input: {
+  locale: string;
+  name: string;
+  url: string;
+}): Mail {
+  const t = translatorFor(input.locale);
+  const { html, text } = layout({
+    locale: input.locale,
+    heading: t('passwordReset.heading'),
+    paragraphs: [t('passwordReset.body', { name: input.name }), t('passwordReset.expiry')],
+    linkLabel: t('passwordReset.cta'),
+    url: input.url,
+    footer: t('passwordReset.ignore'),
+  });
+
+  return { to: '', subject: t('passwordReset.subject'), html, text };
+}
+
 /** §7.10 — the invitation itself. */
 export function invitationEmail(input: {
   locale: string;

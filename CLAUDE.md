@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: approved for build, slice 16 landed — **§14's build sequence is complete**
+## Status: **§14's build sequence is complete**; closing the gaps it named, one at a time
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -29,8 +29,10 @@ components, four boundaries and three e2e specs. It is worth noticing what it *f
 built: §7.1's seven-step path had been delivering five of them since slice 5, §15-6's 390px had never been
 tested because the mobile Playwright project sat at 412, and the 404 was the one screen in the product that
 was not in the reader's language. All three had been true for several slices, and none of them was visible
-from inside the slice that introduced it. **Two §4 must-haves are still not built and belong to slice 3** —
-Google OAuth and password reset — and are named at the end of the slice 16 section rather than hidden.
+from inside the slice that introduced it. **Two §4 must-haves were left unbuilt and belong to slice 3** —
+Google OAuth and password reset. **Password reset was built on 2026-09-04** and has its own section below;
+**Google OAuth is the one §4 must-have still outstanding**, named at the end of the slice 16 section rather
+than hidden. Work after §14 is gap-closing, and each gap is still taken one at a time, on request.
 
 **Slice 10 is the first slice that only extended what was already there.** No new sink, no new process, no
 new §10 row — one branch in the §9 builder, six entries on the registry, three tables. That is what §6 means
@@ -281,6 +283,22 @@ see that message, this is the first thing to check. `pool.test.ts` pins the list
 the message and SQLSTATE only, because a `pg` error carries the whole `Client` and printing it prints the
 password.
 
+**Queries that share one `withActor` transaction go out one at a time — `inSequence`, never `Promise.all`**
+(`src/server/db/sequence.ts`). A transaction is one checked-out client, and a client speaks one query at a
+time on one socket, so `Promise.all` over a shared `tx` never made anything concurrent: `pg` queued the rest
+and sent each as the one before it came back. That queue is deprecated in `pg` 8.23 and **removed in `pg` 9**,
+which turns today's warning into tomorrow's failure. It warns only from the *third* query in flight —
+`this._queryQueue.length > 0` in `client.js` — so a two-query site is equally wrong and silent about it, which
+is why every site was converted rather than the one that spoke up. Genuinely concurrent queries need
+genuinely separate connections, and inside `withActor` that is not on offer: the transaction is what carries
+the tenancy GUCs the RLS policies read. `sequence.test.ts` pins the absence of overlap rather than the
+results, because a test that only checked the returned tuple would still pass with `Promise.all` put back.
+
+It was found as a `DeprecationWarning` under `next dev` whose stack named only `TeamPage` — the workload tab
+asks `listWorkItemSets` for six sets, each two queries, on one transaction. The stack a warning like this
+carries names the React component that rendered the page and nothing about Postgres, which is the second time
+this file has had to record that (see the jest-worker obituary above).
+
 Supporting mechanisms, all specified in `PLAN.en.md` §8–§9. The first three are **built** (slice 1); the rest
 belong to later slices.
 
@@ -360,6 +378,9 @@ that library — its Credentials provider only supports JWT sessions — and its
 - **Sessions are rows** (`auth_session`). The cookie carries a random token; the table stores its SHA-256, so
   a dump yields no usable session. A row rather than a JWT because three later promises need revocation to be
   immediate: offboarding (§7.12), view-as (§7.13), and a role change taking effect on the next click.
+- **Password reset is built** (2026-09-04) and has its own section below. It added one function to
+  `accounts.ts` and nothing to the schema: slice 3 had already given `password_reset` a `VerificationPurpose`,
+  the shortest lifetime in `tokens.ts`, and `endAllSessions` with this caller named in its comment.
 - **The same rule covers all three bearer credentials** — session cookie, verification link, invitation link.
   `src/server/auth/tokens.ts` is the only place one is minted or hashed. There is no unhash: an invitation
   cannot be resent with the same link, and `resendInvitation` mints a new one on purpose.
@@ -1506,7 +1527,7 @@ exactly one. Making it an attachment with a null `work_item_id` would have loose
 busiest table in the schema to save one column on the quietest. There is **no `pending` row**, because the
 row it writes is a column on a workspace that already exists — an abandoned logo upload leaves bytes nothing
 references and no row at all, which is a smaller mess than the one slice 9 was asked to sweep. A fresh uuid
-per upload, so replacing a logo cannot be served stale by anything that saw the old one. 512 KiB against the
+per upload, so replacing a logo cannot be served stale by anything that saw the old one. 2 MiB against the
 attachment cap's 25 MiB, and three types against nine, because a logo renders at 32px in a header on every
 screen in a market where data costs money (§2.5).
 
@@ -1712,14 +1733,25 @@ locale *the URL* and a standalone window has no address bar to correct it with. 
 installing from `/km` after `/en` is a second app rather than an update that silently renames the first.
 `start_url` is `/{locale}/workspaces`, the one route that resolves a destination for itself.
 
-**`icons` is empty, and Chrome therefore declines to offer installation.** CLAUDE.md's rule is that UnifyOps
-uses the parent Unify mark and that nothing may be substituted; the mark is still not in the repo. A
-placeholder is worse than an absence in exactly this place — an icon ships to a home screen, sits there for
-months, and is the one asset nobody re-opens a ticket about because it *looks* done. `src/lib/app-icons.ts`
-is the whole of it: drop four files into `public/icons/`, flip `MARK_AVAILABLE`, and the manifest, the
-`apple-touch-icon` link and the favicon all pick them up. The `apple-touch-icon` is declared **conditionally**
-rather than pointed at a file that is not there, because a 404 behind it makes iOS render a screenshot of the
-page as the icon — which looks like a bug rather than like an absence.
+**`icons` shipped empty and is now filled — the slice-16 refusal was answered on 2026-09-04.** It was empty
+because CLAUDE.md's rule was that UnifyOps uses the parent Unify mark and that nothing may be substituted; a
+placeholder is worse than an absence in exactly this place, since an icon ships to a home screen, sits there
+for months, and is the one asset nobody re-opens a ticket about because it *looks* done. The instruction is
+now to use the **UnifyCharge primary logomark** until the parent file exists, and the file the slice was
+written around took it without changing shape: `src/lib/app-icons.ts` still holds all of it, `MARK_AVAILABLE`
+is flipped, and the manifest, the `apple-touch-icon` link and the favicon picked the files up. Chrome now
+offers installation. `MARK_AVAILABLE` was kept rather than deleted, because an empty set is still the honest
+state if a mark is ever withdrawn.
+
+Three things about the set are worth knowing before regenerating it. The **favicon is the brand SVG
+verbatim**, with a 32px PNG behind it for browsers that decline a vector — declared through `metadata.icons`
+rather than Next's `app/icon.*` file convention, because an explicit `icons` key **takes precedence over the
+convention**, so declaring `apple` there and leaving the tab icon to the convention is how a favicon silently
+disappears. The **maskable icons sit at 60% on Ivory**, because Android crops to a circle and a mark at full
+bleed loses its corners. And the **`apple-touch-icon` is the one opaque PNG**: iOS composites a transparent
+touch icon onto black, which would put a dark square on a light home screen. It is still declared
+conditionally, because a 404 behind it makes iOS render a screenshot of the page as the icon — which looks
+like a bug rather than like an absence.
 
 **`app-icons.test.ts` pins the one thing that drifts.** The theme colour has to be literal hex — a manifest
 is JSON served to an installer and a `theme-color` meta is read before any stylesheet, so neither can resolve
@@ -1743,14 +1775,98 @@ during SSR flashes an offline warning at everybody on the wrong half of the hydr
 `navigator.onLine` is famously optimistic and only trustworthy in the negative, which is the only direction
 this component uses it in.
 
-**Two §4 must-haves are still not built, and neither is slice 16's.** §4's Identity row reads "Email/password
-+ **Google OAuth**, verification, password reset, sessions". Google OAuth does not exist — `accounts.ts`
-anticipates it (a null password hash is "an OAuth-only account") and §17-29 records that it "slots in behind
-the same interface", but there is no provider, no button and no callback route. **Password reset** has its
-token machinery — `VerificationPurpose` carries `password_reset` and `tokens.ts` gives it the shortest
-lifetime in the set, deliberately — and no route and no screen: there is no "forgot password" link on the
-sign-in page and no `reset/[token]` page for the link to lead to. Both belong to slice 3 and are recorded
-here rather than hidden, because §14 has no slice left to carry them.
+**Two §4 must-haves were still not built, and neither was slice 16's.** §4's Identity row reads
+"Email/password + **Google OAuth**, verification, password reset, sessions". **Password reset was built on
+2026-09-04 and has its own section below.** Google OAuth still does not exist — `accounts.ts` anticipates it
+(a null password hash is "an OAuth-only account") and §17-29 records that it "slots in behind the same
+interface", but there is no provider, no button and no callback route. It belongs to slice 3 and is recorded
+here rather than hidden, because §14 has no slice left to carry it.
+
+## Password reset, and the link that must survive being read
+
+Built 2026-09-04, after §14's sequence was complete. It is a **slice-3 gap**, not a slice of its own: §4's
+Identity row named it, slice 3 built every piece of machinery it needs and none of the screens.
+`inspectVerificationToken` in `src/server/auth/accounts.ts`, `passwordResetEmail` in
+`src/server/email/templates.ts`, four exports at the foot of `src/app/[locale]/(auth)/actions.ts`, the
+`forgot-password/` and `reset/[token]/` routes, `src/components/auth/{forgot-password,reset-password}-form.tsx`,
+and the two test files `e2e/password-reset.spec.ts` and `src/server/db/__tenancy__/password-reset.test.ts`.
+
+**No migration, no table, no service, no §10 row — the eleventh time that last decision has gone the same
+way**, after labels, attachments, notifications, custom fields, cycles, saved views, availability, search,
+the holiday calendar and settings. There was nothing to invent: a reset happens before a workspace is known,
+so there is no actor to ask §10 about. What authorises it is possession of a link sent to the address on the
+account, which is the whole of the check.
+
+**Everything that was needed already existed, and that is worth noticing.** `LIFETIME.passwordReset` was
+already the shortest in `tokens.ts` with a comment saying why; `VerificationPurpose` already carried
+`password_reset`; `issueVerificationToken` already invalidated the previous unused link; `setPassword` and
+`markEmailVerified` already existed; and `endAllSessions` was written in slice 3 with a comment naming
+"password change" as its caller. The one function that had to be added is the one below.
+
+**The GET must not spend the link, and that is the single decision this feature turns on.**
+`consumeVerificationToken` was the only thing available, and using it on the page that renders the form
+would have been correct-looking and broken in production: Outlook Safe Links, corporate mail gateways and
+most mobile clients fetch every URL in a message to vet or preview it, so the person would open a link their
+own employer's proxy had already spent and be told to ask for another one — for ever, since the next link
+gets scanned too. `inspectVerificationToken` is the read-only half; the POST still consumes conditionally
+and remains the only thing that decides. **Email verification is right to consume on the GET** and the two
+cannot share a rule: there the prefetch *performs* the intended action, and the user arriving second finds a
+confirmed address. Here there is a second step.
+
+**The request form reveals nothing, and the copy is what makes that true.** It answers "if an account exists
+for that address, a reset link is on its way" whether or not one does — a sentence that is true in both
+cases, because a reassuring message that is only sent to real accounts is the tell. A malformed address is
+still reported as a field error: "not an email address" and "no account for that email address" are
+different facts and only the second leaks. **The timing channel is written down rather than papered over**:
+a real address costs a token insert and a provider round trip, an unknown one costs one indexed SELECT.
+Closing it would mean sending real mail to an address known not to be ours, or moving the send onto slice
+9's outbox — a queue this flow does not otherwise need. `signIn`'s dummy hash closes the same hole on the
+path where it is cheap to.
+
+**The order of the last four statements in `resetPassword` is the security story.** Consume — conditionally,
+so two tabs cannot both succeed; set the password; end **every** session; then start a fresh one. Ending
+sessions before starting the new one rather than after, because the other order signs the person out of the
+session they just created. A reset is the remedy for an account somebody else is already inside, and leaving
+their cookie working makes the remedy cosmetic.
+
+**Validation runs before the token is touched.** A mistyped confirmation costs a retry; consuming first
+would spend a one-hour credential on a typo and send somebody back to their inbox for a link that has not
+arrived yet.
+
+**Following the link confirms the email address too.** It is the same proof the verification link asks for,
+so an unconfirmed account is confirmed here rather than being shown `VerifyEmailBanner` seconds after
+proving the point.
+
+**The confirmation replaces the request form rather than sitting above it.** Leaving the form on screen
+invites a second submit, and a second submit invalidates the link the first one sent — so somebody clicking
+twice would have a live link killed while the dead one is the one in their inbox.
+
+**Both password fields carry `autoComplete="new-password"`, including the confirmation.** A manager that
+fills the first and not the second leaves somebody retyping a generated password by hand, which is how a
+reset ends in a mismatch error on a password nobody chose.
+
+**The tenancy suite found a property nobody had asserted.** The first draft of
+`password-reset.test.ts` reached for `h.owner` to check a row, the way every other file in that directory
+does, and read **zero rows rather than an error**. That is `authTablePolicies` working: the auth tables
+carry one policy, for the identity role, and `FORCE ROW LEVEL SECURITY` applies it to the owner too — so the
+role that runs migrations cannot read a session token or a live reset link, and the app and operator roles
+do not reach a policy at all because 0004 revoked the privileges. It is now its own test, because the
+failure mode if it regressed is silent: a test reading zero rows and a support query reading all of them
+look identical from inside the test.
+
+**`pnpm test:e2e` was broken for anyone with a real `RESEND_API_KEY` in `.env`, and that is fixed here.**
+`e2e/support/serve.ts` said "No RESEND_API_KEY" and merely did not set one — but `next start` loads `.env`
+itself, so the child process got the real key, `emailConfig()` chose the Resend transport, and every
+mail-dependent spec failed with `Mailbox held: (nothing)`. CI never saw it, because CI has no `.env`. The
+fix is `RESEND_API_KEY: ''` rather than a `delete`: `@next/env` fills a key only when its `typeof` is
+`undefined`, so **present-and-empty is present**. Worth knowing before adding any other "we deliberately do
+not set this" to that env block.
+
+**Two smaller scars in the specs.** Playwright labels are matched at their *start* and never end-anchored —
+§12's field shell appends a required marker, so the label element reads `New password*` while the control's
+accessible name is `New password`, and a `$` matches nothing. And the pre-tenancy sweep in
+`responsive.spec.ts` used to continue from wherever its loop left the browser; adding a path to that list
+broke a block thirty lines below it with a timeout that named neither. It navigates explicitly now.
 
 ## Bilingual invariants
 
@@ -1869,12 +1985,18 @@ gitignored. Per §18-1 UnifyOps *inherits its palette and typography* — that i
 of. It says nothing about what UnifyOps does, and the other UnifyCharge paths in this session's working
 directories are unrelated to this product.
 
-**The logo is the exception, and it is not in the repo.** Colours and fonts come from that pack; the mark
-does not. UnifyOps uses the **parent Unify logo**, never anything under `02_Logos/` — all three logomarks
-there are a hexagon around a lightning bolt, and the bolt means EV charging. The Unify file has not been
-supplied yet, so anything needing a mark (header, favicon, auth page, empty states) is blocked on it: ask,
-do not substitute. When it arrives, recolour it to `currentColor` or the Sky token — the UnifyCharge SVGs
-are filled `#28A6DF`, which does not match the palette's own Sky `#54A6DB`.
+**The logo was the exception, and on 2026-09-04 the question was answered.** Colours and fonts come from
+that pack; the mark used to be excluded from it. The standing rule was to use the **parent Unify logo** and
+to ask rather than substitute, because all three logomarks under `02_Logos/` are a hexagon around a
+lightning bolt and the bolt means EV charging. The parent file is **still not supplied**, the question was
+put, and the instruction is to ship the UnifyCharge mark meanwhile.
+
+So: the app icon set is the **primary logomark**, rasterised into `public/icons/` and wired through
+`src/lib/app-icons.ts` — favicon, manifest icons, maskable icons and the iOS touch icon. It is kept in the
+brand's own `#28A6DF` rather than recoloured to the palette's Sky `#54A6DB`: a logomark in a *third* blue
+is neither mark. **Nothing else in the product carries a mark yet** — there is no logo in the workspace
+header, on the sign-in page, in email or in any empty state — and when the parent Unify file arrives,
+replacing the seven files in `public/icons/` is the whole of the swap.
 
 Two other facts about that pack, since it is the only brand evidence on disk: the palette PDF confirms all
 seven hex values exactly as `globals.css` has them, and **Kantumruy Pro is not in it.** Only Koh Santepheap

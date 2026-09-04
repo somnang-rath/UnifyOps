@@ -51,7 +51,7 @@ export default async function InvitePage({
   const t = await getTranslations();
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="app-ambient flex min-h-dvh flex-col">
       <header className="flex items-center justify-end gap-2 px-6 py-4">
         <ThemeToggle />
         <LocaleSwitcher />

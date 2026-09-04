@@ -27,6 +27,19 @@ export type FormState = {
 
 export const IDLE: FormState = {};
 
+/**
+ * The "forgot password" request (§4's Identity row).
+ *
+ * `sent` rather than a redirect, because the answer is deliberately the same
+ * whether or not an account exists — see `requestPasswordReset`. A redirect to
+ * a "check your email" *route* would be a URL anybody could visit directly,
+ * which reads as a confirmation that the address is real; a state on the form
+ * that submitted it cannot be reached any other way.
+ */
+export type PasswordResetRequestState = FormState & { sent?: boolean };
+
+export const PASSWORD_RESET_REQUEST_IDLE: PasswordResetRequestState = {};
+
 export type WorkspaceFormState = FormState;
 
 export const WORKSPACE_IDLE: WorkspaceFormState = {};

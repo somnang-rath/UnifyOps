@@ -14,6 +14,7 @@ import {
   workItem,
   workspaceMember,
 } from '@/server/db/schema';
+import { inSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
 import { fetchComments, type CommentRow } from '@/server/queries/comments';
 import {
@@ -290,23 +291,26 @@ export async function getCommentThread(
     const canContribute = !archived && allowed;
     const canDeleteOthers = !archived && deleteOthers;
 
-    // Both file reads ride this same transaction. `page.rows` is already the
-    // window being rendered, so the comment-file query is bounded by the page
-    // rather than by the length of the conversation.
-    const [commentFiles, itemFiles] = await Promise.all([
-      attachmentsForComments(tx, {
-        commentIds: page.rows.filter((row) => row.deletedAt === null).map((row) => row.id),
-        memberId: resolved.memberId,
-        canContribute,
-        canDeleteOthers,
-      }),
-      itemAttachmentsFor(tx, {
-        workItemId: input.workItemId,
-        memberId: resolved.memberId,
-        canContribute,
-        canDeleteOthers,
-      }),
-    ]);
+    // Both file reads ride this same transaction, and so go out one after the
+    // other (`inSequence`). `page.rows` is already the window being rendered, so
+    // the comment-file query is bounded by the page rather than by the length of
+    // the conversation.
+    const [commentFiles, itemFiles] = await inSequence(
+      () =>
+        attachmentsForComments(tx, {
+          commentIds: page.rows.filter((row) => row.deletedAt === null).map((row) => row.id),
+          memberId: resolved.memberId,
+          canContribute,
+          canDeleteOthers,
+        }),
+      () =>
+        itemAttachmentsFor(tx, {
+          workItemId: input.workItemId,
+          memberId: resolved.memberId,
+          canContribute,
+          canDeleteOthers,
+        }),
+    );
 
     return {
       entries: page.rows.map((row) => ({

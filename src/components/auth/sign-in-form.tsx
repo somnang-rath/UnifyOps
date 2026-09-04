@@ -52,6 +52,21 @@ export function SignInForm({ inviteToken }: { inviteToken?: string }) {
         error={state.fields?.password && t(state.fields.password)}
       />
 
+      {/* Below the password field and above the submit, which is where a
+          person looks the moment the one they typed did not work. It carries
+          no invite token: a reset lands them signed in and `destinationFor`
+          would have nothing to accept, and dragging an invitation through an
+          email round trip is how a two-week token gets spent on the wrong
+          journey. Following the invite link again still works. */}
+      <p className="text-right text-xs">
+        <Link
+          href="/forgot-password"
+          className="text-text-muted underline underline-offset-2 hover:text-text"
+        >
+          {t('auth.signIn.forgotPassword')}
+        </Link>
+      </p>
+
       <Button type="submit" variant="primary" size="lg" loading={pending} className="w-full">
         {t('auth.signIn.submit')}
       </Button>

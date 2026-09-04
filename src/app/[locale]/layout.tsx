@@ -16,6 +16,7 @@ import {
   MARK_AVAILABLE,
   THEME_COLOR_DARK,
   THEME_COLOR_LIGHT,
+  favicons,
 } from '@/lib/app-icons';
 import '../globals.css';
 
@@ -101,11 +102,17 @@ export async function generateMetadata({
     // the icon — from the same catalogue as the manifest's `name`, so the two
     // cannot say different things.
     appleWebApp: { capable: true, title: t('name'), statusBarStyle: 'default' },
-    // Absent until the parent Unify mark is supplied (see `app-icons.ts`).
-    // Declared conditionally rather than pointed at a file that is not there:
-    // a 404 behind `apple-touch-icon` makes iOS render a screenshot of the
-    // page as the icon, which looks like a bug rather than like an absence.
-    ...(MARK_AVAILABLE ? { icons: { apple: APPLE_TOUCH_ICON } } : {}),
+    // The tab icon and the iOS touch icon, both declared here rather than
+    // left to Next's `app/icon.*` file convention — an explicit `icons` key
+    // takes precedence over the convention, so declaring one and relying on
+    // the other for the rest is how a favicon silently disappears.
+    //
+    // Still conditional on the mark existing (see `app-icons.ts`), because a
+    // 404 behind `apple-touch-icon` makes iOS render a screenshot of the page
+    // as the icon, which looks like a bug rather than like an absence.
+    ...(MARK_AVAILABLE
+      ? { icons: { icon: [...favicons()], apple: APPLE_TOUCH_ICON } }
+      : {}),
   };
 }
 

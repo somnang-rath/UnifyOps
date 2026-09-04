@@ -16,6 +16,7 @@ import {
   workflowState,
   workspaceMember,
 } from '@/server/db/schema';
+import { inSequence, mapInSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
 import { isClosedGroup, type StateGroup } from '@/lib/state-groups';
 import { OPEN_STATE_GROUPS } from '@/lib/needs-attention';
@@ -180,17 +181,15 @@ export async function listWorkItems(
 
     const itemIds = kept.flatMap((g) => g.rows.map((r) => r.id));
 
-    const [people, labels, customValues] = await Promise.all([
-      readPeople(tx, memberIds),
-      readLabelsByIds(tx, labelIds),
+    const [people, labels, customValues] = await inSequence(
+      () => readPeople(tx, memberIds),
+      () => readLabelsByIds(tx, labelIds),
       // One query for the page, not one per row. `undefined` rather than an
       // empty map when nobody asked, so a caller cannot mistake "not fetched"
       // for "nothing filled in" — the second is a real answer and the first is
       // not an answer at all.
-      options.withCustomValues
-        ? fetchCustomValuesForItems(tx, itemIds)
-        : Promise.resolve(undefined),
-    ]);
+      async () => (options.withCustomValues ? fetchCustomValuesForItems(tx, itemIds) : undefined),
+    );
 
     return {
       groups: kept.map((group) => ({
@@ -285,26 +284,24 @@ export async function listWorkItemSets(
         ? null
         : await fetchStaleBefore(tx, resolved.workspace.id, today, staleDays);
 
-    const fetched = await Promise.all(
-      requests.map(async (request) => {
-        const groups = request.countsOnly
-          ? await countWorkItemsByGroup(tx, request.query, { today, staleBefore }).then((totals) =>
-              request.groupKeys.map((key) => ({
-                key,
-                total: totals.get(key) ?? 0,
-                rows: [],
-                nextCursor: null,
-              })),
-            )
-          : await fetchWorkItemGroups(tx, request.query, {
-              groupKeys: request.groupKeys,
-              today,
-              staleBefore,
-            });
+    const fetched = await mapInSequence(requests, async (request) => {
+      const groups = request.countsOnly
+        ? await countWorkItemsByGroup(tx, request.query, { today, staleBefore }).then((totals) =>
+            request.groupKeys.map((key) => ({
+              key,
+              total: totals.get(key) ?? 0,
+              rows: [],
+              nextCursor: null,
+            })),
+          )
+        : await fetchWorkItemGroups(tx, request.query, {
+            groupKeys: request.groupKeys,
+            today,
+            staleBefore,
+          });
 
-        return { key: request.key, groups };
-      }),
-    );
+      return { key: request.key, groups };
+    });
 
     // §10's second pass, once across every set — the same one `listWorkItems`
     // makes, and for the same reason: RLS has already ruled out another
@@ -329,10 +326,10 @@ export async function listWorkItemSets(
       ...new Set(kept.flatMap((s) => s.groups.flatMap((g) => g.rows.flatMap((r) => r.labelIds)))),
     ];
 
-    const [people, labels] = await Promise.all([
-      readPeople(tx, memberIds),
-      readLabelsByIds(tx, labelIds),
-    ]);
+    const [people, labels] = await inSequence(
+      () => readPeople(tx, memberIds),
+      () => readLabelsByIds(tx, labelIds),
+    );
 
     return {
       sets: kept.map((set) => ({
@@ -399,8 +396,8 @@ async function customFieldKinds(tx: TenantDb, query: WorkItemQuery): Promise<Cus
   const mentioned = query.filters.custom.length > 0 || customFieldIdOf(query.groupBy) !== null;
   if (!mentioned || query.filters.projectIds.length === 0) return new Map();
 
-  const perProject = await Promise.all(
-    query.filters.projectIds.map((projectId) => fetchCustomFields(tx, projectId)),
+  const perProject = await mapInSequence(query.filters.projectIds, (projectId) =>
+    fetchCustomFields(tx, projectId),
   );
 
   return new Map(perProject.flat().map((field) => [field.id, field.kind]));
@@ -509,12 +506,12 @@ export async function getWorkItem(
     // `getCommentThread` and slice 9 hit with the unread count — and the item
     // page already opens more transactions than any other screen in the
     // product.
-    const [assignees, labels, customFields, customValues] = await Promise.all([
-      readPeople(tx, found.item.assigneeIds),
-      readLabelsByIds(tx, found.item.labelIds),
-      fetchCustomFields(tx, found.item.projectId),
-      fetchCustomValues(tx, found.item.id),
-    ]);
+    const [assignees, labels, customFields, customValues] = await inSequence(
+      () => readPeople(tx, found.item.assigneeIds),
+      () => readLabelsByIds(tx, found.item.labelIds),
+      () => fetchCustomFields(tx, found.item.projectId),
+      () => fetchCustomValues(tx, found.item.id),
+    );
 
     return {
       ...found.item,

@@ -60,10 +60,15 @@ export function isAccentColor(value: unknown): value is AccentColor {
  * own origin — but the cap is far smaller. A logo is drawn at 32px in a header;
  * 25 MiB of it is somebody uploading the wrong file, and §2.5's phone-heavy
  * market pays for every byte of a header that renders on every screen.
+ *
+ * Raised from 512 KiB to 2 MiB on request (2026-09-04). The reasoning above is
+ * unchanged, and is why it did not go further: what a 32px header actually
+ * needs is closer to 100 KB, so this is headroom for an unoptimised export
+ * rather than a licence to serve a photograph as a logomark.
  */
 export const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 
-export const LOGO_MAX_BYTES = 512 * 1024;
+export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 
 export function isLogoType(value: string): boolean {
   return (LOGO_TYPES as readonly string[]).includes(value);

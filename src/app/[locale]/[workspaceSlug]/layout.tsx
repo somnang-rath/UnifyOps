@@ -63,7 +63,7 @@ export default async function WorkspaceLayout({
       */}
       <div
         data-accent={resolved.workspace.accent ?? undefined}
-        className="flex min-h-dvh flex-col"
+        className="app-ambient flex min-h-dvh flex-col"
       >
         {/*
           §7.13's persistent bar, above everything including the header. It
@@ -79,7 +79,16 @@ export default async function WorkspaceLayout({
           />
         )}
 
-        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-surface px-4 py-2.5 sm:px-6">
+        {/*
+          The header is the one chrome that sits *on* the ambient field rather
+          than beside it, so it is translucent and blurred rather than the flat
+          `bg-surface` it was: an opaque bar across the top of a washed page
+          reads as a bar bolted onto a screenshot. `supports-` guards it —
+          where `backdrop-filter` is unavailable the surface goes fully opaque
+          instead of leaving text over an unblurred background, which is the one
+          way this fails as a contrast problem rather than as a visual one.
+        */}
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-surface px-4 py-2.5 supports-[backdrop-filter]:bg-surface/80 supports-[backdrop-filter]:backdrop-blur-xl sm:px-6">
           <Link
             href={`/${resolved.workspace.slug}`}
             className="flex items-center gap-2 font-[family-name:var(--font-display)] text-base font-semibold tracking-tight"

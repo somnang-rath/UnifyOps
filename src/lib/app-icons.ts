@@ -1,28 +1,23 @@
 /**
  * The product's own icon set — the one §15-8 checks by adding UnifyOps to a
- * phone home screen.
+ * phone home screen, and the one a browser tab shows.
  *
- * **There is no icon here yet, and that is a deliberate refusal rather than an
- * oversight.** CLAUDE.md records the rule: UnifyOps uses the *parent Unify*
- * mark, never anything under `UnifyCharge_Brand_Assets/02_Logos/` — every
- * logomark there is a hexagon around a lightning bolt, and the bolt means EV
- * charging. The Unify file has not been supplied, and the instruction is to
- * ask rather than substitute.
+ * **The mark is the UnifyCharge primary logomark, by explicit instruction on
+ * 2026-09-04.** CLAUDE.md's standing rule was to use the *parent Unify* mark
+ * and to ask rather than substitute when it was missing; it is still missing,
+ * the question was put, and this is the answer. The rule now reads: UnifyOps
+ * ships the UnifyCharge logomark until the parent mark is supplied.
  *
- * The alternative was a placeholder, and a placeholder is worse than an absence
- * in exactly this place: an icon ships to a home screen, sits there for months,
- * and is the one asset nobody re-opens a ticket about because it *looks* done.
- * An empty `icons` array makes Chrome decline to offer installation, which is
- * the product being honest about a thing it cannot yet do.
+ * Worth stating once, because it is the reason the rule existed: the logomark
+ * is a hexagon around a lightning bolt, and the bolt means EV charging rather
+ * than work management. It also carries UnifyCharge's own `#28a6df` rather
+ * than the palette's Sky `#54A6DB`, and it is kept verbatim — recolouring a
+ * brand's logomark to a *different* blue would leave it neither mark.
  *
- * Everything else the install pass needs is built and tested — the manifest,
- * its per-locale name, `display: standalone`, the scope, the start URL and the
- * theme colour. When the mark arrives this is the only file that changes:
- * drop the four files below into `public/icons/`, flip `MARK_AVAILABLE`, and
- * the manifest, the `apple-touch-icon` link and the favicon all pick them up.
- *
- * Recolour it to the Sky token or `currentColor` first — the UnifyCharge SVGs
- * are filled `#28A6DF`, which is not the palette's own Sky.
+ * The files are generated from
+ * `UnifyCharge_Brand_Assets/…/02_Logos/01_Primary_Logomark/SVG/Primary_Logomark.svg`
+ * and are the only images in the repo. Replacing them is the whole of swapping
+ * the mark: nothing else in `src/` names an icon.
  */
 
 export type AppIcon = {
@@ -37,8 +32,12 @@ export type AppIcon = {
   purpose?: 'any' | 'maskable';
 };
 
-/** Flip to `true` in the same commit that adds the files below. */
-export const MARK_AVAILABLE = false;
+/**
+ * Whether `public/icons/` holds a mark. Kept as a flag rather than deleted,
+ * because the parent Unify mark arriving is a file swap plus a comment here —
+ * and because an empty `icons` array is the honest state if one is ever pulled.
+ */
+export const MARK_AVAILABLE = true;
 
 const ICONS: readonly AppIcon[] = [
   { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -47,14 +46,34 @@ const ICONS: readonly AppIcon[] = [
   { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
 ];
 
-/** The manifest's `icons`. Empty until the mark exists — see above. */
+/** The manifest's `icons`. Empty if the mark is ever withdrawn — see above. */
 export function appIcons(): readonly AppIcon[] {
   return MARK_AVAILABLE ? ICONS : [];
 }
 
 /**
+ * The browser tab, which is a different question from the home screen.
+ *
+ * The SVG is the brand file verbatim and is what every current browser uses —
+ * it stays crisp at whatever size the tab strip is drawing today. The 32px PNG
+ * is the fallback for the ones that decline an SVG favicon; it is second in the
+ * list because a browser that understands both should take the vector.
+ */
+const FAVICONS: readonly { url: string; type: string; sizes?: string }[] = [
+  { url: '/icons/icon.svg', type: 'image/svg+xml' },
+  { url: '/icons/icon-32.png', type: 'image/png', sizes: '32x32' },
+];
+
+export function favicons(): readonly { url: string; type: string; sizes?: string }[] {
+  return MARK_AVAILABLE ? FAVICONS : [];
+}
+
+/**
  * iOS ignores the manifest's icons entirely and reads `<link rel="apple-touch-icon">`,
- * so it is a second declaration of the same asset rather than a duplicate.
+ * so it is a second declaration of the same asset rather than a duplicate. It
+ * is the one PNG in the set that is deliberately **opaque**: iOS composites a
+ * transparent touch icon onto black, which would put a dark square on a light
+ * home screen.
  */
 export const APPLE_TOUCH_ICON = '/icons/apple-touch-icon.png';
 
