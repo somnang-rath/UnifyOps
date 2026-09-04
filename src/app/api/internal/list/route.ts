@@ -4,7 +4,11 @@ import { resolveActorContext } from '@/server/auth/context';
 import { UnanchoredQueryError } from '@/server/queries/work-items';
 import { boardChangeToken, listWorkItems } from '@/server/services/work-items';
 import { parseWorkItemQuery } from '@/lib/work-item-query';
-import { toItemRowData } from '@/lib/work-item-row';
+import {
+  toItemRowData,
+  type RowCustomValue,
+  type RowCustomValues,
+} from '@/lib/work-item-row';
 
 /**
  * The §8 layout reserves `api/internal/list` for exactly this: one group's next
@@ -58,6 +62,20 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * The service's nested `Map` as JSON. One shape either side of the wire, for
+ * the reason `toItemRowData` exists at all.
+ */
+function toCustomValuePayload(
+  values: Map<string, Map<string, RowCustomValue>>,
+): Record<string, RowCustomValues> {
+  const payload: Record<string, RowCustomValues> = {};
+  for (const [itemId, byField] of values) {
+    payload[itemId] = Object.fromEntries(byField);
+  }
+  return payload;
+}
+
 const bodySchema = z
   .object({
     workspaceSlug: z.string().min(1),
@@ -65,6 +83,13 @@ const bodySchema = z
     query: z.string().max(4096),
     groupKey: z.string().min(1).max(200),
     cursor: z.string().max(512).nullable(),
+    /**
+     * §6-4's values for the rows returned. Only the Table view asks — the List
+     * and the board draw item cards, which §12 specifies without custom fields
+     * on them, and a query they do not use is one they should not pay for on
+     * every page they load.
+     */
+    withCustomValues: z.boolean().optional(),
   })
   .strict();
 
@@ -74,7 +99,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'bad_request' }, { status: 400 });
   }
 
-  const { workspaceSlug, query, groupKey, cursor } = parsed.data;
+  const { workspaceSlug, query, groupKey, cursor, withCustomValues } = parsed.data;
 
   const resolved = await resolveActorContext(workspaceSlug);
   // Null covers "no such workspace" and "not a member of it" alike — the same
@@ -91,6 +116,7 @@ export async function POST(request: Request) {
     const listing = await listWorkItems(resolved, parsedQuery, {
       groupKeys: [groupKey],
       cursors: { [groupKey]: cursor },
+      withCustomValues,
     });
 
     const group = listing.groups[0];
@@ -98,6 +124,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       rows: (group?.rows ?? []).map(toItemRowData),
       nextCursor: group?.nextCursor ?? null,
+      // A plain object rather than the service's `Map`, because a `Map`
+      // serialises to `{}` and the failure would be a table whose second page
+      // has empty custom columns — visible only after scrolling, and in no test
+      // of the first page.
+      customValues: listing.customValues ? toCustomValuePayload(listing.customValues) : undefined,
     });
   } catch (error) {
     // §16's invariant, surfacing. A caller who edited the query string until it

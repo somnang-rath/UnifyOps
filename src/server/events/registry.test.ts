@@ -17,6 +17,60 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     name: 'Acme',
   },
   'workspace.renamed': { type: 'workspace.renamed', workspaceId: 'w1', from: 'Acme', to: 'Acme Co' },
+  'workspace.slug_changed': {
+    type: 'workspace.slug_changed',
+    workspaceId: 'w1',
+    from: 'acme',
+    to: 'acme-co',
+  },
+  'workspace.settings_changed': {
+    type: 'workspace.settings_changed',
+    workspaceId: 'w1',
+    changed: ['timezone'],
+    timezone: 'Asia/Phnom_Penh',
+    workingDays: 63,
+    weekStart: 0,
+    defaultLocale: 'km',
+  },
+  'workspace.branding_changed': {
+    type: 'workspace.branding_changed',
+    workspaceId: 'w1',
+    changed: ['accent'],
+    accent: 'sky',
+    hasLogo: false,
+  },
+  'workspace.holidays_changed': {
+    type: 'workspace.holidays_changed',
+    workspaceId: 'w1',
+    added: 10,
+    removed: 0,
+    years: [2026],
+  },
+  'workspace.view_as_started': {
+    type: 'workspace.view_as_started',
+    workspaceId: 'w1',
+    targetMemberId: 'm2',
+    targetUserId: 'u2',
+  },
+  'workspace.view_as_ended': {
+    type: 'workspace.view_as_ended',
+    workspaceId: 'w1',
+    targetMemberId: 'm2',
+    targetUserId: 'u2',
+  },
+  'workspace.notification_defaults_changed': {
+    type: 'workspace.notification_defaults_changed',
+    workspaceId: 'w1',
+    kind: 'mention',
+    channels: ['in_app'],
+  },
+  'workspace_member.work_reassigned': {
+    type: 'workspace_member.work_reassigned',
+    workspaceId: 'w1',
+    fromMemberId: 'm1',
+    toMemberId: 'm2',
+    items: [{ workItemId: 'i1', projectId: 'p1' }],
+  },
   'workspace_member.added': {
     type: 'workspace_member.added',
     workspaceId: 'w1',
@@ -36,6 +90,13 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     workspaceId: 'w1',
     memberId: 'm1',
     userId: 'u1',
+  },
+  'workspace_member.availability_changed': {
+    type: 'workspace_member.availability_changed',
+    workspaceId: 'w1',
+    memberId: 'm1',
+    from: null,
+    to: '2026-09-20',
   },
   'team.created': { type: 'team.created', workspaceId: 'w1', teamId: 't1', slug: 'eng', name: 'Eng' },
   'team.renamed': { type: 'team.renamed', workspaceId: 'w1', teamId: 't1', from: 'Eng', to: 'Product' },
@@ -160,6 +221,84 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     name: 'In Review',
     migratedToStateId: 's2',
   },
+  'custom_field.created': {
+    type: 'custom_field.created',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    fieldId: 'f1',
+    name: 'Client',
+    kind: 'select',
+  },
+  'custom_field.updated': {
+    type: 'custom_field.updated',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    fieldId: 'f1',
+    name: 'Client name',
+    previousName: 'Client',
+    optionId: null,
+  },
+  'custom_field.reordered': {
+    type: 'custom_field.reordered',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    order: ['f2', 'f1'],
+  },
+  'custom_field.deleted': {
+    type: 'custom_field.deleted',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    fieldId: 'f1',
+    name: 'Client',
+    kind: 'select',
+    valuesDeleted: 12,
+  },
+  'custom_field.option_removed': {
+    type: 'custom_field.option_removed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    fieldId: 'f1',
+    optionId: 'o1',
+    name: 'Acme',
+    clearedFrom: 3,
+  },
+  'cycle.created': {
+    type: 'cycle.created',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    cycleId: 'cy1',
+    name: 'Sprint 14',
+    startDate: '2026-09-07',
+    endDate: '2026-09-20',
+  },
+  'cycle.updated': {
+    type: 'cycle.updated',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    cycleId: 'cy1',
+    name: 'Sprint 14',
+    previousName: null,
+    startDate: '2026-09-07',
+    endDate: '2026-09-21',
+    datesChanged: true,
+  },
+  'cycle.completed': {
+    type: 'cycle.completed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    cycleId: 'cy1',
+    name: 'Sprint 14',
+    disposition: 'next_cycle',
+    carriedOver: 3,
+  },
+  'cycle.deleted': {
+    type: 'cycle.deleted',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    cycleId: 'cy1',
+    name: 'Sprint 14',
+    released: 12,
+  },
   'label.created': {
     type: 'label.created',
     workspaceId: 'w1',
@@ -234,6 +373,15 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     added: ['l1'],
     removed: [],
   },
+  'work_item.cycle_changed': {
+    type: 'work_item.cycle_changed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'wi1',
+    from: null,
+    to: 'cy1',
+    assigneeIds: ['m2'],
+  },
   'work_item.blocked_changed': {
     type: 'work_item.blocked_changed',
     workspaceId: 'w1',
@@ -242,6 +390,14 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     blocked: true,
     reason: 'waiting on the client',
       assigneeIds: [],
+  },
+  'work_item.custom_field_changed': {
+    type: 'work_item.custom_field_changed',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'wi1',
+    fieldIds: ['f1', 'f2'],
+    assigneeIds: ['m2'],
   },
   'work_item.deleted': {
     type: 'work_item.deleted',
@@ -351,6 +507,10 @@ describe('the event registry', () => {
         'project.unarchived',
         'project.visibility_changed',
         'workflow_state.deleted',
+        // Slice 11's, and the sixth of the same kind: deleting a cycle destroys
+        // a container somebody planned, and `released` records how much work
+        // went back to the backlog with it.
+        'cycle.deleted',
         // Slice 5's two, and both for the same reason the state deletion above
         // is here: they are the only actions in their families that destroy
         // something rather than change it.
@@ -361,6 +521,11 @@ describe('the event registry', () => {
         // than its author do it.
         'attachment.removed',
         'comment.deleted',
+        // Slice 10's two, on the same principle: defining and renaming a field
+        // are configuration, but deleting one takes every value stored in it,
+        // and removing an option takes the values that named it.
+        'custom_field.deleted',
+        'custom_field.option_removed',
         'invitation.resent',
         'invitation.revoked',
         'invitation.sent',
@@ -369,7 +534,42 @@ describe('the event registry', () => {
         'team.renamed',
         'workspace.created',
         'workspace.renamed',
+        /*
+         * Slice 15's eight, and they divide into three kinds.
+         *
+         * **The settings that silently redefine what the product says.** A
+         * timezone, a working week, a week start, a company language or a day
+         * on the holiday calendar changes what "overdue", "stale" and "due
+         * tomorrow" mean, for everybody, retroactively — and the fortnight
+         * after somebody sets the working week to Monday–Friday is exactly when
+         * somebody asks why the digest stopped arriving on Saturdays.
+         */
+        'workspace.settings_changed',
+        'workspace.holidays_changed',
+        /*
+         * **The change that breaks every link anybody has pasted anywhere.**
+         * Separate from `renamed` because an owner reading the log after "why
+         * did all our bookmarks stop working" needs to find it, and finding it
+         * inside a rename entry is finding it by luck.
+         */
+        'workspace.slug_changed',
+        'workspace.branding_changed',
+        'workspace.notification_defaults_changed',
+        /*
+         * **§7.13, and the whole reason `audit_record` has two actor columns.**
+         * "Starting a session is logged against the viewer: this is a
+         * permission an owner holds openly, not a back door." Both halves are
+         * audited, because a session never recorded as ending reads in the log
+         * as one that never ended.
+         */
+        'workspace.view_as_started',
+        'workspace.view_as_ended',
+        // §7.12's reassignment: somebody's open work changing hands in bulk,
+        // which is the moment an offboarding is most worth being able to
+        // reconstruct.
+        'workspace_member.work_reassigned',
         'workspace_member.added',
+        'workspace_member.availability_changed',
         'workspace_member.removed',
         'workspace_member.role_changed',
       ].sort(),
@@ -380,6 +580,16 @@ describe('the event registry', () => {
   // access. An invitation accepted by an account whose address differs from the
   // one invited is exactly the case that question is asked about, so the row
   // has to carry both.
+  // §17-25 and §18-11 together: the log is Owner-visible and permanent, so it
+  // records *that* somebody was marked away and until when, and never why. The
+  // reason is not on the event at all, which is what makes this hard to undo by
+  // accident — but the row is what an owner reads, so the row is what is pinned.
+  it('audits an availability change without its reason', () => {
+    const row = auditRowFor(sample['workspace_member.availability_changed']);
+    expect(row?.data).toEqual({ from: null, to: '2026-09-20' });
+    expect(JSON.stringify(row?.data)).not.toContain('reason');
+  });
+
   it('records who accepted an invitation, not only who was invited', () => {
     const row = auditRowFor(sample['invitation.accepted']);
     expect(row?.data).toMatchObject({ email: 'sophea@example.com', userId: 'u2' });
@@ -400,9 +610,20 @@ describe('the activity projectors', () => {
       .filter((e) => activityRowsFor(e).length > 0 || eventRegistry[e.type].activity !== false)
       .map((e) => e.type);
 
-    // Activity hangs under WorkItem in §9's hierarchy, so a feed exists per
-    // item and nowhere else. Everything about a workspace, a team, a project or
-    // an invitation is either audit or nothing.
+    /*
+     * Activity hangs under WorkItem in §9's hierarchy, so a feed exists per item
+     * and nowhere else. Everything about a workspace, a team, a project or an
+     * invitation is either audit or nothing.
+     *
+     * **Slice 15 adds the one exception, and it proves the rule rather than
+     * breaking it.** `workspace_member.work_reassigned` is named for a person
+     * and carries a list of items, and it projects a line into each of them —
+     * because what lands in the feed is still a change to *that item*: it
+     * changed hands. It is the first entry whose projector returns many rows
+     * from one event at real scale, which is what `ActivitySpec` returning a
+     * list has been for since slice 7, and it is here because an item that
+     * silently changed owner is the one thing offboarding must not produce.
+     */
     expect(projected.sort()).toEqual(
       [
         'work_item.created',
@@ -411,9 +632,19 @@ describe('the activity projectors', () => {
         'work_item.assigned',
         'work_item.labelled',
         'work_item.blocked_changed',
+        // Slice 11's. A cycle's own events say nothing here — a container is
+        // not an item — but an item joining or leaving one is a change to that
+        // item, and its feed is where somebody asks why their work moved.
+        'work_item.cycle_changed',
+        // Slice 10's, on the same rule as `work_item.updated`: one line per
+        // field, because the feed is what itemises a save.
+        'work_item.custom_field_changed',
         // Slice 8's two. They have a projector rather than `false`, and it is
         // the projector — not the registry entry — that decides to stay quiet
         // about a file posted inside a comment. The test below pins that.
+        // Slice 15's, and the only member of this list that is not a
+        // `work_item.*` event — see the note above.
+        'workspace_member.work_reassigned',
         'attachment.added',
         'attachment.removed',
       ].sort(),
@@ -567,6 +798,7 @@ describe('the notify projectors', () => {
         'work_item.assigned',
         'work_item.blocked_changed',
         'work_item.created',
+        'work_item.custom_field_changed',
         'work_item.state_changed',
         'work_item.updated',
       ].sort(),
@@ -575,6 +807,10 @@ describe('the notify projectors', () => {
 
   it('says nothing about a label, a reorder or a deletion', () => {
     expect(notifyDraftsFor(sample['work_item.labelled'])).toEqual([]);
+    // Slice 11's, and the one that would flood an inbox if it were not here:
+    // planning a sprint moves thirty items in one sitting (§7.6), and the
+    // general §7.8 rule would turn that into thirty emails.
+    expect(notifyDraftsFor(sample['work_item.cycle_changed'])).toEqual([]);
     expect(notifyDraftsFor(sample['work_item.moved'])).toEqual([]);
     expect(notifyDraftsFor(sample['work_item.deleted'])).toEqual([]);
     expect(notifyDraftsFor(sample['attachment.removed'])).toEqual([]);

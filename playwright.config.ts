@@ -33,8 +33,19 @@ export default defineConfig({
     },
     {
       // §15 manual check 6: every v1 screen usable at 390px.
+      //
+      // **390 exactly, not the Pixel 7's 412.** The device preset was standing
+      // in for the number until slice 16, and 22px is precisely the margin in
+      // which a header stops wrapping and a table stops overflowing — so the
+      // suite was passing the check the plan does not make. The rest of the
+      // preset is kept (touch, mobile user agent, device scale factor); only
+      // the viewport is pinned to the width §15-6 names.
       name: 'mobile-km',
-      use: { ...devices['Pixel 7'], locale: 'km-KH' },
+      use: {
+        ...devices['Pixel 7'],
+        viewport: { width: 390, height: 844 },
+        locale: 'km-KH',
+      },
     },
   ],
 

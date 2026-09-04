@@ -15,6 +15,7 @@ import {
 import { LABEL_COLORS } from '@/lib/label-colors';
 import { PRIORITIES } from '@/lib/priorities';
 import { primaryId, tenantPolicies, timestamps, workspaceIdColumn } from './_shared';
+import { cycle } from './cycle';
 import { project, workflowState } from './project';
 import { workspace, workspaceMember } from './workspace';
 
@@ -168,6 +169,21 @@ export const workItem = pgTable(
     estimate: integer('estimate'),
 
     /**
+     * The cycle this item is planned into, or null for the backlog (§7.6, slice 11).
+     *
+     * A column rather than a join table because an item is in **at most one**
+     * cycle: §7.6 makes membership "per item, never inherited", and a join
+     * table would permit two — after which the burndown counts one item twice
+     * and nothing in the schema says it should not.
+     *
+     * Nullable, and null is the backlog rather than a missing value. That is
+     * also what makes adding a cycle to a project holding 5,000 items cost
+     * nothing: no backfill, because every item that predates the cycle is
+     * already correctly not in it.
+     */
+    cycleId: uuid('cycle_id'),
+
+    /**
      * §4: blocked is a flag, not a state. An item can be *In Progress and
      * blocked* — making it a state would lose where the work actually was, and
      * force a fake transition to unblock it.
@@ -201,6 +217,55 @@ export const workItem = pgTable(
     /** The member who created it. Membership is soft-deleted, so this stays valid. */
     createdByMemberId: uuid('created_by_member_id').notNull(),
 
+    /**
+     * The one text §7.9 searches, materialised — title and description, folded,
+     * with the zero-width characters removed (§13, slice 14).
+     *
+     * **One column, two indexes, and that is the whole reason it is a column at
+     * all.** §9 routes Latin through `tsvector('simple')` and Khmer through
+     * `pg_trgm`; if each route read a different source the two languages would be
+     * searching different text, and the first bug report would be a Khmer
+     * description that could not be found. Generated once and indexed twice —
+     * a GIN index over `to_tsvector('simple', search_text)` and a
+     * `gin_trgm_ops` index over the column itself (migration 0026) — the two
+     * routes are two *questions about the same string*.
+     *
+     * Generated rather than trigger-maintained, unlike `assignee_ids` beside it,
+     * because unlike those it is a pure function of columns on this same row.
+     * Postgres will not let it drift, there is nothing to backfill after a
+     * direct `UPDATE`, and no seed script or Phase 2 MCP tool can write a row
+     * that is unsearchable — which is the same argument that put `root_id` and
+     * the value CHECK in the database rather than in a service.
+     *
+     * `lower()` here rather than `ILIKE` at query time: a `gin_trgm_ops` index
+     * on the raw column cannot serve `ILIKE`, and folding 50,000 descriptions
+     * per keystroke is the §16 failure this slice exists to avoid.
+     *
+     * The zero-width strip is §13's rule ("preserved in stored text, stripped
+     * before indexing") and is the exact transformation `normalizeQuery` in
+     * `src/lib/search.ts` applies to the query. The two have to agree; they are
+     * written down in those two places and nowhere else.
+     *
+     * The cost is honest and worth stating: it duplicates every description in
+     * the table. The alternative — two expression indexes over
+     * `lower(replace(title || description))` — pays that same expression twice
+     * per write and cannot be read by a `LIKE` that wants the column itself.
+     */
+    searchText: text('search_text').generatedAlwaysAs(
+      // `translate` with an empty replacement deletes every listed character,
+      // which is the whole of `ZERO_WIDTH` in `src/lib/search.ts` — ZWSP, ZWNJ,
+      // ZWJ and the byte-order mark that leads a pasted cell from a spreadsheet.
+      // It is IMMUTABLE, which a generated column requires and a `regexp_replace`
+      // with a locale-sensitive class would put in doubt.
+      //
+      // `btrim` after the strip, rather than the `concat_ws` that would be the
+      // natural way to join two possibly-null columns: `concat_ws` is STABLE and
+      // a generated column will not take it. Trimming earns its place because
+      // most items have no description, and without it every one of those rows
+      // would carry a trailing space nothing needs and every row stores.
+      sql`btrim(lower(translate(coalesce(title, '') || ' ' || coalesce(description, ''), U&'\\200B\\200C\\200D\\FEFF', '')))`,
+    ),
+
     ...timestamps,
   },
   (t) => [
@@ -231,6 +296,28 @@ export const workItem = pgTable(
       foreignColumns: [t.id, t.workspaceId],
     }).onDelete('cascade'),
 
+    /**
+     * Cycle membership (§7.6, slice 11).
+     *
+     * **Three columns, not two.** Carrying `project_id` is what makes it
+     * impossible for an item in Engineering to be planned into Marketing's
+     * sprint — the tenant check alone would allow it, because both projects sit
+     * in one workspace. §9's composite-key device pushed one level down the
+     * hierarchy, and the reason `cycle` carries a matching three-column unique.
+     *
+     * `restrict`, deliberately, and the same argument `work_item_state_fk`
+     * makes: deleting a cycle that still holds work is a decision about that
+     * work, not a cascade. `deleteCycle` releases every item to the backlog
+     * first and this is the second layer — which also sidesteps a real trap,
+     * since `ON DELETE SET NULL` on a composite key nulls *every* column in it
+     * and would take `project_id` and `workspace_id` with it.
+     */
+    foreignKey({
+      name: 'work_item_cycle_fk',
+      columns: [t.cycleId, t.projectId, t.workspaceId],
+      foreignColumns: [cycle.id, cycle.projectId, cycle.workspaceId],
+    }).onDelete('restrict'),
+
     foreignKey({
       name: 'work_item_creator_fk',
       columns: [t.createdByMemberId, t.workspaceId],
@@ -247,6 +334,15 @@ export const workItem = pgTable(
     index('work_item_project_updated_idx').on(t.projectId, t.updatedAt),
     index('work_item_workspace_due_idx').on(t.workspaceId, t.dueDate),
     index('work_item_root_idx').on(t.rootId),
+    /**
+     * The cycle page's every query: its item list, its progress counts and its
+     * burndown all start "the items in this cycle". Partial, because the column
+     * is null for everything in the backlog — which in a mature project is most
+     * of the table, and none of it is ever the answer to this question.
+     */
+    index('work_item_cycle_idx')
+      .on(t.cycleId)
+      .where(sql`${t.cycleId} is not null`),
     index('work_item_parent_idx').on(t.parentId),
 
     /** What makes "assigned to me" and "labelled client" avoid a join (§9). */

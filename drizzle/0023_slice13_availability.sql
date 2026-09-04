@@ -1,0 +1,3 @@
+ALTER TABLE "workspace_member" ADD COLUMN "unavailable_until" date;--> statement-breakpoint
+ALTER TABLE "workspace_member" ADD COLUMN "unavailable_reason" text;--> statement-breakpoint
+CREATE INDEX "workspace_member_unavailable_idx" ON "workspace_member" USING btree ("workspace_id","unavailable_until") WHERE "workspace_member"."unavailable_until" is not null and "workspace_member"."deleted_at" is null;

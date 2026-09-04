@@ -97,6 +97,13 @@ export const SQLSTATE = {
   /** Both "permission denied for table" and "violates row-level security policy". */
   insufficientPrivilege: '42501',
   foreignKeyViolation: '23503',
+  /**
+   * `ON DELETE RESTRICT`, which Postgres reports separately from an ordinary
+   * foreign-key violation — slice 11's `work_item_cycle_fk` is the first one
+   * in this schema, and the distinction is the point: 23503 is "that row does
+   * not exist", 23001 is "that row exists and something still needs it".
+   */
+  restrictViolation: '23001',
   /** A CHECK constraint — slice 8's `attachment` invariants live in 0014. */
   checkViolation: '23514',
   /** A UNIQUE constraint — slice 9's one-notification-per-recipient-per-message. */

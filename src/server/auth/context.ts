@@ -2,14 +2,27 @@ import 'server-only';
 
 import { and, eq, isNull } from 'drizzle-orm';
 import { cache } from 'react';
-import type { Actor } from '@/server/authz/policy';
+import type { AccentColor } from '@/lib/branding';
+import { locales, type Locale } from '@/i18n/routing';
+import { isWeekDay, type WeekDay } from '@/lib/workspace-date';
+import { can, type Actor } from '@/server/authz/policy';
 import { withIdentity } from '@/server/db/identity';
-import { projectMember, workspace as workspaceTable, workspaceMember } from '@/server/db/schema';
+import {
+  projectMember,
+  user as userTable,
+  workspace as workspaceTable,
+  workspaceMember,
+} from '@/server/db/schema';
 import { withActor, type ActorContext } from '@/server/db/tenant';
 import { countUnread } from '@/server/queries/notifications';
 import type { ProjectRole, WorkspaceRole } from '@/server/authz/roles';
 import { readCurrentUser } from './session';
 import type { CurrentUser } from './session';
+import { readViewAs } from './view-as';
+
+function isLocale(value: string): value is Locale {
+  return (locales as readonly string[]).includes(value);
+}
 
 /**
  * Resolving who is acting, once per request, into the two shapes the rest of
@@ -22,10 +35,16 @@ import type { CurrentUser } from './session';
  * one type is how a codebase ends up answering the second question with the
  * first one's information.
  *
- * View-as (§7.13, slice 15) is the case that proves they are separate. It makes
- * `userId` the target member in both while `actorUserId` stays the viewer, and
- * sets `readOnly` on both. The seam is already here; the UI that drives it is
- * not.
+ * View-as (§7.13) is the case that proves they are separate, and slice 15 is
+ * where it stopped being a seam. It makes `userId` the target member in both
+ * while `actorUserId` stays the viewer, and sets `readOnly` on both — so the
+ * database scopes rows as the target, the policy module answers as the target,
+ * the audit log names the viewer, and every mutation is refused twice.
+ *
+ * **The decision is re-taken on every request**, from the cookie plus the
+ * session's own membership. There is no server-side view-as state to go stale,
+ * so an owner who loses Admin mid-session stops viewing on their next click
+ * rather than whenever something notices.
  */
 
 export type WorkspaceSummary = {
@@ -40,6 +59,59 @@ export type WorkspaceSummary = {
    * screen can quietly fall back to the viewer's device (§17-13).
    */
   timezone: string;
+  /**
+   * The company's language (§6-1, slice 15) — the fallback, never a person's
+   * own. Carried here for the one caller that genuinely needs it on the server:
+   * the holiday seed writes a literal that every member will read, so it must
+   * be written in the company's language rather than in whichever one the admin
+   * who pressed the button happened to be using.
+   */
+  defaultLocale: Locale;
+  /**
+   * §6-1's week start, 0 = Monday through 6 = Sunday — the schema's numbering,
+   * not JavaScript's.
+   *
+   * Carried beside `timezone` and for the same reason: the calendar is drawn on
+   * a page that already resolved an actor, and a view that fetched this itself
+   * would be a second round trip for a value the shell had in hand. Slice 12
+   * hardcoded Monday here and said the setting was slice 15's.
+   */
+  weekStart: WeekDay;
+  /** §6-7's accent, or null for the product's own. The layout puts it on an attribute. */
+  accent: AccentColor | null;
+  /** §6-7's logo, as an object key. Null until somebody uploads one. */
+  logoKey: string | null;
+};
+
+/**
+ * Who is being viewed, while §7.13's view-as is active.
+ *
+ * Present on the resolved actor rather than fetched by the bar, because the
+ * decision to *be* in a view-as session and the information needed to say so
+ * are the same decision — a bar that asked its own question could disagree with
+ * the context every other component on the page was rendered from, which is
+ * precisely the "correct-looking screen over an incorrect query" §7.13 exists
+ * to catch.
+ */
+export type ViewAsState = {
+  memberId: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: WorkspaceRole;
+};
+
+/**
+ * One row of the workspace switcher — deliberately narrower than
+ * `WorkspaceSummary`.
+ *
+ * The switcher needs a name and a link; the settings a workspace carries mean
+ * nothing outside it. Keeping this small is what stops the one cross-workspace
+ * query in the product from growing a column every time a slice adds a company
+ * setting.
+ */
+export type WorkspaceListing = Pick<WorkspaceSummary, 'id' | 'slug' | 'name' | 'role'> & {
+  timezone: string;
 };
 
 /**
@@ -51,7 +123,7 @@ export type WorkspaceSummary = {
  * — so it cannot become a way to read who else is in them.
  */
 export const listMyWorkspaces = cache(
-  async (userId: string): Promise<WorkspaceSummary[]> =>
+  async (userId: string): Promise<WorkspaceListing[]> =>
     withIdentity(
       async (tx) =>
         tx
@@ -130,6 +202,28 @@ export type ResolvedActor = {
   context: ActorContext;
   /** For `can` / `assertCan` — the policy module's question. */
   actor: Actor;
+  /**
+   * The person whose screens these are, while §7.13's view-as is active — and
+   * null the rest of the time, which is almost always.
+   *
+   * When it is set, `workspace.role`, `memberId`, `actor` and `context` all
+   * describe **them**, not the viewer. That is the whole of §7.13's "it is a
+   * real actor context, not a UI filter": a filter would show the owner a
+   * correct-looking screen over an incorrect query, which is exactly the bug
+   * they opened the screen to find.
+   */
+  viewAs: ViewAsState | null;
+  /** The viewer's own identity while viewing as somebody else. */
+  viewer: CurrentUser | null;
+  /**
+   * §7.13's `[!]`: "the member is removed mid-session → view-as ends with an
+   * explanation, not a 404."
+   *
+   * Set when a cookie named somebody who is no longer a member. The session
+   * silently reverts to the viewer's own — the alternative is a screen that
+   * cannot render — and the bar says why instead of vanishing without comment.
+   */
+  viewAsEnded: boolean;
 };
 
 /**
@@ -153,6 +247,10 @@ export const resolveActorContext = cache(
             slug: workspaceTable.slug,
             name: workspaceTable.name,
             timezone: workspaceTable.timezone,
+            defaultLocale: workspaceTable.defaultLocale,
+            weekStart: workspaceTable.weekStart,
+            accent: workspaceTable.accent,
+            logoKey: workspaceTable.logoKey,
             memberId: workspaceMember.id,
             role: workspaceMember.role,
           })
@@ -175,36 +273,101 @@ export const resolveActorContext = cache(
 
     if (!found) return null;
 
-    // Slice 15 flips these two from a view-as cookie. Until then a session is
-    // always the person it says it is, and always able to write.
-    const readOnly = false;
-    const actingAsUserId = user.id;
-
-    const context: ActorContext = {
-      workspaceId: found.workspaceId,
-      userId: actingAsUserId,
-      actorUserId: user.id,
-      readOnly,
+    const company = {
+      id: found.workspaceId,
+      slug: found.slug,
+      name: found.name,
+      timezone: found.timezone,
+      defaultLocale: (isLocale(found.defaultLocale) ? found.defaultLocale : 'en') as Locale,
+      // The column is bounded 0..6 by a CHECK in migration 0028; the narrowing
+      // is here so a row written before that constraint existed cannot make a
+      // calendar draw eight columns.
+      weekStart: (isWeekDay(found.weekStart) ? found.weekStart : 0) as WeekDay,
+      accent: found.accent,
+      logoKey: found.logoKey,
     };
 
-    const shell = await loadShellState(context, found.memberId);
+    /*
+     * §7.13, and the reason the two context objects have always been separate.
+     *
+     * The cookie is a *claim*. It becomes an actor only if the viewer still
+     * holds `workspace.view_as_member` in this workspace and the person they
+     * named is still a live member of it — both re-asked here, on every
+     * request, from the session's own membership. Nothing about the cookie is
+     * trusted; it names a session the viewer could have started by clicking.
+     *
+     * The permission is asked of a **real** actor built from the viewer's own
+     * role, deliberately with no project roles: `workspace.view_as_member` is a
+     * workspace-level rule (§10, Owner and Admin), and handing the check a map
+     * it does not read would suggest it did. `readOnly: false` there for the
+     * same reason — the question is whether this person may *start* a session,
+     * and asking it as though they were already inside one would refuse it,
+     * since every action is a mutation to a read-only actor.
+     */
+    const claim = await readViewAs();
+    const wants =
+      claim !== null &&
+      claim.workspaceId === found.workspaceId &&
+      claim.memberId !== found.memberId &&
+      can(
+        {
+          workspaceId: found.workspaceId,
+          userId: user.id,
+          workspaceRole: found.role,
+          projectRoles: new Map(),
+          readOnly: false,
+        },
+        'workspace.view_as_member',
+      );
+
+    // The viewer's own context, which is also what the lookup below runs on:
+    // resolving the target is a question the *viewer* asks, and asking it from
+    // inside the session being set up would be circular.
+    const ownContext: ActorContext = {
+      workspaceId: found.workspaceId,
+      userId: user.id,
+      actorUserId: user.id,
+      readOnly: false,
+    };
+
+    const target = wants && claim ? await readTargetMember(ownContext, claim.memberId) : null;
+
+    // A cookie that named somebody who has since been removed. §7.13's `[!]`
+    // asks for "an explanation, not a 404", so the session reverts and the bar
+    // says so — the cookie itself is cleared by the bar's action, because a
+    // cached render is not allowed to write one.
+    const viewAsEnded = wants && target === null;
+
+    const readOnly = target !== null;
+    const actingUserId = target?.userId ?? user.id;
+    const actingMemberId = target?.memberId ?? found.memberId;
+    const actingRole = target?.role ?? found.role;
+
+    const context: ActorContext = target
+      ? {
+          workspaceId: found.workspaceId,
+          // The target in `userId` and the viewer in `actorUserId` — which is
+          // exactly what §18-11 built `audit_record.on_behalf_of_user_id` for,
+          // and why a view-as session is visible in the log rather than
+          // indistinguishable from the person being viewed.
+          userId: actingUserId,
+          actorUserId: user.id,
+          readOnly: true,
+        }
+      : ownContext;
+
+    const shell = await loadShellState(context, actingMemberId);
 
     return {
       user,
       unread: shell.unread,
-      workspace: {
-        id: found.workspaceId,
-        slug: found.slug,
-        name: found.name,
-        timezone: found.timezone,
-        role: found.role,
-      },
-      memberId: found.memberId,
+      workspace: { ...company, role: actingRole },
+      memberId: actingMemberId,
       context,
       actor: {
         workspaceId: found.workspaceId,
-        userId: actingAsUserId,
-        workspaceRole: found.role,
+        userId: actingUserId,
+        workspaceRole: actingRole,
         // Explicit project memberships only. §10 composition derives the
         // implicit roles from this — Owner and Admin are Leads everywhere, a
         // workspace-visible project grants Members a Viewer, Guests get nothing
@@ -212,6 +375,42 @@ export const resolveActorContext = cache(
         projectRoles: shell.projectRoles,
         readOnly,
       },
+      viewAs: target,
+      viewer: target ? user : null,
+      viewAsEnded,
     };
   },
 );
+
+/**
+ * The member a view-as cookie names, read as the viewer.
+ *
+ * On the app connection, like `loadShellState` and for the same reason: this is
+ * tenant data, the workspace is known by now, and the identity role is granted
+ * nothing that would let it read another member's row.
+ *
+ * A live membership only. §7.12 soft-deletes a removed member, so this is the
+ * check that turns "viewing as somebody who left" into §7.13's explanation
+ * rather than into a session with no owner.
+ */
+async function readTargetMember(
+  context: ActorContext,
+  memberId: string,
+): Promise<ViewAsState | null> {
+  return withActor(context, async (tx) => {
+    const rows = await tx
+      .select({
+        memberId: workspaceMember.id,
+        userId: workspaceMember.userId,
+        role: workspaceMember.role,
+        name: userTable.name,
+        email: userTable.email,
+      })
+      .from(workspaceMember)
+      .innerJoin(userTable, eq(userTable.id, workspaceMember.userId))
+      .where(and(eq(workspaceMember.id, memberId), isNull(workspaceMember.deletedAt)))
+      .limit(1);
+
+    return rows[0] ?? null;
+  });
+}

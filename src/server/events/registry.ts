@@ -162,6 +162,106 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     activity: noActivity,
     notify: noNotify,
   },
+  'workspace.slug_changed': {
+    audit: {
+      subjectType: 'workspace',
+      subject: (e) => e.workspaceId,
+      data: (e) => ({ from: e.from, to: e.to }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  /**
+   * Audited, and the four fields are carried whether or not they moved.
+   *
+   * `changed` says which ones did — the log entry an owner reads a year later
+   * has to distinguish "they changed the timezone" from "they saved the form" —
+   * and the values are all four because a log of deltas cannot answer "what was
+   * it set to on the day the digests stopped", which is the question actually
+   * asked.
+   */
+  'workspace.settings_changed': {
+    audit: {
+      subjectType: 'workspace',
+      subject: (e) => e.workspaceId,
+      data: (e) => ({
+        changed: e.changed,
+        timezone: e.timezone,
+        workingDays: e.workingDays,
+        weekStart: e.weekStart,
+        defaultLocale: e.defaultLocale,
+      }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  /**
+   * §6-7. The logo is recorded as a boolean rather than as a key: whether the
+   * company has one is the fact worth keeping, and an object key in an
+   * append-only log outlives the object it names.
+   */
+  'workspace.branding_changed': {
+    audit: {
+      subjectType: 'workspace',
+      subject: (e) => e.workspaceId,
+      data: (e) => ({ changed: e.changed, accent: e.accent, hasLogo: e.hasLogo }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  /**
+   * Audited because it moves every derived date in the product (§17-18): a
+   * holiday added or removed changes what is stale, what is due soon, and where
+   * a burndown's ideal line flattens, for everybody, retroactively.
+   */
+  'workspace.holidays_changed': {
+    audit: {
+      subjectType: 'workspace',
+      subject: (e) => e.workspaceId,
+      data: (e) => ({ added: e.added, removed: e.removed, years: e.years }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  /**
+   * §7.13's whole accountability story, and the reason `audit_record` carries
+   * two actor columns (§18-11).
+   *
+   * The audit subject is the member being **viewed**, not the viewer: an owner
+   * asking "who has been looking at Sophea's screens" is asking about Sophea's
+   * row, and the viewer is already on every audit row as `actor_user_id`.
+   */
+  'workspace.view_as_started': {
+    audit: {
+      subjectType: 'workspace_member',
+      subject: (e) => e.targetMemberId,
+      data: (e) => ({ targetUserId: e.targetUserId }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  'workspace.view_as_ended': {
+    audit: {
+      subjectType: 'workspace_member',
+      subject: (e) => e.targetMemberId,
+      data: (e) => ({ targetUserId: e.targetUserId }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  /**
+   * §6-6's company defaults. Audited where a member's own preferences are not —
+   * see the event's comment; the difference is whose delivery it changes.
+   */
+  'workspace.notification_defaults_changed': {
+    audit: {
+      subjectType: 'workspace',
+      subject: (e) => e.workspaceId,
+      data: (e) => ({ kind: e.kind, channels: e.channels }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
   'workspace_member.added': {
     audit: {
       subjectType: 'workspace_member',
@@ -180,6 +280,38 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     activity: noActivity,
     notify: noNotify,
   },
+  /**
+   * Audited, and neither projected nor notified (§17-25).
+   *
+   * **Audit**, because an Admin can set it for somebody else: "who marked
+   * Sophea unavailable for three weeks, and when" is exactly the question
+   * §18-11 built an append-only log to answer, and the answer stops being
+   * available the moment the flag is cleared.
+   *
+   * **No activity**, because activity is per work item (§9 hangs it under
+   * WorkItem) and availability is about a person. There is no item's history it
+   * could belong to, and putting it in every item they are assigned to would be
+   * the redundancy `comment.created` already refuses.
+   *
+   * **No notification**, and this is the one of the three worth defending. The
+   * obvious rule would tell the member their own flag changed — but the member
+   * sets it themselves in almost every case, and §7.8's "an actor never hears
+   * about their own action" would drop it anyway. What is left is an Admin
+   * setting it for somebody, which is a conversation the two of them have
+   * already had; a mail arriving afterwards is a receipt, not news. §6-6's five
+   * notification kinds are a closed set and none of them is this, so inventing a
+   * sixth for it would put a preference row in front of every user for
+   * something that happens twice a year.
+   */
+  'workspace_member.availability_changed': {
+    audit: {
+      subjectType: 'workspace_member',
+      subject: (e) => e.memberId,
+      data: (e) => ({ from: e.from, to: e.to }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
   'workspace_member.removed': {
     audit: {
       subjectType: 'workspace_member',
@@ -187,6 +319,38 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       data: (e) => ({ userId: e.userId }),
     },
     activity: noActivity,
+    notify: noNotify,
+  },
+  /**
+   * §7.12's reassignment, and the first entry in the registry whose activity
+   * projector emits a line **per item** from a single event.
+   *
+   * That is what `ActivitySpec` returning a list has been for since slice 7 —
+   * "one event is often several lines" — used here at a scale the earlier
+   * callers never reached: forty items whose owner left, forty histories that
+   * should each say so. An item that silently changed hands is the one thing
+   * offboarding must not produce, because the person picking it up has no way
+   * to find out why it is theirs.
+   *
+   * `notify: false` for the reason `work_item.cycle_changed` gives. The general
+   * §7.8 rule would mail every assignee of every item, which for one offboarding
+   * is one person receiving forty emails in one minute — the exact failure §7.8
+   * names. The audit row and the forty feed lines are the record; the
+   * conversation is the notification.
+   */
+  'workspace_member.work_reassigned': {
+    audit: {
+      subjectType: 'workspace_member',
+      subject: (e) => e.fromMemberId,
+      data: (e) => ({ toMemberId: e.toMemberId, itemCount: e.items.length }),
+    },
+    activity: (e) =>
+      e.items.map((item) => ({
+        workItemId: item.workItemId,
+        projectId: item.projectId,
+        action: e.type,
+        data: { fromMemberId: e.fromMemberId, toMemberId: e.toMemberId },
+      })),
     notify: noNotify,
   },
   'team.created': {
@@ -362,6 +526,78 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
   // label from every item carrying it — a change to a body of work made by
   // somebody who was looking at a settings screen, which is exactly the shape
   // of thing the log exists to explain later.
+  // Custom fields (slice 10). The same shape the workflow-state entries above
+  // take, and for the same reasons: defining, renaming and reordering are
+  // configuration, and configuration that is not destructive does not belong in
+  // the log an owner opens to ask what went missing. Neither belongs in an item
+  // feed — a field is a property of the project, not of any one item — and
+  // nobody's bell should ring because a Lead added a column to a form.
+  'custom_field.created': { audit: false, activity: noActivity, notify: noNotify },
+  'custom_field.updated': { audit: false, activity: noActivity, notify: noNotify },
+  'custom_field.reordered': { audit: false, activity: noActivity, notify: noNotify },
+
+  // The two that destroy. §7.11 makes deleting a field an explicit choice about
+  // its values — "delete values, or export first" — and a choice that costs
+  // somebody else's data is exactly what §18-11's log is for. Both record how
+  // much went, because "a field was deleted" and "a field holding 300 values
+  // was deleted" are different events to the person reading this later.
+  'custom_field.deleted': {
+    audit: {
+      subjectType: 'custom_field',
+      subject: (e) => e.fieldId,
+      data: (e) => ({
+        projectId: e.projectId,
+        name: e.name,
+        kind: e.kind,
+        valuesDeleted: e.valuesDeleted,
+      }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  'custom_field.option_removed': {
+    audit: {
+      subjectType: 'custom_field',
+      subject: (e) => e.fieldId,
+      data: (e) => ({
+        projectId: e.projectId,
+        optionId: e.optionId,
+        name: e.name,
+        clearedFrom: e.clearedFrom,
+      }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
+  // --- Cycles (§7.6, slice 11) ----------------------------------------------
+  // Planning is not an item event, so none of the four projects to any item's
+  // feed: a cycle is a container, and a line saying "Sprint 14 was renamed"
+  // repeated into the feed of every item in it is the redundancy `comment.created`
+  // already refuses. What *does* reach an item's feed is the item's own
+  // membership changing, which is `work_item.cycle_changed` below.
+  'cycle.created': { audit: false, activity: noActivity, notify: noNotify },
+  'cycle.updated': { audit: false, activity: noActivity, notify: noNotify },
+
+  // Answering §7.6's prompt is not destructive — it moves work rather than
+  // losing it — so it is not audited either. It is recorded in the cycle's own
+  // row, which is where a retrospective looks.
+  'cycle.completed': { audit: false, activity: noActivity, notify: noNotify },
+
+  // The one that destroys. §7.6 makes deleting a cycle a decision about the
+  // work inside it, and `released` is the number the confirmation showed —
+  // "a cycle was deleted" and "a cycle holding forty items was deleted" are
+  // different events to whoever reads this later.
+  'cycle.deleted': {
+    audit: {
+      subjectType: 'cycle',
+      subject: (e) => e.cycleId,
+      data: (e) => ({ projectId: e.projectId, name: e.name, released: e.released }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
   'label.created': { audit: false, activity: noActivity, notify: noNotify },
   'label.updated': { audit: false, activity: noActivity, notify: noNotify },
   'label.deleted': {
@@ -496,6 +732,34 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // it, and nowhere near a bell.
     notify: noNotify,
   },
+  'work_item.cycle_changed': {
+    audit: false,
+    // Ids rather than names, like every other reference in a projection: a
+    // cycle renamed from "Sprint 14" to "April" must read under its new name in
+    // the line that recorded this move, and a name frozen here would be the one
+    // string a Khmer workspace could never fix (§13). Both may be null — null
+    // `to` is the backlog, which is a destination and not a missing value.
+    activity: (e) => [onItem(e, { from: e.from, to: e.to })],
+    /**
+     * Nobody is told, and this is the one `noNotify` in the slice that needs
+     * defending.
+     *
+     * §7.8's general rule would make this `item_activity` and tell every
+     * assignee — which is right for one item and catastrophic for the act this
+     * event actually describes. Planning a sprint is §7.6's "add items
+     * (multi-select from backlog, or drag)": one person, one sitting, thirty
+     * items. Under the general rule that is thirty emails to a team in ten
+     * minutes, and §7.8 is blunt about what that costs — it is how a team
+     * learns to filter the product's mail.
+     *
+     * The precedent is `work_item.labelled`, which is silent for the same
+     * shape of reason: this is planning being applied to work, not work
+     * changing hands. It belongs in the feed, where somebody scanning an item's
+     * history can see it, and nowhere near a bell. The cycle page is where a
+     * team reads what is in the sprint, and it is one click from the project.
+     */
+    notify: noNotify,
+  },
   'work_item.blocked_changed': {
     audit: false,
     // The reason is carried, unlike every other name and value here, because it
@@ -515,6 +779,27 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
         workItemId: e.workItemId,
         commentId: null,
         data: { blocked: e.blocked, reason: e.reason },
+      },
+    ],
+  },
+
+  'work_item.custom_field_changed': {
+    audit: false,
+    // One line per field, exactly as `work_item.updated` does it: a save that
+    // moved three fields reads as three changes, because "changed the client"
+    // is the line somebody scrolling a feed is looking for and "edited the
+    // custom fields" makes them compare two screens.
+    activity: (e) => e.fieldIds.map((fieldId) => onItem(e, { fieldId })),
+    // And one notification for the save, however many fields it moved — the
+    // same asymmetry, for the same reason. `fieldIds` rides along so the
+    // renderer can still say which.
+    notify: (e) => [
+      {
+        kind: 'item_activity',
+        recipientMemberIds: e.assigneeIds,
+        workItemId: e.workItemId,
+        commentId: null,
+        data: { fieldIds: e.fieldIds },
       },
     ],
   },

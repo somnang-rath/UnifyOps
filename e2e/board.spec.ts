@@ -47,7 +47,14 @@ async function signUpWithProject(
   await page.goto(`/${locale}/${slug}/projects/new`);
   await page.getByLabel(/project name|ឈ្មោះគម្រោង/i).fill('Field Ops');
   await page.getByRole('button', { name: /create project|បង្កើតគម្រោង/i }).click();
-  await expect(page).toHaveURL(new RegExp(`/${locale}/${slug}/projects/field-ops$`));
+  // §7.1's last step: creating a project lands on the **board**, with the six
+  // default states drawn and the first column's composer focused. The specs
+  // below this helper each want the project's own default view, so the helper
+  // asserts the landing and then starts them from the bare URL.
+  await expect(page).toHaveURL(
+    new RegExp(`/${locale}/${slug}/projects/field-ops[?]view=board&new=1$`),
+  );
+  await page.goto(`/${locale}/${slug}/projects/field-ops`);
 
   return { slug, projectSlug: 'field-ops' };
 }
@@ -235,8 +242,23 @@ test.describe('board', () => {
   });
 });
 
-/** Which column index currently holds a card. */
+/**
+ * Which column index currently holds a card.
+ *
+ * **Both APIs used inside are non-waiting, so the wait has to be stated.**
+ * `count()` and `isVisible()` answer about the DOM as it stands right now, and
+ * this is called immediately after a `reload()` — so on a slow worker it read
+ * an empty board and returned -1, which the caller reported as two browsers
+ * disagreeing rather than as a board that had not arrived. Slice 16 made that
+ * more likely by adding §11's `loading.tsx`, which is a real Suspense boundary:
+ * `load` now fires with a skeleton on screen.
+ *
+ * Waiting for the card itself is the right anchor rather than waiting for the
+ * columns: a column exists in the skeleton too.
+ */
 async function columnHolding(page: Page, title: string): Promise<number> {
+  await expect(page.getByRole('link', { name: title })).toBeVisible();
+
   const all = columns(page);
   for (let index = 0; index < (await all.count()); index += 1) {
     if (await all.nth(index).getByRole('link', { name: title }).isVisible()) return index;

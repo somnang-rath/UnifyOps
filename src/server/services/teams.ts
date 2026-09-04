@@ -5,7 +5,7 @@ import { uuidv7 } from 'uuidv7';
 import type { ResolvedActor } from '@/server/auth/context';
 import { assertCan } from '@/server/authz/policy';
 import { isUniqueViolation } from '@/server/db/errors';
-import { team, teamMember, workspaceMember } from '@/server/db/schema';
+import { team, teamMember, user as appUser, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import type { ActorContext } from '@/server/db/tenant';
 import { deriveSlug, slugify, slugProblem } from '@/lib/slug';
@@ -215,4 +215,40 @@ export async function removeTeamMember(
   });
 
   return { ok: true };
+}
+
+/**
+ * Every team membership in the workspace, with the person's name.
+ *
+ * **One query for the whole screen, not one per team.** §6-5's settings page
+ * draws a team and its people, and asking per team is the trap slice 8 hit with
+ * `getCommentThread`, slice 9 with the unread count, slice 10 with custom
+ * fields, slice 13 with §7.4's six lists and slice 14 with the palette's
+ * project scope — the sixth time, and the answer is theirs: ask once, group in
+ * TypeScript.
+ *
+ * A workspace has a handful of teams and tens of members, so this is tens of
+ * rows. If it ever became hundreds the page would need paging, which is a
+ * different screen rather than a different query.
+ */
+export type TeamMembership = {
+  teamId: string;
+  memberId: string;
+  name: string;
+};
+
+export async function listTeamMembers(context: ActorContext): Promise<TeamMembership[]> {
+  return withActor(context, async (tx) =>
+    tx
+      .select({
+        teamId: teamMember.teamId,
+        memberId: teamMember.workspaceMemberId,
+        name: appUser.name,
+      })
+      .from(teamMember)
+      .innerJoin(workspaceMember, eq(workspaceMember.id, teamMember.workspaceMemberId))
+      .innerJoin(appUser, eq(appUser.id, workspaceMember.userId))
+      .where(and(isNull(teamMember.deletedAt), isNull(workspaceMember.deletedAt)))
+      .orderBy(appUser.name),
+  );
 }

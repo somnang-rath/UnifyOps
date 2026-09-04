@@ -165,6 +165,15 @@
 
   --focus-ring: var(--color-sky-500);
 
+  /* The scrim behind a modal (slice 14). A semantic alias rather than a colour
+     written on the one component that uses it, because it is the only value in
+     the product that is *translucent by design*: `bg-surface` at 100% hides the
+     page, and hiding the page is what a sheet does, not a dialog. Derived from
+     the neutral ramp through `color-mix` so it stays a token reference —
+     Charcoal at 45% in light, and deeper in dark, where the page underneath is
+     already dark and 45% would read as a shrug. */
+  --overlay: color-mix(in srgb, var(--color-ink-900) 45%, transparent);
+
   /* Workflow-state colours (slice 4). Six named choices a company may recolour
      a state to, resolved as tokens rather than stored as hex — a colour picked
      in 2026 still has to work in dark mode. They mark dots and chips, never
@@ -259,6 +268,8 @@
 
   --focus-ring: var(--color-sky-300);
 
+  --overlay: color-mix(in srgb, var(--color-ink-950) 70%, transparent);
+
   /* Lightened against Charcoal. Navy in particular is invisible on a dark
      ground, which is the whole reason a state's colour is a token name in the
      database and not the value itself. */
@@ -303,6 +314,139 @@
   color-scheme: dark;
 }
 
+/* ==========================================================================
+   §6-7 — the company's accent colour (slice 15)
+   ==========================================================================
+
+   Layer 2 again, and nothing else. A workspace stores a **token name**
+   (`accent_color` in the schema, `ACCENT_COLORS` in src/lib/branding.ts) and
+   the workspace shell puts it on a wrapper element; these blocks override the
+   five `--accent-*` aliases on that element, and everything inside inherits
+   them, because a custom property is inherited like any other.
+
+   The attribute is on a wrapper rather than on `<html>` for a structural
+   reason: the root layout does not know which workspace is being rendered —
+   the slug is a segment below it — and `next-themes` already owns the class on
+   `<html>`. So the selectors are element-level rather than `:root`-level, and
+   the dark variants are written as descendants of `.dark`, which also makes
+   them one specificity step stronger than the light rules without an
+   `!important` anywhere. Components are untouched — they
+   already say `bg-accent`, `hover:bg-accent-hover`, `text-accent-fg` — which is
+   the whole payoff for never having let a raw ramp value reach one. Slice 4
+   made the same bet for a recoloured workflow state and slice 5 for a label;
+   this is the third time it has paid, and the first time it has paid for
+   something that recolours the *entire* product from one row.
+
+   The light/dark flip is not per-choice styling, it is the same rule the
+   default already follows: **a dark fill with light text in light mode, a light
+   fill with dark text in dark mode.** Navy is invisible on Charcoal, which is
+   why the default `--accent` is Navy in light and Sky in dark, and every choice
+   here obeys the same constraint against the same two grounds.
+
+   A nested `data-accent` wins over an outer one, which is what lets the
+   settings picker draw each swatch in the colour it would actually resolve to,
+   in the reader's current theme, rather than in a hard-coded approximation
+   that could drift from this file.
+
+   Contrast, measured against the ground each pair actually sits on — Ivory
+   `#F2F0ED` in light, Charcoal `#212E3B` in dark. Every filled pair clears 4.5:1
+   for body text; the numbers are in the comments so the next person changing a
+   ramp step can tell what they are about to break.
+
+   Crimson is not offered, though it is one of the seven brand colours: it is
+   `--danger`, and a company that chose it would have a primary button the same
+   colour as every delete button. See the comment in src/lib/branding.ts.
+   ========================================================================== */
+
+/* Navy — the product's own, listed so that *choosing* it is a no-op rather
+   than a different code path. `[data-accent]` absent means the same thing. */
+[data-accent='navy'] {
+  --accent: var(--color-navy-800); /* 9.0:1 on white text */
+  --accent-hover: var(--color-navy-900);
+  --accent-fg: var(--color-ink-0);
+  --accent-subtle: var(--color-sky-50);
+  --accent-ring: var(--color-sky-400);
+}
+
+/* Sky — the brand's blue, at the two steps where it is legible as a fill.
+   Sky #54A6DB itself is ~2.4:1 on Ivory and is never the light-mode fill. */
+[data-accent='sky'] {
+  --accent: var(--color-sky-600); /* 5.0:1 on white text */
+  --accent-hover: var(--color-sky-700);
+  --accent-fg: var(--color-ink-0);
+  --accent-subtle: var(--color-sky-50);
+  --accent-ring: var(--color-sky-400);
+}
+
+/* Lilac — §12 calls it decorative, and as an accent it has to come down two
+   steps from the brand value before white text sits on it safely. */
+[data-accent='lilac'] {
+  --accent: var(--color-lilac-600); /* 4.7:1 on white text */
+  --accent-hover: var(--color-lilac-800);
+  --accent-fg: var(--color-ink-0);
+  --accent-subtle: var(--color-lilac-100);
+  --accent-ring: var(--color-lilac-400);
+}
+
+/* Chartreuse — the hardest of the four, and the honest answer is that a
+   contrast-passing chartreuse *fill* is dark olive. So it is the one choice
+   that keeps a light fill and takes dark text, exactly as `LabelChip` and the
+   avatar steps do when a brand colour is too light to carry `--accent-fg`.
+   Hover goes one step *darker* rather than lighter, and the text stays ink. */
+[data-accent='chartreuse'] {
+  --accent: var(--color-chartreuse-400); /* 7.7:1 against ink-900 text */
+  --accent-hover: var(--color-chartreuse-600); /* 5.9:1 against ink-900 text */
+  --accent-fg: var(--color-ink-900);
+  --accent-subtle: var(--color-chartreuse-100);
+  --accent-ring: var(--color-chartreuse-600);
+}
+
+/* Dark mode. The fills invert — light colour, dark text — because Charcoal is
+   the ground. Written as a descendant of `.dark` (and as `.dark` itself, for the
+   swatch case where both land on one element), which is one specificity step
+   above the light rules and needs no `!important`.
+
+   The two subtle backgrounds that have no dark ramp step of their own are
+   composed with `color-mix` over the neutral, which is the pattern `--overlay`
+   established in slice 14: still a token reference, still one place to change. */
+.dark [data-accent='navy'],
+.dark[data-accent='navy'] {
+  --accent: var(--color-sky-400); /* 6.8:1 against ink-950 text */
+  --accent-hover: var(--color-sky-300);
+  --accent-fg: var(--color-ink-950);
+  --accent-subtle: var(--color-navy-950);
+  --accent-ring: var(--color-sky-400);
+}
+
+/* One step lighter than Navy's, so the two blues are still telling apart on a
+   dark ground — where Navy itself cannot be used at all. */
+.dark [data-accent='sky'],
+.dark[data-accent='sky'] {
+  --accent: var(--color-sky-200); /* 12.9:1 against ink-950 text */
+  --accent-hover: var(--color-sky-100);
+  --accent-fg: var(--color-ink-950);
+  --accent-subtle: var(--color-navy-950);
+  --accent-ring: var(--color-sky-300);
+}
+
+.dark [data-accent='lilac'],
+.dark[data-accent='lilac'] {
+  --accent: var(--color-lilac-300); /* 11.4:1 against ink-950 text */
+  --accent-hover: var(--color-lilac-100);
+  --accent-fg: var(--color-ink-950);
+  --accent-subtle: color-mix(in srgb, var(--color-lilac-400) 18%, var(--color-ink-950));
+  --accent-ring: var(--color-lilac-400);
+}
+
+.dark [data-accent='chartreuse'],
+.dark[data-accent='chartreuse'] {
+  --accent: var(--color-chartreuse-300); /* 12.6:1 against ink-950 text */
+  --accent-hover: var(--color-chartreuse-100);
+  --accent-fg: var(--color-ink-950);
+  --accent-subtle: color-mix(in srgb, var(--color-chartreuse-400) 18%, var(--color-ink-950));
+  --accent-ring: var(--color-chartreuse-400);
+}
+
 /* Expose the semantic aliases as utilities: bg-surface, text-muted, etc. */
 @theme inline {
   --color-bg: var(--bg);
@@ -328,6 +472,7 @@
   --color-success: var(--success);
   --color-success-subtle: var(--success-subtle);
   --color-focus-ring: var(--focus-ring);
+  --color-overlay: var(--overlay);
   --color-accent-ring: var(--accent-ring);
 
   --color-state-ink: var(--state-ink);
@@ -411,5 +556,98 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Print (§7.4, §17-26)
+
+   "Export is a print stylesheet, not a PDF service. A print-specific layout
+   plus ⌘/Ctrl+P → Save as PDF costs a stylesheet; a server-side renderer costs
+   Chromium in the container and a job queue, for a document one person produces
+   once a week."
+
+   Three things this has to get right, and each of them is a way the naive
+   version fails:
+
+   1. **The Khmer face must survive.** §17-26: "the classic failure is a
+      dashboard that is perfect on screen and prints Khmer as boxes." The font
+      stack is re-stated here rather than inherited, because a print stylesheet
+      that only sets colours leaves the browser free to substitute a print
+      default with no Khmer coverage. The order is the same as `--font-sans`:
+      Latin face first, Khmer after, so it is only reached by Khmer codepoints.
+
+   2. **The colours have to be printable.** The screen palette is a dark-capable
+      set of semantic aliases; on paper the background is white whatever the
+      viewer's theme was, so the light values are forced. Otherwise somebody in
+      dark mode prints white text on a page the printer renders as white.
+
+   3. **A board never prints as a board.** §7.4's edge case is explicit:
+      "printing a board with 30 columns → the print layout is the grouped list,
+      never the board." So the workload's horizontal scroller becomes a stack,
+      each column a block that can break across pages.
+--------------------------------------------------------------------------- */
+@media print {
+  :root,
+  :root[data-theme='dark'],
+  .dark {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #ffffff;
+    --text: #111111;
+    --text-muted: #333333;
+    --text-subtle: #555555;
+    --border: #bbbbbb;
+    --border-strong: #888888;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111111 !important;
+    /* Re-stated, not inherited — see (1) above. */
+    font-family: var(--font-plex-sans), var(--font-khmer), system-ui, sans-serif;
+  }
+
+  /* Chrome and Safari drop background fills by default, which turns every
+     state pill and label chip into an unlabelled outline. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Navigation, tabs, switchers and buttons are all things somebody clicks, and
+     a printed page has nothing to click. `print:hidden` on a component is the
+     per-component version of the same decision. */
+  header nav,
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  /* (3): the board becomes a stack. The scroller is the only thing standing
+     between thirty columns and thirty pages of one column each. */
+  [data-print='stack'] {
+    display: block !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  [data-print='stack'] > section {
+    width: 100% !important;
+    break-inside: avoid-page;
+    margin-bottom: 0.75rem;
+  }
+
+  /* A group heading orphaned at the foot of a page is the one break that makes
+     a printed report unreadable. */
+  section > header {
+    break-after: avoid-page;
+  }
+
+  a {
+    text-decoration: none;
   }
 }

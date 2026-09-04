@@ -30,11 +30,18 @@ export function InviteForm({
   workspaceSlug,
   teams,
   onSkip,
+  onContinue,
 }: {
   workspaceSlug: string;
   teams: { id: string; name: string }[];
   /** The onboarding step passes a Skip control; the settings screen does not. */
   onSkip?: React.ReactNode;
+  /**
+   * The onboarding step's way onward once mail has gone out. Rendered with the
+   * batch summary rather than beside Send, because before a send there is
+   * nothing to continue *from* — that is what Skip is for.
+   */
+  onContinue?: React.ReactNode;
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -86,6 +93,8 @@ export function InviteForm({
           </ul>
         </Alert>
       )}
+
+      {summary && onContinue && <div className="flex">{onContinue}</div>}
 
       <TextareaField
         label={t('invite.form.emails')}

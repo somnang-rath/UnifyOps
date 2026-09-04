@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { ACCENT_COLORS } from '@/lib/branding';
 import { WORKSPACE_ROLES } from '@/server/authz/roles';
 import {
   appRole,
@@ -30,6 +31,15 @@ import { user } from './user';
  * matrix cannot drift apart; src/server/authz/roles.ts is the source of truth.
  */
 export const workspaceRole = pgEnum('workspace_role', WORKSPACE_ROLES);
+
+/**
+ * §6-7's accent colour. Token names, never hex — the same closed-set decision
+ * `state_color` and `label_color` already make, and for the same reason: a hex
+ * stored today cannot resolve differently in dark mode. `src/lib/branding.ts`
+ * is the source of truth and `[data-accent]` in `globals.css` is where a name
+ * becomes a colour.
+ */
+export const accentColor = pgEnum('accent_color', ACCENT_COLORS);
 
 /**
  * A company. The tenant root: `workspace.id` is what every other tenant row
@@ -77,6 +87,61 @@ export const workspace = pgTable(
      * that function can test with a single shift.
      */
     workingDays: integer('working_days').notNull().default(63),
+
+    /**
+     * Which day a week starts on, for the surfaces that draw one (§6-1).
+     *
+     * **0 = Monday through 6 = Sunday — the same numbering `working_days` uses,
+     * deliberately not JavaScript's `getDay`.** Two day-numbering schemes in one
+     * schema is how a calendar ends up one column out of step with the mask that
+     * shades its working days, and the calendar in slice 12 is the screen where
+     * both are read at once. The conversion to and from `getUTCDay` happens in
+     * `src/lib/workspace-date.ts`, at the boundary, once.
+     *
+     * Defaulted to Monday for the reason `working_days` defaults to 63: this is
+     * the market §2.5 describes, and slice 12's calendar already hardcoded
+     * Monday with that reasoning written next to it. Slice 15 turns that
+     * hardcoded constant into the setting §6-1 always said it was.
+     */
+    weekStart: integer('week_start').notNull().default(0),
+
+    /**
+     * The company's language (§6-1), which is **not** the same thing as any
+     * person's (§4: "per-user locale").
+     *
+     * It is the fallback: what a new member sees before they have chosen, what
+     * an invitation email is written in when it goes to somebody who does not
+     * have an account yet, and which of the two names a seeded row is written
+     * in. A person's own `user.locale` always wins for their own screens.
+     *
+     * A BCP-47 code, like `user.locale`, and with no CHECK for the same reason
+     * that column has none: the set of locales the product ships is a fact about
+     * `src/i18n/routing.ts`, and a constraint would have to be migrated in step
+     * with it. The service validates against the routing config.
+     */
+    defaultLocale: text('default_locale').notNull().default('en'),
+
+    /**
+     * §6-7's logo: the object key in the same store attachments use, or null.
+     *
+     * A key rather than a URL, because a URL would freeze the driver into the
+     * row — slice 8 built two drivers chosen by configuration, and a workspace
+     * seeded on a laptop against the local driver would otherwise carry a
+     * `localhost` URL into production. It is also why the column is not a
+     * foreign key onto `attachment`: an attachment belongs to a work item and
+     * carries §10's comment permissions, and a logo is neither.
+     */
+    logoKey: text('logo_key'),
+
+    /**
+     * §6-7's accent colour, or null for the product's own.
+     *
+     * Nullable rather than defaulted to `navy`, which is what the product uses:
+     * a company that never opens Settings has not *chosen* Navy, and §6's
+     * governing rule is that every setting is an override of a working default.
+     * Stored as a token name so it can flip with the theme (see `accentColor`).
+     */
+    accent: accentColor('accent'),
     ...timestamps,
   },
   (t) => [
@@ -140,10 +205,49 @@ export const workspaceMember = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     role: workspaceRole('role').notNull().default('member'),
+
+    /**
+     * Availability — the whole of it (§4, §9, §17-25).
+     *
+     * "A member can be marked *unavailable until* a date, with an optional
+     * reason. Workload and Needs Attention read it; nothing else does." Two
+     * nullable columns on the membership row, deliberately **not** an entity:
+     * leave periods, balances and approvals are exactly how this becomes the
+     * time tracking §3 rules out, and each of them is one table away.
+     *
+     * §17-25 is the finding it answers. §7.4 promises a manager an honest
+     * picture of team load and had no way to know somebody was on leave, so the
+     * picture was confidently wrong about the one person it mattered most
+     * about — the member with nothing assigned reads as spare capacity whether
+     * they are idle or in hospital.
+     *
+     * A `date` rather than a timestamp: it is the day they are back, in the
+     * company's own zone (§17-13), and an hour on it would be a precision
+     * nobody supplied. Inclusive of neither end in the obvious way — the rule is
+     * one comparison, `until > today`, and it lives in `src/lib/availability.ts`
+     * so the badge and the arithmetic cannot disagree.
+     *
+     * Clearing availability sets **both** columns to null; 0024 has the CHECK
+     * that stops a reason outliving the date it explained.
+     */
+    unavailableUntil: date('unavailable_until'),
+    unavailableReason: text('unavailable_reason'),
     ...timestamps,
   },
   (t) => [
     unique('workspace_member_workspace_user_key').on(t.workspaceId, t.userId),
+
+    /**
+     * Who is away, for one workspace.
+     *
+     * Partial, because the answer is almost always "nobody": a workspace of
+     * fifty has two people on leave, and an index over the other forty-eight
+     * nulls is an index the planner would not use. Workload asks this on every
+     * render of §7.4, which is the one screen that reads these columns at all.
+     */
+    index('workspace_member_unavailable_idx')
+      .on(t.workspaceId, t.unavailableUntil)
+      .where(sql`${t.unavailableUntil} is not null and ${t.deletedAt} is null`),
     /**
      * Redundant against the primary key on its own, but it is the target a
      * composite foreign key needs: a child row naming `(member_id,

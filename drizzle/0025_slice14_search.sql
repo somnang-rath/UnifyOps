@@ -1,0 +1,1 @@
+ALTER TABLE "work_item" ADD COLUMN "search_text" text GENERATED ALWAYS AS (btrim(lower(translate(coalesce(title, '') || ' ' || coalesce(description, ''), U&'\200B\200C\200D\FEFF', '')))) STORED;

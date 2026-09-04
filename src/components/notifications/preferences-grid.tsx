@@ -63,7 +63,20 @@ export function PreferencesGrid({
   };
 
   return (
-    <div className="overflow-x-auto">
+    /*
+     * `relative` is load-bearing, not decoration — it is what makes the
+     * scroller a **containing block**.
+     *
+     * `overflow-x: auto` does not clip an absolutely-positioned descendant
+     * whose containing block is outside the scroller, and every checkbox in
+     * this grid carries an `sr-only` label, which is `position: absolute`. On
+     * a static wrapper those labels resolve against the initial containing
+     * block at their static position — 430px into a 512px table — so the
+     * *document* grew to 432px at a 390px viewport while the table itself
+     * scrolled correctly. §15-6's check found it; nothing on screen showed it,
+     * because a 1×1 clipped label is invisible in every sense but this one.
+     */
+    <div className="relative overflow-x-auto">
       <table className="w-full min-w-[32rem] border-collapse text-sm">
         <thead>
           <tr className="border-b border-border text-start">

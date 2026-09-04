@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import { hasLocale, NextIntlClientProvider } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
@@ -10,6 +10,13 @@ import {
 } from 'next/font/google';
 import { routing } from '@/i18n/routing';
 import { ThemeProvider } from '@/components/theme-provider';
+import { SkipToContent } from '@/components/ui/skip-to-content';
+import {
+  APPLE_TOUCH_ICON,
+  MARK_AVAILABLE,
+  THEME_COLOR_DARK,
+  THEME_COLOR_LIGHT,
+} from '@/lib/app-icons';
 import '../globals.css';
 
 const sans = IBM_Plex_Sans({
@@ -47,6 +54,34 @@ export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
 }
 
+/**
+ * §4's **Installable** row, browser-chrome half.
+ *
+ * Two `theme-color` metas rather than one, because the value tints the address
+ * bar and the standalone window's chrome — a single light value on a phone in
+ * dark mode is a pale bar above a dark app, which is the one visual seam an
+ * installed app cannot hide. They are the two palettes' own `--bg`, and they
+ * change with layer 2 rather than on their own (see `app-icons.ts`).
+ *
+ * `colorScheme` is what makes the browser's *own* surfaces — form controls,
+ * scrollbars, the space behind a rubber-band scroll — follow the page instead
+ * of staying light under `.dark`.
+ *
+ * Deliberately no `viewportFit: 'cover'`: it is the flag that pushes content
+ * under a notch, and it is only safe with safe-area insets applied throughout.
+ * The default keeps every screen inside the safe area, which is what §15-6
+ * actually asks for.
+ */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  colorScheme: 'light dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: THEME_COLOR_LIGHT },
+    { media: '(prefers-color-scheme: dark)', color: THEME_COLOR_DARK },
+  ],
+};
+
 export async function generateMetadata({
   params,
 }: {
@@ -57,6 +92,20 @@ export async function generateMetadata({
   return {
     title: { default: t('name'), template: `%s · ${t('name')}` },
     description: t('tagline'),
+    // One manifest per locale — see the route for why. The link has to be
+    // per-locale too, or every install would take whichever language the single
+    // manifest happened to be written in.
+    manifest: `/${locale}/manifest.webmanifest`,
+    // iOS reads none of the manifest. `capable` is what makes a home-screen
+    // launch open without Safari's chrome, and the title is what appears under
+    // the icon — from the same catalogue as the manifest's `name`, so the two
+    // cannot say different things.
+    appleWebApp: { capable: true, title: t('name'), statusBarStyle: 'default' },
+    // Absent until the parent Unify mark is supplied (see `app-icons.ts`).
+    // Declared conditionally rather than pointed at a file that is not there:
+    // a 404 behind `apple-touch-icon` makes iOS render a screenshot of the
+    // page as the icon, which looks like a bug rather than like an absence.
+    ...(MARK_AVAILABLE ? { icons: { apple: APPLE_TOUCH_ICON } } : {}),
   };
 }
 
@@ -81,6 +130,12 @@ export default async function LocaleLayout({
     >
       <body>
         <NextIntlClientProvider>
+          {/* §11's keyboard baseline. It is the first focusable thing in the
+              document on every screen, which is the only position that makes
+              it work — a workspace header carries a logo, five nav links, the
+              palette, the bell, two toggles and sign-out, and reaching the
+              board past them is nine tab stops on every navigation. */}
+          <SkipToContent />
           <ThemeProvider>{children}</ThemeProvider>
         </NextIntlClientProvider>
       </body>

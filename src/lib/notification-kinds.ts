@@ -84,13 +84,41 @@ export function isNotificationChannel(value: unknown): value is NotificationChan
   );
 }
 
-/** Whether a kind reaches a channel, given the preferences a person has saved. */
+export type PreferenceMap = Partial<Record<NotificationKind, readonly NotificationChannel[]>>;
+
+/**
+ * Whether a kind reaches a channel — through the three layers §6-6 describes.
+ *
+ * **The person's own row, then the company's default, then the product's.**
+ * Slice 15 added the middle one, and the order is the whole of the decision: a
+ * workspace default is a *default*, so it answers only for somebody who has not
+ * chosen. §6-6 puts per-user preferences in v1 and the rules engine that could
+ * overrule them in Phase 2; a company that could force email on a member has
+ * built the thing §7.8 says teaches a team to filter the product's mail.
+ *
+ * Absent means "the next layer down" at both levels, never "off". Turning a kind
+ * off entirely is an **empty array**, which is a row that exists and says so —
+ * which is why this asks `?? ` on the whole entry rather than on its contents.
+ */
 export function wants(
-  preferences: Partial<Record<NotificationKind, readonly NotificationChannel[]>>,
+  preferences: PreferenceMap,
   kind: NotificationKind,
   channel: NotificationChannel,
+  workspaceDefaults: PreferenceMap = {},
 ): boolean {
   if (!CHANNELS[kind].includes(channel)) return false;
-  const saved = preferences[kind] ?? DEFAULT_PREFERENCES[kind];
+  const saved = preferences[kind] ?? workspaceDefaults[kind] ?? DEFAULT_PREFERENCES[kind];
   return saved.includes(channel);
+}
+
+/** What a member with no saved row of their own would get, for a screen to show. */
+export function effectiveDefaults(
+  workspaceDefaults: PreferenceMap,
+): Record<NotificationKind, readonly NotificationChannel[]> {
+  return Object.fromEntries(
+    NOTIFICATION_KINDS.map((kind) => [
+      kind,
+      workspaceDefaults[kind] ?? DEFAULT_PREFERENCES[kind],
+    ]),
+  ) as Record<NotificationKind, readonly NotificationChannel[]>;
 }

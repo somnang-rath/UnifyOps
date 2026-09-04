@@ -3,6 +3,7 @@ import {
   CHANNELS,
   DEFAULT_PREFERENCES,
   NOTIFICATION_KINDS,
+  effectiveDefaults,
   isNotificationChannel,
   isNotificationKind,
   wants,
@@ -72,5 +73,59 @@ describe('the guards', () => {
     expect(isNotificationKind('work_item.updated')).toBe(false);
     expect(isNotificationChannel('email')).toBe(true);
     expect(isNotificationChannel('telegram')).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------------- */
+/* §6-6's three layers (slice 15)                                            */
+/* ------------------------------------------------------------------------- */
+
+describe('workspace notification defaults', () => {
+  /**
+   * The order is the decision, and it is what these cases pin: **a member's own
+   * row, then the company's default, then the product's.**
+   *
+   * §6-6 puts per-user preferences in v1 and the rules engine that could
+   * overrule them in Phase 2 — so a company default is a *default*. A company
+   * able to force email on somebody has built the thing §7.8 says teaches a team
+   * to filter the product's mail, and the second case below is the one that
+   * would catch that being built by accident.
+   */
+  it('falls through to the company when the member has no row', () => {
+    expect(wants({}, 'comment', 'email')).toBe(false);
+    expect(wants({}, 'comment', 'email', { comment: ['in_app', 'email'] })).toBe(true);
+  });
+
+  it('lets the member override the company, in both directions', () => {
+    // On, where the company said off.
+    expect(wants({ comment: ['email'] }, 'comment', 'email', { comment: [] })).toBe(true);
+    // Off, where the company said on — the direction that must keep working.
+    expect(wants({ mention: [] }, 'mention', 'email', { mention: ['in_app', 'email'] })).toBe(
+      false,
+    );
+  });
+
+  it('treats an empty company row as "off", not as "absent"', () => {
+    // Absent means the layer below; an empty array is a row that exists and
+    // says so. Collapsing the two would make turning a kind off impossible.
+    expect(wants({}, 'mention', 'email', { mention: [] })).toBe(false);
+    expect(wants({}, 'mention', 'email', {})).toBe(true);
+  });
+
+  it('still refuses a channel the kind cannot use', () => {
+    // The digest is email-only by construction (§7.8): an in-app digest is a
+    // list of items one click from the list of items it summarises. A company
+    // default cannot conjure the channel into existence.
+    expect(wants({}, 'digest', 'in_app', { digest: ['in_app', 'email'] })).toBe(false);
+  });
+
+  it('reports what a member with no choices would get', () => {
+    const effective = effectiveDefaults({ comment: ['in_app', 'email'] });
+    // The company's override where there is one...
+    expect(effective.comment).toEqual(['in_app', 'email']);
+    // ...and the product's everywhere else, so the word "default" on the
+    // preference screen is honest.
+    expect(effective.mention).toEqual(DEFAULT_PREFERENCES.mention);
+    expect(Object.keys(effective).sort()).toEqual([...NOTIFICATION_KINDS].sort());
   });
 });

@@ -109,6 +109,18 @@ export function daysBetween(from: CalendarDate, to: CalendarDate): number {
  */
 export type DueBucket = 'overdue' | 'today' | 'week' | 'later' | 'none';
 
+/**
+ * The five, in the order §7.3 lists them — which is also the order they matter
+ * in, most urgent first.
+ *
+ * Exported as a frozen list because slice 13's My Work hands them to §9's page
+ * query as its group keys, and that query is *given* its groups rather than
+ * discovering them (a group that vanishes when it empties is a group nothing can
+ * be added to). The SQL that produces these keys is `dueBucketExpression` in the
+ * builder, and it mirrors `dueBucket` below one branch at a time.
+ */
+export const DUE_BUCKETS = ['overdue', 'today', 'week', 'later', 'none'] as const;
+
 export function dueBucket(
   dueDate: CalendarDate | null,
   today: CalendarDate,
@@ -130,4 +142,76 @@ export function isOverdue(
   options: { completed?: boolean } = {},
 ): boolean {
   return dueBucket(dueDate, today, options) === 'overdue';
+}
+
+/* ------------------------------------------------------------------------- */
+/* Week start and working days (§6-1, slice 15)                              */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Days of the week in **schema order: 0 = Monday through 6 = Sunday.**
+ *
+ * This is `workspace.working_days`' bit order and `workspace.week_start`'s
+ * numbering, and it is deliberately not JavaScript's, where 0 is Sunday. Two
+ * numbering schemes is how a calendar ends up one column out of step with the
+ * mask that shades its working days — so the conversion happens here, at the
+ * boundary, and nowhere else.
+ *
+ * Closed enum, mapped to messages in code (§13); the *names* come from
+ * `Intl.DateTimeFormat` in the reader's locale rather than from a catalogue,
+ * because a weekday is one of the few strings a formatter already knows in both
+ * scripts.
+ */
+export const WEEK_DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+
+export type WeekDay = (typeof WEEK_DAYS)[number];
+
+export function isWeekDay(value: unknown): value is WeekDay {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 6;
+}
+
+/** JavaScript's `getUTCDay` (0 = Sunday) as this module's index (0 = Monday). */
+export function weekDayOf(date: CalendarDate): WeekDay {
+  const jsDay = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return ((jsDay + 6) % 7) as WeekDay;
+}
+
+/** Whether the company works on this day of the week, per the seven-bit mask. */
+export function isWorkingWeekDay(workingDays: number, day: WeekDay): boolean {
+  return (workingDays & (1 << day)) !== 0;
+}
+
+/** The mask with one day toggled — what the settings form sends back. */
+export function toggleWorkingDay(workingDays: number, day: WeekDay, on: boolean): number {
+  return on ? workingDays | (1 << day) : workingDays & ~(1 << day);
+}
+
+/**
+ * The seven days in the order a calendar starting on `weekStart` draws them.
+ *
+ * One function rather than a `%` at each call site, because slice 12's calendar
+ * draws a weekday header row, a leading pad of blank cells and a grid, and all
+ * three have to agree about which column Monday is in. They disagree silently:
+ * the header says Monday and the cells are Tuesday's, and every date is off by
+ * one on a screen that otherwise looks perfectly normal.
+ */
+export function weekOrder(weekStart: WeekDay): WeekDay[] {
+  return WEEK_DAYS.map((offset) => ((weekStart + offset) % 7) as WeekDay);
+}
+
+/** How many blank cells precede the first of a month in a grid starting on `weekStart`. */
+export function leadingBlanks(firstOfMonth: CalendarDate, weekStart: WeekDay): number {
+  return (weekDayOf(firstOfMonth) - weekStart + 7) % 7;
+}
+
+/**
+ * A company that works no days at all.
+ *
+ * Refused by the service and by a CHECK in migration 0028, because it is not a
+ * preference — it is a workspace where `next_working_day` never terminates and
+ * the digest never sends. §6's rule is that no setting can put a workspace in an
+ * unrecoverable state, and this is the one setting on the screen that could.
+ */
+export function hasNoWorkingDays(workingDays: number): boolean {
+  return (workingDays & 0b1111111) === 0;
 }

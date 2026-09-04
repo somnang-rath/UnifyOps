@@ -39,7 +39,17 @@ import { cn } from '@/lib/cn';
  *     several screen readers; the region has to be there first, empty.
  */
 
-export type ToastTone = 'info' | 'danger';
+/**
+ * Three tones, and the third arrived in slice 13.
+ *
+ * `warning` exists because §7.4 asks for one specific sentence that is neither:
+ * "reassigning onto someone unavailable is **warned, never blocked** — the
+ * manager knows things the flag does not." The write succeeded, so `danger` is
+ * a lie; something wants noticing, so `info` is too quiet. `Alert` has had the
+ * same four tones since slice 1 and takes its colours from the same semantic
+ * aliases, so this is one row in a map rather than a new token family.
+ */
+export type ToastTone = 'info' | 'warning' | 'danger';
 
 export type ToastSpec = {
   /** Already translated. Nothing in this module knows about message keys. */
@@ -112,6 +122,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 const TONES: Record<ToastTone, string> = {
   info: 'border-border bg-surface-raised',
+  warning: 'border-warning bg-warning-subtle',
   danger: 'border-danger bg-danger-subtle',
 };
 

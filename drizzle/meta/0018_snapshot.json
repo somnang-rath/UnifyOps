@@ -1,0 +1,5788 @@
+{
+  "id": "a738e658-351e-4d77-b1c7-61f6f3038824",
+  "prevId": "34e449b7-60c0-4209-8aba-b69f51cdd964",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.app_user": {
+      "name": "app_user",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "image_url": {
+          "name": "image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en'"
+        },
+        "email_verified_at": {
+          "name": "email_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "app_user_email_key": {
+          "name": "app_user_email_key",
+          "columns": [
+            {
+              "expression": "lower(\"email\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "user_select": {
+          "name": "user_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "exists (\n        select 1 from workspace_member wm\n        where wm.user_id = \"app_user\".\"id\"\n          and wm.workspace_id = tenancy.workspace_id()\n      )"
+        },
+        "user_update_self": {
+          "name": "user_update_self",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"app_user\".\"id\" = tenancy.user_id() and not tenancy.is_read_only()",
+          "withCheck": "\"app_user\".\"id\" = tenancy.user_id() and not tenancy.is_read_only()"
+        },
+        "identity_manage": {
+          "name": "identity_manage",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace": {
+      "name": "workspace",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Asia/Phnom_Penh'"
+        },
+        "working_days": {
+          "name": "working_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 63
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "workspace_slug_key": {
+          "name": "workspace_slug_key",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace\".\"id\" = tenancy.workspace_id()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace\".\"id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace\".\"id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "identity_insert": {
+          "name": "identity_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "withCheck": "true"
+        },
+        "identity_select": {
+          "name": "identity_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace_holiday": {
+      "name": "workspace_holiday",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "workspace_holiday_range_idx": {
+          "name": "workspace_holiday_range_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "workspace_holiday_workspace_id_workspace_id_fk": {
+          "name": "workspace_holiday_workspace_id_workspace_id_fk",
+          "tableFrom": "workspace_holiday",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workspace_holiday_date_key": {
+          "name": "workspace_holiday_date_key",
+          "columns": [
+            "workspace_id",
+            "date"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace_member": {
+      "name": "workspace_member",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "workspace_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "workspace_member_user_idx": {
+          "name": "workspace_member_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "workspace_member_workspace_id_workspace_id_fk": {
+          "name": "workspace_member_workspace_id_workspace_id_fk",
+          "tableFrom": "workspace_member",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "workspace_member_user_id_app_user_id_fk": {
+          "name": "workspace_member_user_id_app_user_id_fk",
+          "tableFrom": "workspace_member",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workspace_member_workspace_user_key": {
+          "name": "workspace_member_workspace_user_key",
+          "columns": [
+            "workspace_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "workspace_member_id_workspace_key": {
+          "name": "workspace_member_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        },
+        "identity_select_own": {
+          "name": "identity_select_own",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "\"workspace_member\".\"user_id\" = tenancy.user_id()"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.team": {
+      "name": "team",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_key": {
+          "name": "name_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "team_workspace_id_workspace_id_fk": {
+          "name": "team_workspace_id_workspace_id_fk",
+          "tableFrom": "team",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "team_workspace_slug_key": {
+          "name": "team_workspace_slug_key",
+          "columns": [
+            "workspace_id",
+            "slug"
+          ],
+          "nullsNotDistinct": false
+        },
+        "team_id_workspace_key": {
+          "name": "team_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.team_member": {
+      "name": "team_member",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_member_id": {
+          "name": "workspace_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "team_member_member_idx": {
+          "name": "team_member_member_idx",
+          "columns": [
+            {
+              "expression": "workspace_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "team_member_workspace_id_workspace_id_fk": {
+          "name": "team_member_workspace_id_workspace_id_fk",
+          "tableFrom": "team_member",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "team_member_team_fk": {
+          "name": "team_member_team_fk",
+          "tableFrom": "team_member",
+          "columnsFrom": [
+            "team_id",
+            "workspace_id"
+          ],
+          "tableTo": "team",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "team_member_member_fk": {
+          "name": "team_member_member_fk",
+          "tableFrom": "team_member",
+          "columnsFrom": [
+            "workspace_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "team_member_team_member_key": {
+          "name": "team_member_team_member_key",
+          "columns": [
+            "team_id",
+            "workspace_member_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.project": {
+      "name": "project",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visibility": {
+          "name": "visibility",
+          "type": "project_visibility",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "project_team_idx": {
+          "name": "project_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "project_workspace_id_workspace_id_fk": {
+          "name": "project_workspace_id_workspace_id_fk",
+          "tableFrom": "project",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "project_team_fk": {
+          "name": "project_team_fk",
+          "tableFrom": "project",
+          "columnsFrom": [
+            "team_id",
+            "workspace_id"
+          ],
+          "tableTo": "team",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_workspace_slug_key": {
+          "name": "project_workspace_slug_key",
+          "columns": [
+            "workspace_id",
+            "slug"
+          ],
+          "nullsNotDistinct": false
+        },
+        "project_workspace_key_key": {
+          "name": "project_workspace_key_key",
+          "columns": [
+            "workspace_id",
+            "key"
+          ],
+          "nullsNotDistinct": false
+        },
+        "project_id_workspace_key": {
+          "name": "project_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.project_member": {
+      "name": "project_member",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_member_id": {
+          "name": "workspace_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "project_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "project_member_member_idx": {
+          "name": "project_member_member_idx",
+          "columns": [
+            {
+              "expression": "workspace_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "project_member_workspace_id_workspace_id_fk": {
+          "name": "project_member_workspace_id_workspace_id_fk",
+          "tableFrom": "project_member",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "project_member_project_fk": {
+          "name": "project_member_project_fk",
+          "tableFrom": "project_member",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "project_member_member_fk": {
+          "name": "project_member_member_fk",
+          "tableFrom": "project_member",
+          "columnsFrom": [
+            "workspace_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_member_project_member_key": {
+          "name": "project_member_project_member_key",
+          "columns": [
+            "project_id",
+            "workspace_member_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workflow_state": {
+      "name": "workflow_state",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_key": {
+          "name": "name_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "group": {
+          "name": "group",
+          "type": "state_group",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "state_color",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "workflow_state_project_position_idx": {
+          "name": "workflow_state_project_position_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "workflow_state_workspace_id_workspace_id_fk": {
+          "name": "workflow_state_workspace_id_workspace_id_fk",
+          "tableFrom": "workflow_state",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "workflow_state_project_fk": {
+          "name": "workflow_state_project_fk",
+          "tableFrom": "workflow_state",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workflow_state_id_workspace_key": {
+          "name": "workflow_state_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "workflow_state_project_name_key": {
+          "name": "workflow_state_project_name_key",
+          "columns": [
+            "project_id",
+            "name"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.audit_record": {
+      "name": "audit_record",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "audit_actor_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "on_behalf_of_user_id": {
+          "name": "on_behalf_of_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_type": {
+          "name": "subject_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "audit_record_workspace_occurred_idx": {
+          "name": "audit_record_workspace_occurred_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "audit_record_subject_idx": {
+          "name": "audit_record_subject_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subject_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subject_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "audit_record_workspace_id_workspace_id_fk": {
+          "name": "audit_record_workspace_id_workspace_id_fk",
+          "tableFrom": "audit_record",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "audit_record_actor_user_id_app_user_id_fk": {
+          "name": "audit_record_actor_user_id_app_user_id_fk",
+          "tableFrom": "audit_record",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "audit_record_on_behalf_of_user_id_app_user_id_fk": {
+          "name": "audit_record_on_behalf_of_user_id_app_user_id_fk",
+          "tableFrom": "audit_record",
+          "columnsFrom": [
+            "on_behalf_of_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_credential": {
+      "name": "auth_credential",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_credential_user_key": {
+          "name": "auth_credential_user_key",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "auth_credential_user_id_app_user_id_fk": {
+          "name": "auth_credential_user_id_app_user_id_fk",
+          "tableFrom": "auth_credential",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "identity_all": {
+          "name": "identity_all",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_session": {
+      "name": "auth_session",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_session_token_key": {
+          "name": "auth_session_token_key",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "auth_session_user_idx": {
+          "name": "auth_session_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "auth_session_expires_idx": {
+          "name": "auth_session_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "auth_session_user_id_app_user_id_fk": {
+          "name": "auth_session_user_id_app_user_id_fk",
+          "tableFrom": "auth_session",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "identity_all": {
+          "name": "identity_all",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_verification_token": {
+      "name": "auth_verification_token",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "verification_purpose",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_verification_token_key": {
+          "name": "auth_verification_token_key",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "auth_verification_user_purpose_idx": {
+          "name": "auth_verification_user_purpose_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "auth_verification_token_user_id_app_user_id_fk": {
+          "name": "auth_verification_token_user_id_app_user_id_fk",
+          "tableFrom": "auth_verification_token",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "identity_all": {
+          "name": "identity_all",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invitation": {
+      "name": "invitation",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "workspace_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invited_by_member_id": {
+          "name": "invited_by_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "invitation_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "accepted_by_user_id": {
+          "name": "accepted_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivery_status": {
+          "name": "delivery_status",
+          "type": "invitation_delivery",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "delivery_error": {
+          "name": "delivery_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "invitation_token_key": {
+          "name": "invitation_token_key",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "invitation_workspace_email_pending_key": {
+          "name": "invitation_workspace_email_pending_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"email\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"invitation\".\"status\" = 'pending' and \"invitation\".\"deleted_at\" is null",
+          "concurrently": false
+        },
+        "invitation_workspace_status_idx": {
+          "name": "invitation_workspace_status_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "invitation_workspace_id_workspace_id_fk": {
+          "name": "invitation_workspace_id_workspace_id_fk",
+          "tableFrom": "invitation",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "invitation_accepted_by_user_id_app_user_id_fk": {
+          "name": "invitation_accepted_by_user_id_app_user_id_fk",
+          "tableFrom": "invitation",
+          "columnsFrom": [
+            "accepted_by_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "invitation_invited_by_fk": {
+          "name": "invitation_invited_by_fk",
+          "tableFrom": "invitation",
+          "columnsFrom": [
+            "invited_by_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitation_id_workspace_key": {
+          "name": "invitation_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        },
+        "identity_select": {
+          "name": "identity_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_identity"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invitation_team": {
+      "name": "invitation_team",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invitation_id": {
+          "name": "invitation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invitation_team_workspace_id_workspace_id_fk": {
+          "name": "invitation_team_workspace_id_workspace_id_fk",
+          "tableFrom": "invitation_team",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "invitation_team_invitation_fk": {
+          "name": "invitation_team_invitation_fk",
+          "tableFrom": "invitation_team",
+          "columnsFrom": [
+            "invitation_id",
+            "workspace_id"
+          ],
+          "tableTo": "invitation",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "invitation_team_team_fk": {
+          "name": "invitation_team_team_fk",
+          "tableFrom": "invitation_team",
+          "columnsFrom": [
+            "team_id",
+            "workspace_id"
+          ],
+          "tableTo": "team",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitation_team_key": {
+          "name": "invitation_team_key",
+          "columns": [
+            "invitation_id",
+            "team_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.label": {
+      "name": "label",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "label_color",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "label_workspace_id_workspace_id_fk": {
+          "name": "label_workspace_id_workspace_id_fk",
+          "tableFrom": "label",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "label_id_workspace_key": {
+          "name": "label_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "label_workspace_name_key": {
+          "name": "label_workspace_name_key",
+          "columns": [
+            "workspace_id",
+            "name"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.project_counter": {
+      "name": "project_counter",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_number": {
+          "name": "last_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "project_counter_workspace_id_workspace_id_fk": {
+          "name": "project_counter_workspace_id_workspace_id_fk",
+          "tableFrom": "project_counter",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "project_counter_project_fk": {
+          "name": "project_counter_project_fk",
+          "tableFrom": "project_counter",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_counter_project_key": {
+          "name": "project_counter_project_key",
+          "columns": [
+            "project_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.work_item": {
+      "name": "work_item",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "number": {
+          "name": "number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state_id": {
+          "name": "state_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
+          "type": "priority",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "root_id": {
+          "name": "root_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "depth": {
+          "name": "depth",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "rank": {
+          "name": "rank",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "due_date": {
+          "name": "due_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimate": {
+          "name": "estimate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blocked": {
+          "name": "blocked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "blocked_reason": {
+          "name": "blocked_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_ids": {
+          "name": "assignee_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "label_ids": {
+          "name": "label_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "created_by_member_id": {
+          "name": "created_by_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "work_item_project_state_rank_idx": {
+          "name": "work_item_project_state_rank_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rank",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "work_item_project_updated_idx": {
+          "name": "work_item_project_updated_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "work_item_workspace_due_idx": {
+          "name": "work_item_workspace_due_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "work_item_root_idx": {
+          "name": "work_item_root_idx",
+          "columns": [
+            {
+              "expression": "root_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "work_item_parent_idx": {
+          "name": "work_item_parent_idx",
+          "columns": [
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "work_item_assignees_idx": {
+          "name": "work_item_assignees_idx",
+          "columns": [
+            {
+              "expression": "assignee_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gin",
+          "concurrently": false
+        },
+        "work_item_labels_idx": {
+          "name": "work_item_labels_idx",
+          "columns": [
+            {
+              "expression": "label_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gin",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "work_item_workspace_id_workspace_id_fk": {
+          "name": "work_item_workspace_id_workspace_id_fk",
+          "tableFrom": "work_item",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "work_item_project_fk": {
+          "name": "work_item_project_fk",
+          "tableFrom": "work_item",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "work_item_state_fk": {
+          "name": "work_item_state_fk",
+          "tableFrom": "work_item",
+          "columnsFrom": [
+            "state_id",
+            "workspace_id"
+          ],
+          "tableTo": "workflow_state",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        },
+        "work_item_parent_fk": {
+          "name": "work_item_parent_fk",
+          "tableFrom": "work_item",
+          "columnsFrom": [
+            "parent_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "work_item_creator_fk": {
+          "name": "work_item_creator_fk",
+          "tableFrom": "work_item",
+          "columnsFrom": [
+            "created_by_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "work_item_project_number_key": {
+          "name": "work_item_project_number_key",
+          "columns": [
+            "project_id",
+            "number"
+          ],
+          "nullsNotDistinct": false
+        },
+        "work_item_id_workspace_key": {
+          "name": "work_item_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.work_item_assignee": {
+      "name": "work_item_assignee",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_member_id": {
+          "name": "workspace_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "work_item_assignee_member_idx": {
+          "name": "work_item_assignee_member_idx",
+          "columns": [
+            {
+              "expression": "workspace_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "work_item_assignee_workspace_id_workspace_id_fk": {
+          "name": "work_item_assignee_workspace_id_workspace_id_fk",
+          "tableFrom": "work_item_assignee",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "work_item_assignee_item_fk": {
+          "name": "work_item_assignee_item_fk",
+          "tableFrom": "work_item_assignee",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "work_item_assignee_member_fk": {
+          "name": "work_item_assignee_member_fk",
+          "tableFrom": "work_item_assignee",
+          "columnsFrom": [
+            "workspace_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "work_item_assignee_key": {
+          "name": "work_item_assignee_key",
+          "columns": [
+            "work_item_id",
+            "workspace_member_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.work_item_label": {
+      "name": "work_item_label",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label_id": {
+          "name": "label_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "work_item_label_label_idx": {
+          "name": "work_item_label_label_idx",
+          "columns": [
+            {
+              "expression": "label_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "work_item_label_workspace_id_workspace_id_fk": {
+          "name": "work_item_label_workspace_id_workspace_id_fk",
+          "tableFrom": "work_item_label",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "work_item_label_item_fk": {
+          "name": "work_item_label_item_fk",
+          "tableFrom": "work_item_label",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "work_item_label_label_fk": {
+          "name": "work_item_label_label_fk",
+          "tableFrom": "work_item_label",
+          "columnsFrom": [
+            "label_id",
+            "workspace_id"
+          ],
+          "tableTo": "label",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "work_item_label_key": {
+          "name": "work_item_label_key",
+          "columns": [
+            "work_item_id",
+            "label_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.activity": {
+      "name": "activity",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "activity_item_idx": {
+          "name": "activity_item_idx",
+          "columns": [
+            {
+              "expression": "work_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "activity_workspace_id_workspace_id_fk": {
+          "name": "activity_workspace_id_workspace_id_fk",
+          "tableFrom": "activity",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "activity_actor_user_id_app_user_id_fk": {
+          "name": "activity_actor_user_id_app_user_id_fk",
+          "tableFrom": "activity",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "activity_item_fk": {
+          "name": "activity_item_fk",
+          "tableFrom": "activity",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "activity_project_fk": {
+          "name": "activity_project_fk",
+          "tableFrom": "activity",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.comment": {
+      "name": "comment",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_member_id": {
+          "name": "author_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "comment_item_idx": {
+          "name": "comment_item_idx",
+          "columns": [
+            {
+              "expression": "work_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "comment_workspace_id_workspace_id_fk": {
+          "name": "comment_workspace_id_workspace_id_fk",
+          "tableFrom": "comment",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "comment_item_fk": {
+          "name": "comment_item_fk",
+          "tableFrom": "comment",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "comment_project_fk": {
+          "name": "comment_project_fk",
+          "tableFrom": "comment",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "comment_author_fk": {
+          "name": "comment_author_fk",
+          "tableFrom": "comment",
+          "columnsFrom": [
+            "author_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "comment_id_workspace_key": {
+          "name": "comment_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.comment_mention": {
+      "name": "comment_mention",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment_id": {
+          "name": "comment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_member_id": {
+          "name": "workspace_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "comment_mention_member_idx": {
+          "name": "comment_mention_member_idx",
+          "columns": [
+            {
+              "expression": "workspace_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "comment_mention_workspace_id_workspace_id_fk": {
+          "name": "comment_mention_workspace_id_workspace_id_fk",
+          "tableFrom": "comment_mention",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "comment_mention_comment_fk": {
+          "name": "comment_mention_comment_fk",
+          "tableFrom": "comment_mention",
+          "columnsFrom": [
+            "comment_id",
+            "workspace_id"
+          ],
+          "tableTo": "comment",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "comment_mention_member_fk": {
+          "name": "comment_mention_member_fk",
+          "tableFrom": "comment_mention",
+          "columnsFrom": [
+            "workspace_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "comment_mention_key": {
+          "name": "comment_mention_key",
+          "columns": [
+            "comment_id",
+            "workspace_member_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.attachment": {
+      "name": "attachment",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment_id": {
+          "name": "comment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uploaded_by_member_id": {
+          "name": "uploaded_by_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "attachment_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "attachment_item_idx": {
+          "name": "attachment_item_idx",
+          "columns": [
+            {
+              "expression": "work_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "attachment_comment_idx": {
+          "name": "attachment_comment_idx",
+          "columns": [
+            {
+              "expression": "comment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "attachment_workspace_id_workspace_id_fk": {
+          "name": "attachment_workspace_id_workspace_id_fk",
+          "tableFrom": "attachment",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "attachment_item_fk": {
+          "name": "attachment_item_fk",
+          "tableFrom": "attachment",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "attachment_project_fk": {
+          "name": "attachment_project_fk",
+          "tableFrom": "attachment",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "attachment_comment_fk": {
+          "name": "attachment_comment_fk",
+          "tableFrom": "attachment",
+          "columnsFrom": [
+            "comment_id",
+            "workspace_id"
+          ],
+          "tableTo": "comment",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "attachment_uploader_fk": {
+          "name": "attachment_uploader_fk",
+          "tableFrom": "attachment",
+          "columnsFrom": [
+            "uploaded_by_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.notification": {
+      "name": "notification",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient_member_id": {
+          "name": "recipient_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "notification_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment_id": {
+          "name": "comment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outbox_message_id": {
+          "name": "outbox_message_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "notification_inbox_idx": {
+          "name": "notification_inbox_idx",
+          "columns": [
+            {
+              "expression": "recipient_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "notification_unread_idx": {
+          "name": "notification_unread_idx",
+          "columns": [
+            {
+              "expression": "recipient_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"read_at\" is null",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "notification_workspace_id_workspace_id_fk": {
+          "name": "notification_workspace_id_workspace_id_fk",
+          "tableFrom": "notification",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "notification_actor_user_id_app_user_id_fk": {
+          "name": "notification_actor_user_id_app_user_id_fk",
+          "tableFrom": "notification",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "notification_recipient_fk": {
+          "name": "notification_recipient_fk",
+          "tableFrom": "notification",
+          "columnsFrom": [
+            "recipient_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "notification_item_fk": {
+          "name": "notification_item_fk",
+          "tableFrom": "notification",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "notification_comment_fk": {
+          "name": "notification_comment_fk",
+          "tableFrom": "notification",
+          "columnsFrom": [
+            "comment_id",
+            "workspace_id"
+          ],
+          "tableTo": "comment",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "notification_outbox_fk": {
+          "name": "notification_outbox_fk",
+          "tableFrom": "notification",
+          "columnsFrom": [
+            "outbox_message_id"
+          ],
+          "tableTo": "outbox_message",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "notification_delivery_key": {
+          "name": "notification_delivery_key",
+          "columns": [
+            "outbox_message_id",
+            "recipient_member_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.notification_preference": {
+      "name": "notification_preference",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_member_id": {
+          "name": "workspace_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "notification_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channels": {
+          "name": "channels",
+          "type": "notification_channel[]",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::notification_channel[]"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "notification_preference_workspace_id_workspace_id_fk": {
+          "name": "notification_preference_workspace_id_workspace_id_fk",
+          "tableFrom": "notification_preference",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "notification_preference_member_fk": {
+          "name": "notification_preference_member_fk",
+          "tableFrom": "notification_preference",
+          "columnsFrom": [
+            "workspace_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "notification_preference_key": {
+          "name": "notification_preference_key",
+          "columns": [
+            "workspace_member_id",
+            "kind"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.outbox_message": {
+      "name": "outbox_message",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "bigserial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "notification_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recipient_user_ids": {
+          "name": "recipient_user_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comment_id": {
+          "name": "comment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivery_error": {
+          "name": "delivery_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "outbox_undelivered_idx": {
+          "name": "outbox_undelivered_idx",
+          "columns": [
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"delivered_at\" is null",
+          "concurrently": false
+        },
+        "outbox_seq_key": {
+          "name": "outbox_seq_key",
+          "columns": [
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "outbox_message_workspace_id_workspace_id_fk": {
+          "name": "outbox_message_workspace_id_workspace_id_fk",
+          "tableFrom": "outbox_message",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "outbox_message_actor_user_id_app_user_id_fk": {
+          "name": "outbox_message_actor_user_id_app_user_id_fk",
+          "tableFrom": "outbox_message",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "outbox_item_fk": {
+          "name": "outbox_item_fk",
+          "tableFrom": "outbox_message",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.custom_field": {
+      "name": "custom_field",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "custom_field_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "custom_field_project_idx": {
+          "name": "custom_field_project_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "custom_field_workspace_id_workspace_id_fk": {
+          "name": "custom_field_workspace_id_workspace_id_fk",
+          "tableFrom": "custom_field",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "custom_field_project_fk": {
+          "name": "custom_field_project_fk",
+          "tableFrom": "custom_field",
+          "columnsFrom": [
+            "project_id",
+            "workspace_id"
+          ],
+          "tableTo": "project",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "custom_field_project_name_key": {
+          "name": "custom_field_project_name_key",
+          "columns": [
+            "project_id",
+            "name"
+          ],
+          "nullsNotDistinct": false
+        },
+        "custom_field_id_workspace_kind_key": {
+          "name": "custom_field_id_workspace_kind_key",
+          "columns": [
+            "id",
+            "workspace_id",
+            "kind"
+          ],
+          "nullsNotDistinct": false
+        },
+        "custom_field_id_workspace_key": {
+          "name": "custom_field_id_workspace_key",
+          "columns": [
+            "id",
+            "workspace_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.custom_field_option": {
+      "name": "custom_field_option",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "custom_field_option_field_idx": {
+          "name": "custom_field_option_field_idx",
+          "columns": [
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "custom_field_option_workspace_id_workspace_id_fk": {
+          "name": "custom_field_option_workspace_id_workspace_id_fk",
+          "tableFrom": "custom_field_option",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "custom_field_option_field_fk": {
+          "name": "custom_field_option_field_fk",
+          "tableFrom": "custom_field_option",
+          "columnsFrom": [
+            "field_id",
+            "workspace_id"
+          ],
+          "tableTo": "custom_field",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "custom_field_option_field_name_key": {
+          "name": "custom_field_option_field_name_key",
+          "columns": [
+            "field_id",
+            "name"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.custom_field_value": {
+      "name": "custom_field_value",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "custom_field_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value_text": {
+          "name": "value_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_number": {
+          "name": "value_number",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_date": {
+          "name": "value_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_checkbox": {
+          "name": "value_checkbox",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_option_ids": {
+          "name": "value_option_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_member_id": {
+          "name": "value_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "custom_field_value_field_text_idx": {
+          "name": "custom_field_value_field_text_idx",
+          "columns": [
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value_text",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "custom_field_value_field_number_idx": {
+          "name": "custom_field_value_field_number_idx",
+          "columns": [
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "custom_field_value_field_date_idx": {
+          "name": "custom_field_value_field_date_idx",
+          "columns": [
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "custom_field_value_field_checkbox_idx": {
+          "name": "custom_field_value_field_checkbox_idx",
+          "columns": [
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value_checkbox",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "custom_field_value_field_member_idx": {
+          "name": "custom_field_value_field_member_idx",
+          "columns": [
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "custom_field_value_options_idx": {
+          "name": "custom_field_value_options_idx",
+          "columns": [
+            {
+              "expression": "value_option_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gin",
+          "concurrently": false
+        },
+        "custom_field_value_field_idx": {
+          "name": "custom_field_value_field_idx",
+          "columns": [
+            {
+              "expression": "field_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "custom_field_value_workspace_id_workspace_id_fk": {
+          "name": "custom_field_value_workspace_id_workspace_id_fk",
+          "tableFrom": "custom_field_value",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspace",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "custom_field_value_item_fk": {
+          "name": "custom_field_value_item_fk",
+          "tableFrom": "custom_field_value",
+          "columnsFrom": [
+            "work_item_id",
+            "workspace_id"
+          ],
+          "tableTo": "work_item",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "custom_field_value_field_fk": {
+          "name": "custom_field_value_field_fk",
+          "tableFrom": "custom_field_value",
+          "columnsFrom": [
+            "field_id",
+            "workspace_id",
+            "kind"
+          ],
+          "tableTo": "custom_field",
+          "columnsTo": [
+            "id",
+            "workspace_id",
+            "kind"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "custom_field_value_member_fk": {
+          "name": "custom_field_value_member_fk",
+          "tableFrom": "custom_field_value",
+          "columnsFrom": [
+            "value_member_id",
+            "workspace_id"
+          ],
+          "tableTo": "workspace_member",
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "custom_field_value_item_field_key": {
+          "name": "custom_field_value_item_field_key",
+          "columns": [
+            "work_item_id",
+            "field_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_select": {
+          "name": "tenant_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id()"
+        },
+        "tenant_insert": {
+          "name": "tenant_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "unifyops_app"
+          ],
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_update": {
+          "name": "tenant_update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()",
+          "withCheck": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "tenant_delete": {
+          "name": "tenant_delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "unifyops_app"
+          ],
+          "using": "\"workspace_id\" = tenancy.workspace_id() and not tenancy.is_read_only()"
+        },
+        "operator_select": {
+          "name": "operator_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "unifyops_operator"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.workspace_role": {
+      "name": "workspace_role",
+      "schema": "public",
+      "values": [
+        "owner",
+        "admin",
+        "member",
+        "guest"
+      ]
+    },
+    "public.project_role": {
+      "name": "project_role",
+      "schema": "public",
+      "values": [
+        "lead",
+        "member",
+        "viewer"
+      ]
+    },
+    "public.project_visibility": {
+      "name": "project_visibility",
+      "schema": "public",
+      "values": [
+        "workspace",
+        "private"
+      ]
+    },
+    "public.state_color": {
+      "name": "state_color",
+      "schema": "public",
+      "values": [
+        "ink",
+        "sky",
+        "navy",
+        "warning",
+        "success",
+        "danger"
+      ]
+    },
+    "public.state_group": {
+      "name": "state_group",
+      "schema": "public",
+      "values": [
+        "backlog",
+        "unstarted",
+        "started",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "public.audit_actor_kind": {
+      "name": "audit_actor_kind",
+      "schema": "public",
+      "values": [
+        "member",
+        "operator",
+        "system"
+      ]
+    },
+    "public.verification_purpose": {
+      "name": "verification_purpose",
+      "schema": "public",
+      "values": [
+        "email_verification",
+        "password_reset"
+      ]
+    },
+    "public.invitation_delivery": {
+      "name": "invitation_delivery",
+      "schema": "public",
+      "values": [
+        "pending",
+        "sent",
+        "failed"
+      ]
+    },
+    "public.invitation_status": {
+      "name": "invitation_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "accepted",
+        "revoked"
+      ]
+    },
+    "public.label_color": {
+      "name": "label_color",
+      "schema": "public",
+      "values": [
+        "ink",
+        "sky",
+        "navy",
+        "lilac",
+        "chartreuse",
+        "warning",
+        "success",
+        "danger"
+      ]
+    },
+    "public.priority": {
+      "name": "priority",
+      "schema": "public",
+      "values": [
+        "urgent",
+        "high",
+        "medium",
+        "low",
+        "none"
+      ]
+    },
+    "public.attachment_status": {
+      "name": "attachment_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "ready"
+      ]
+    },
+    "public.notification_channel": {
+      "name": "notification_channel",
+      "schema": "public",
+      "values": [
+        "in_app",
+        "email"
+      ]
+    },
+    "public.notification_kind": {
+      "name": "notification_kind",
+      "schema": "public",
+      "values": [
+        "mention",
+        "assignment",
+        "item_activity",
+        "comment",
+        "digest"
+      ]
+    },
+    "public.custom_field_kind": {
+      "name": "custom_field_kind",
+      "schema": "public",
+      "values": [
+        "text",
+        "number",
+        "select",
+        "multi_select",
+        "date",
+        "user",
+        "checkbox"
+      ]
+    }
+  },
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

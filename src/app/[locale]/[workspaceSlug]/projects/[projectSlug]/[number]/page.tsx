@@ -4,6 +4,9 @@ import { Alert, Badge } from '@/components/ui/feedback';
 import { ActivityFeed } from '@/components/work-item/activity-feed';
 import { AttachmentPanel } from '@/components/work-item/attachment-panel';
 import { CommentThread } from '@/components/work-item/comment-thread';
+import { CustomFieldValues } from '@/components/work-item/custom-field-values';
+import { ItemCycleSelect } from '@/components/cycle/item-cycle-select';
+import { RegisterCurrentItem } from '@/components/search/current-item';
 import { StatePill } from '@/components/ui/state-pill';
 import { ItemEditor } from '@/components/work-item/item-editor';
 import { StateSelect, type StateOption } from '@/components/work-item/state-select';
@@ -14,6 +17,7 @@ import { getActivityFeed } from '@/server/services/activity';
 import { getCommentThread } from '@/server/services/comments';
 import { getProjectBySlug } from '@/server/services/projects';
 import { getWorkItem } from '@/server/services/work-items';
+import { valueToStrings } from '@/lib/custom-fields';
 import { displayName } from '@/lib/seeded-name';
 import { isOverdue } from '@/lib/workspace-date';
 import { Link } from '@/i18n/navigation';
@@ -33,12 +37,13 @@ import { Link } from '@/i18n/navigation';
  * rather than hiding it, so somebody looking at a stale tab can see *why* they
  * cannot type.
  *
- * Below the editor: the item's files, then the comment thread (slice 8), then
- * the activity feed (slice 7). That order is deliberate — a file attached to
- * the item is a property of the work, the conversation is what somebody opening
- * an item is usually looking for, and the history is context for both. Files
- * pasted into a comment render inside that comment rather than in the panel,
- * which is what keeps the two lists meaning different things.
+ * Below the editor: the project's custom fields (slice 10), the item's files,
+ * then the comment thread (slice 8), then the activity feed (slice 7). That
+ * order is deliberate — a custom field and an attached file are both properties
+ * of the work, the conversation is what somebody opening an item is usually
+ * looking for, and the history is context for all of it. Files pasted into a
+ * comment render inside that comment rather than in the panel, which is what
+ * keeps the two lists meaning different things.
  */
 export default async function WorkItemPage({
   params,
@@ -99,6 +104,19 @@ export default async function WorkItemPage({
   }));
 
   const currentState = states.find((state) => state.id === item.stateId);
+
+  /**
+   * The cycles this item may be moved between: the project's open ones, plus
+   * the one it is in if that has closed — marked, so the difference is visible
+   * rather than a silent extra entry. `closed` is derived from absence from the
+   * open list, which is the same fact `fetchOpenCycles` already established.
+   */
+  const cycleOptions = [
+    ...(item.cycleId && !project.cycles.some((cycle) => cycle.id === item.cycleId)
+      ? [{ id: item.cycleId, name: item.cycleName ?? '', closed: true }]
+      : []),
+    ...project.cycles.map((cycle) => ({ id: cycle.id, name: cycle.name, closed: false })),
+  ];
   const overdue = isOverdue(item.dueDate, item.today, { completed: item.completedAt !== null });
 
   /**
@@ -129,6 +147,24 @@ export default async function WorkItemPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      {/*
+        Tells the shell's command palette which item is on screen, so §7.9's one
+        contextual action — "assign to me" — is offered here and nowhere else.
+        Renders nothing; it exists for its effect (`current-item.tsx` explains
+        why a store rather than a context: the palette is in the layout above
+        this page, and React context does not flow upward).
+      */}
+      <RegisterCurrentItem
+        item={{
+          id: item.id,
+          number: item.number,
+          projectId: project.id,
+          projectSlug,
+          identifier: item.identifier,
+          assigneeIds: item.assigneeIds,
+        }}
+      />
+
       <nav aria-label={t('nav.projects')} className="text-xs text-text-muted">
         <Link
           href={`/${workspaceSlug}/projects/${projectSlug}`}
@@ -189,6 +225,54 @@ export default async function WorkItemPage({
           name: member.name.trim() || member.email,
         }))}
         labels={labels}
+        canEdit={item.canEdit}
+      />
+
+      {/*
+        §7.6's per-item membership, beside the state for the same reason: both
+        are single-valued properties of the work that somebody changes without
+        opening a form. **`work_item.edit`, not `project.settings`** — a Member
+        can put their own work into the sprint their Lead planned, which is the
+        split labels already make between deciding what tags exist and applying
+        one.
+
+        The options are the project's *open* cycles, plus this item's own if it
+        has since closed — a control that could not show its own value would
+        read as though the item were planned into nothing.
+      */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-text-muted">{t('cycles.item.label')}</span>
+        <div className="min-w-48">
+          <ItemCycleSelect
+            workspaceSlug={workspaceSlug}
+            projectSlug={projectSlug}
+            projectId={project.id}
+            workItemId={item.id}
+            number={item.number}
+            cycleId={item.cycleId}
+            options={cycleOptions}
+            canEdit={item.canEdit}
+          />
+        </div>
+      </div>
+
+      {/* §7.11: a field defined in settings is "immediately available in …
+          item detail". Above the files and the conversation, because a custom
+          field is a property of the work in the same way priority is — it
+          belongs with the editor, not with the discussion about it. */}
+      <CustomFieldValues
+        context={itemContext}
+        fields={item.customFields.map((field) => ({
+          id: field.id,
+          name: field.name,
+          kind: field.kind,
+          options: field.options.map((option) => ({ id: option.id, name: option.name })),
+          value: valueToStrings(item.customValues.get(field.id) ?? null),
+        }))}
+        people={members.map((member) => ({
+          memberId: member.memberId,
+          name: member.name.trim() || member.email,
+        }))}
         canEdit={item.canEdit}
       />
 

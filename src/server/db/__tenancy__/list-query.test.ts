@@ -335,3 +335,238 @@ describe('sorting', () => {
     expect(groups[0]?.rows.map((row) => row.title)).toEqual(['urgent', 'high', 'low', 'none']);
   });
 });
+
+/**
+ * Slice 12's calendar: the month filter and the `day` grouping, which are the
+ * one new branch of SQL this slice added.
+ *
+ * Both are exercised in a workspace of their own, because the grouping produces
+ * one key per calendar date and an item another test left lying around would
+ * land in a cell and be counted.
+ */
+describe('the calendar month and the day grouping (slice 12)', () => {
+  it('groups a month of due dates into one group per day', async () => {
+    const fresh = await seedWorkspace(h, `calendar-${Date.now().toString(36)}`);
+    const scoped = {
+      workspaceId: fresh.workspaceId,
+      userId: fresh.ownerUserId,
+      actorUserId: fresh.ownerUserId,
+      readOnly: false,
+    };
+
+    const add = (title: string, dueDate: string | null) =>
+      withActor(
+        scoped,
+        async (tx) => {
+          const id = uuidv7();
+          await tx.insert(workItem).values({
+            id,
+            workspaceId: fresh.workspaceId,
+            projectId: fresh.projectId,
+            number: 1000 + Math.floor(Math.random() * 1_000_000),
+            title,
+            stateId: fresh.stateId,
+            rootId: id,
+            rank: `a${Math.random().toString(36).slice(2, 8)}`,
+            createdByMemberId: fresh.ownerMemberId,
+            dueDate,
+          });
+        },
+        h.app,
+      );
+
+    await add('Second', '2026-09-02');
+    await add('Also second', '2026-09-02');
+    await add('Thirtieth', '2026-09-30');
+    await add('Next month', '2026-10-01');
+    await add('Last month', '2026-08-31');
+    // Undated work is outside every month rather than inside all of them —
+    // the calendar has no cell for it, and the List answers that with `d=none`.
+    await add('Someday', null);
+
+    const query: WorkItemQuery = {
+      ...emptyQuery(),
+      groupBy: 'day',
+      filters: {
+        ...emptyQuery().filters,
+        projectIds: [fresh.projectId],
+        month: '2026-09',
+      },
+    };
+
+    const groups = await withActor(
+      scoped,
+      (tx) =>
+        fetchWorkItemGroups(tx, query, {
+          // Every day of September, exactly as the page supplies them.
+          groupKeys: Array.from(
+            { length: 30 },
+            (_, index) => `2026-09-${String(index + 1).padStart(2, '0')}`,
+          ),
+          today: TODAY,
+        }),
+      h.app,
+    );
+
+    const byKey = new Map(groups.map((group) => [group.key, group]));
+
+    expect(byKey.get('2026-09-02')?.total).toBe(2);
+    expect(byKey.get('2026-09-30')?.total).toBe(1);
+    // A day with nothing due still has a group, because the caller asked for
+    // one — a cell that vanishes when it empties is a cell nothing can be put
+    // into.
+    expect(byKey.get('2026-09-15')?.total).toBe(0);
+    expect(byKey.get('2026-09-15')?.rows).toEqual([]);
+
+    // Nothing from either neighbouring month, and nothing undated, leaked in.
+    const titles = groups.flatMap((group) => group.rows.map((row) => row.title));
+    expect(titles).not.toContain('Next month');
+    expect(titles).not.toContain('Last month');
+    expect(titles).not.toContain('Someday');
+  });
+
+  it('counts a month the same way the page query pages it', async () => {
+    const fresh = await seedWorkspace(h, `calendar-counts-${Date.now().toString(36)}`);
+    const scoped = {
+      workspaceId: fresh.workspaceId,
+      userId: fresh.ownerUserId,
+      actorUserId: fresh.ownerUserId,
+      readOnly: false,
+    };
+
+    await withActor(
+      scoped,
+      async (tx) => {
+        for (let i = 0; i < 3; i += 1) {
+          const id = uuidv7();
+          await tx.insert(workItem).values({
+            id,
+            workspaceId: fresh.workspaceId,
+            projectId: fresh.projectId,
+            number: 2000 + i,
+            title: `Due ${i}`,
+            stateId: fresh.stateId,
+            rootId: id,
+            rank: `b${String(i).padStart(4, '0')}`,
+            createdByMemberId: fresh.ownerMemberId,
+            dueDate: '2026-09-10',
+          });
+        }
+      },
+      h.app,
+    );
+
+    const query: WorkItemQuery = {
+      ...emptyQuery(),
+      groupBy: 'day',
+      // One row per cell, so the count and the page deliberately disagree — the
+      // cell's number has to be the day's real total, not the page's length.
+      limit: 1,
+      filters: { ...emptyQuery().filters, projectIds: [fresh.projectId], month: '2026-09' },
+    };
+
+    const counts = await withActor(
+      scoped,
+      (tx) => countWorkItemsByGroup(tx, query, { today: TODAY }),
+      h.app,
+    );
+    const groups = await withActor(
+      scoped,
+      (tx) => fetchWorkItemGroups(tx, query, { groupKeys: ['2026-09-10'], today: TODAY }),
+      h.app,
+    );
+
+    expect(counts.get('2026-09-10')).toBe(3);
+    expect(groups[0]!.total).toBe(3);
+    expect(groups[0]!.rows).toHaveLength(1);
+    // More to come, so the cell can honestly say "+2 more".
+    expect(groups[0]!.nextCursor).not.toBeNull();
+  });
+});
+
+/**
+ * The row's timestamps, as the driver actually produces them.
+ *
+ * These queries go through `tx.execute`, so drizzle's column mappers never run
+ * and every date and timestamp arrives as a **string**. `WorkItemRow` declares
+ * them as `Date`, and until slice 12 nothing checked: `completed_at` is only
+ * compared to null, and `created_at`/`updated_at` are read only by `cursorFor`
+ * — which calls `.toISOString()` and is therefore reached only when somebody
+ * sorts by `created` or `updated` *and* pages past the first page.
+ *
+ * So this pins both halves: the type is real, and the sort that depends on it
+ * pages without throwing.
+ */
+describe('the timestamps a row carries', () => {
+  it('hands back real Dates, not the driver s strings', async () => {
+    await makeItems(1, { title: 'Timestamped' });
+
+    const groups = await run((tx) =>
+      fetchWorkItemGroups(tx, projectQuery(), { groupKeys: [w.stateId], today: TODAY }),
+    );
+
+    const row = groups[0]!.rows[0]!;
+    expect(row.createdAt).toBeInstanceOf(Date);
+    expect(row.updatedAt).toBeInstanceOf(Date);
+    expect(Number.isNaN(row.updatedAt.getTime())).toBe(false);
+  });
+
+  it('pages a group sorted by updated, which is what caught it', async () => {
+    const fresh = await seedWorkspace(h, `updated-${Date.now().toString(36)}`);
+    const scoped = {
+      workspaceId: fresh.workspaceId,
+      userId: fresh.ownerUserId,
+      actorUserId: fresh.ownerUserId,
+      readOnly: false,
+    };
+
+    await withActor(
+      scoped,
+      async (tx) => {
+        for (let i = 0; i < 3; i += 1) {
+          const id = uuidv7();
+          await tx.insert(workItem).values({
+            id,
+            workspaceId: fresh.workspaceId,
+            projectId: fresh.projectId,
+            number: 3000 + i,
+            title: `Touched ${i}`,
+            stateId: fresh.stateId,
+            rootId: id,
+            rank: `c${String(i).padStart(4, '0')}`,
+            createdByMemberId: fresh.ownerMemberId,
+            updatedAt: new Date(Date.UTC(2026, 8, 1 + i)),
+          });
+        }
+      },
+      h.app,
+    );
+
+    const query: WorkItemQuery = {
+      ...emptyQuery(),
+      sort: 'updated',
+      limit: 1,
+      filters: { ...emptyQuery().filters, projectIds: [fresh.projectId] },
+    };
+
+    const first = await withActor(
+      scoped,
+      (tx) => fetchWorkItemGroups(tx, query, { groupKeys: [fresh.stateId], today: TODAY }),
+      h.app,
+    );
+    expect(first[0]!.rows.map((row) => row.title)).toEqual(['Touched 0']);
+
+    // The cursor is built from `updatedAt`, so this is the line that threw.
+    const second = await withActor(
+      scoped,
+      (tx) =>
+        fetchWorkItemGroups(tx, query, {
+          groupKeys: [fresh.stateId],
+          cursors: { [fresh.stateId]: first[0]!.nextCursor },
+          today: TODAY,
+        }),
+      h.app,
+    );
+    expect(second[0]!.rows.map((row) => row.title)).toEqual(['Touched 1']);
+  });
+});

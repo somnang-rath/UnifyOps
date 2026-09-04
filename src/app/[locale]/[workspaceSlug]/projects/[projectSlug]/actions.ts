@@ -15,6 +15,18 @@ import {
   type AttachmentServiceProblem,
 } from '@/server/services/attachments';
 import {
+  setWorkItemCustomFields,
+  type CustomFieldProblem,
+} from '@/server/services/custom-fields';
+import {
+  createSavedView,
+  deleteSavedView,
+  saveTableLayout,
+  updateSavedView,
+  type SavedViewFailure,
+} from '@/server/services/saved-views';
+import type { TableLayout } from '@/lib/saved-views';
+import {
   createWorkItem,
   deleteWorkItem,
   setWorkItemAssignees,
@@ -56,6 +68,30 @@ const KEYS: Record<WorkItemProblem, string> = {
   no_team: 'projects.errors.noTeam',
 };
 
+/**
+ * The value refusals (§6-4). Every work-item and project problem is already in
+ * `KEYS` — a value is written through the same guard an edit is — so this
+ * spreads it and adds what only a custom field can say.
+ */
+const CUSTOM_FIELD_VALUE_KEYS: Record<CustomFieldProblem, string> = {
+  ...KEYS,
+  name_taken: 'customFields.errors.nameTaken',
+  unknown_field: 'customFields.errors.unknownField',
+  unknown_option: 'customFields.errors.unknownOption',
+  unknown_kind: 'customFields.errors.unknownKind',
+  too_many_fields: 'customFields.errors.tooManyFields',
+  too_many_options: 'customFields.errors.tooManyOptions',
+  needs_options: 'customFields.errors.needsOptions',
+  field_has_values: 'customFields.errors.hasValues',
+  option_in_use: 'customFields.errors.optionInUse',
+  value_too_long: 'customFields.errors.tooLong',
+  value_too_many: 'customFields.errors.tooMany',
+  value_not_a_number: 'customFields.errors.notANumber',
+  value_not_a_date: 'customFields.errors.notADate',
+  value_not_an_option: 'customFields.errors.notAnOption',
+  unknown_member: 'customFields.errors.unknownMember',
+};
+
 type Locale = 'en' | 'km';
 
 type Context = {
@@ -95,6 +131,22 @@ function revalidateItem(context: Context, number?: number) {
       `/${context.locale}/${context.workspaceSlug}/projects/${context.projectSlug}/${number}`,
     );
   }
+
+  /**
+   * Slice 13's two cross-project surfaces (§7.3, §7.4).
+   *
+   * They read the same rows this project's list does, so every mutation that
+   * rebuilds one has to rebuild them too — and the failure mode without this is
+   * the quiet kind: a state pill clicked on My Work advances the item, the
+   * server records it, and the row stays in the same bucket until the next hard
+   * navigation. That reads as a control that did not work.
+   *
+   * Both are unconditional rather than guarded on "was this item mine": a change
+   * to somebody else's item moves §7.4's counts, and a mutation handler is the
+   * wrong place to be deciding whose screens are interesting.
+   */
+  revalidatePath(`/${context.locale}/${context.workspaceSlug}`);
+  revalidatePath(`/${context.locale}/${context.workspaceSlug}/team`);
 }
 
 /** Turns a thrown §10 refusal into the same shape a returned problem takes. */
@@ -449,5 +501,176 @@ export async function deleteAttachmentAction(
   if (!outcome.ok) return { error: ATTACHMENT_KEYS[outcome.problem] };
 
   revalidateItem(context, Number(formData.get('number')));
+  return { done: true };
+}
+
+/**
+ * One item's custom fields, saved as a panel (§6-4, §7.11).
+ *
+ * The whole panel rather than a field at a time, for the reason the details
+ * form saves title, dates and priority together: they are one thought and one
+ * click, and §7.8 would otherwise turn one save into five notifications.
+ *
+ * The form names the fields it drew in `fieldId`, and each value arrives under
+ * `cf:{fieldId}` — a prefix rather than a bare id so a field can never collide
+ * with `workItemId`, `locale` or anything else the form carries. A field the
+ * form did not draw is absent from the payload and the service leaves it alone,
+ * which is what makes a stale tab widen nothing.
+ *
+ * `getAll` throughout, because a multi-select posts several values under one
+ * name and every kind then arrives in one shape.
+ */
+export async function setCustomFieldsAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const values: Record<string, string[]> = {};
+  for (const fieldId of formData.getAll('fieldId')) {
+    const id = String(fieldId);
+    values[id] = formData.getAll(`cf:${id}`).map((value) => String(value));
+  }
+
+  const outcome = await guarded(() =>
+    setWorkItemCustomFields(resolved, {
+      workItemId: String(formData.get('workItemId') ?? ''),
+      values,
+    }),
+  );
+
+  if ('error' in outcome) return outcome;
+  if (!outcome.ok) {
+    const key = CUSTOM_FIELD_VALUE_KEYS[outcome.problem];
+    // §11: the refusal lands on the control that caused it whenever the service
+    // could say which one — a bad date belongs under the date, not in a banner
+    // about the form.
+    return outcome.fieldId ? { fields: { [`cf:${outcome.fieldId}`]: key } } : { error: key };
+  }
+
+  revalidateItem(context, Number(formData.get('number')));
+  return {};
+}
+
+/* ------------------------------------------------------------------------- */
+/* Saved views (§4, slice 12)                                                */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The saved-view refusals. Identifiers in, message keys out (§13).
+ *
+ * There is no §10 entry among them, and that is not an omission: a saved view
+ * is one person's bookmark of their own screen, so the service asks nothing of
+ * the policy module and `guarded` has no `ForbiddenError` to catch here. The
+ * only refusals are the shape of the name and how many views one person may
+ * keep.
+ */
+const SAVED_VIEW_KEYS: Record<SavedViewFailure, string> = {
+  name_required: 'savedViews.errors.nameRequired',
+  name_too_long: 'savedViews.errors.nameTooLong',
+  name_taken: 'savedViews.errors.nameTaken',
+  query_too_long: 'savedViews.errors.queryTooLong',
+  too_many: 'savedViews.errors.tooMany',
+  not_found: 'savedViews.errors.notFound',
+};
+
+export async function createSavedViewAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const outcome = await createSavedView(resolved, {
+    name: String(formData.get('name') ?? ''),
+    // The query string the bar was rendered with. Stored verbatim and re-parsed
+    // on every read, so nothing here has to understand what a filter is.
+    query: String(formData.get('query') ?? ''),
+    projectId: context.projectId || null,
+  });
+
+  if (!outcome.ok) return { fields: { name: SAVED_VIEW_KEYS[outcome.problem] } };
+
+  revalidateItem(context);
+  return {};
+}
+
+/**
+ * Points an existing view at the query now on screen, and/or renames it.
+ *
+ * One action for both, because the bar offers one control that does it — "update
+ * this view to what I am looking at" — and splitting it would be two round
+ * trips for one click.
+ */
+export async function updateSavedViewAction(input: {
+  workspaceSlug: string;
+  projectSlug: string;
+  locale: string;
+  viewId: string;
+  name?: string;
+  query?: string;
+}): Promise<RowActionState> {
+  const context: Context = {
+    workspaceSlug: input.workspaceSlug,
+    projectSlug: input.projectSlug,
+    locale: localeOf(input.locale),
+  };
+  const resolved = await actorFor(input.workspaceSlug);
+
+  const outcome = await updateSavedView(resolved, {
+    viewId: input.viewId,
+    name: input.name,
+    query: input.query,
+  });
+
+  if (!outcome.ok) return { error: SAVED_VIEW_KEYS[outcome.problem] };
+
+  revalidateItem(context);
+  return { done: true };
+}
+
+export async function deleteSavedViewAction(input: {
+  workspaceSlug: string;
+  projectSlug: string;
+  locale: string;
+  viewId: string;
+}): Promise<RowActionState> {
+  const context: Context = {
+    workspaceSlug: input.workspaceSlug,
+    projectSlug: input.projectSlug,
+    locale: localeOf(input.locale),
+  };
+  const resolved = await actorFor(input.workspaceSlug);
+
+  const outcome = await deleteSavedView(resolved, input.viewId);
+  if (!outcome.ok) return { error: SAVED_VIEW_KEYS[outcome.problem] };
+
+  revalidateItem(context);
+  return { done: true };
+}
+
+/**
+ * §12's "column widths persisted per saved view".
+ *
+ * **It deliberately does not revalidate.** The width is already applied in the
+ * browser — that is what a drag *is* — so rebuilding the route would re-render
+ * the table underneath the pointer that is still on the column edge, to arrive
+ * at the layout already on screen. What is being written matters on the *next*
+ * load, and the next load fetches it.
+ */
+export async function saveTableLayoutAction(input: {
+  workspaceSlug: string;
+  viewId: string;
+  layout: TableLayout;
+}): Promise<RowActionState> {
+  const resolved = await actorFor(input.workspaceSlug);
+
+  const outcome = await saveTableLayout(resolved, {
+    viewId: input.viewId,
+    layout: input.layout,
+  });
+
+  if (!outcome.ok) return { error: SAVED_VIEW_KEYS[outcome.problem] };
   return { done: true };
 }

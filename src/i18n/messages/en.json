@@ -23,6 +23,21 @@
     "error": "Something went wrong.",
     "working": "Working…"
   },
+  "errors": {
+    "title": "That didn't work",
+    "body": "Nothing you typed has been lost. Try again, and if it keeps happening, tell whoever set up your workspace.",
+    "notFoundTitle": "There's nothing here",
+    "notFoundBody": "This page has moved, been deleted, or belongs to a company you're not part of.",
+    "notFoundAction": "Go to your workspace",
+    "offlineTitle": "You're offline",
+    "offlineBody": "Anything you change now may not be saved. Reconnect before you carry on.",
+    "fatalTitle": "UnifyOps couldn't load",
+    "fatalBody": "Reload the page. If it happens again, tell whoever set up your workspace.",
+    "reload": "Reload"
+  },
+  "a11y": {
+    "skipToContent": "Skip to content"
+  },
   "priority": {
     "urgent": "Urgent",
     "high": "High",
@@ -141,8 +156,9 @@
       "title": "Invite your teammates",
       "subtitle": "Paste as many addresses as you like.",
       "skip": "Skip for now",
-      "done": "Go to the workspace"
-    }
+      "continue": "Next: your first project"
+    },
+    "step": "Step {current} of {total}"
   },
   "invite": {
     "form": {
@@ -198,7 +214,15 @@
     "empty": "Nobody else yet. Invite the people you work with.",
     "pendingTitle": "Pending invitations",
     "lastOwner": "A workspace must keep at least one owner.",
-    "removed": "{name} was removed."
+    "removed": "{name} was removed.",
+    "unknownTarget": "That person is no longer a member. Pick somebody else.",
+    "offboard": {
+      "title": "Remove {name}",
+      "description": "Their comments and history stay, attributed to them. Their open work has to go somewhere.",
+      "question": "What happens to their open work?",
+      "reassignTo": "Give it to {name}",
+      "leaveUnassigned": "Leave it unassigned — it will show up under Needs attention"
+    }
   },
   "teams": {
     "title": "Teams",
@@ -378,7 +402,9 @@
       "priority": "Priority",
       "label": "Label",
       "project": "Project",
-      "none": "Everything"
+      "none": "Everything",
+      "cycle": "Cycle",
+      "due": "Due date"
     },
     "sorts": {
       "rank": "Manual",
@@ -407,7 +433,9 @@
       "unlabelled": "No label",
       "blockedOnly": "Blocked only",
       "notBlocked": "Not blocked",
-      "clear": "Clear filters"
+      "clear": "Clear filters",
+      "cycle": "Cycle",
+      "searchPlaceholder": "Title or description"
     },
     "errors": {
       "titleRequired": "Enter a title.",
@@ -423,7 +451,8 @@
       "loadMore": "Could not load more. Try again.",
       "unknownNeighbour": "That card is no longer on the board.",
       "moveRefused": "The move could not be saved."
-    }
+    },
+    "empty": "No work items match this view yet."
   },
   "labels": {
     "title": "Labels",
@@ -459,7 +488,9 @@
   "view": {
     "list": "List",
     "board": "Board",
-    "switch": "Switch view"
+    "switch": "Switch view",
+    "table": "Table",
+    "calendar": "Calendar"
   },
   "toast": {
     "dismiss": "Dismiss",
@@ -492,7 +523,11 @@
       "startDate": "{actor} changed the start date",
       "dueDate": "{actor} changed the due date",
       "estimate": "{actor} changed the estimate"
-    }
+    },
+    "customField": "{actor} changed {field}",
+    "deletedField": "a deleted field",
+    "reassigned": "{actor} moved this from {from} to {to} when {from} left",
+    "reassignedToNobody": "{actor} left this unassigned when {from} left"
   },
   "comments": {
     "heading": "Comments",
@@ -592,6 +627,473 @@
     "saved": "Saved.",
     "errors": {
       "failed": "That could not be saved. Try again."
+    }
+  },
+  "customFieldKind": {
+    "text": "Text",
+    "number": "Number",
+    "select": "Select",
+    "multi_select": "Multi-select",
+    "date": "Date",
+    "user": "Person",
+    "checkbox": "Checkbox"
+  },
+  "customFields": {
+    "title": "Custom fields",
+    "subtitle": "Extra fields on every item in this project.",
+    "heading": "Custom fields",
+    "add": "Add field",
+    "adding": "Adding…",
+    "name": "Field name",
+    "kind": "Type",
+    "kindHint": "The type is fixed once the field exists. Renaming is always safe.",
+    "save": "Save field",
+    "saveValues": "Save fields",
+    "delete": "Delete field",
+    "deleteTitle": "Delete {name}?",
+    "deleteBody": "The field and every value stored in it are deleted.",
+    "deleteCount": "{count, plural, =0 {No item has a value for this field.} =1 {# item has a value for this field.} other {# items have a value for this field.}}",
+    "confirmDelete": "Delete the field and its values",
+    "moveUp": "Move {name} earlier",
+    "moveDown": "Move {name} later",
+    "empty": "No custom fields yet. Add one for anything this project tracks that the product has no place for.",
+    "emptyItem": "This project has no custom fields.",
+    "options": "Options",
+    "optionName": "Option",
+    "addOption": "Add option",
+    "removeOption": "Remove {name}",
+    "removeOptionTitle": "Remove {name}?",
+    "optionCount": "{count, plural, =0 {No item uses this option.} =1 {# item uses this option.} other {# items use this option.}}",
+    "confirmRemoveOption": "Remove it and clear those values",
+    "noOptions": "Add at least one option so there is something to choose.",
+    "valueNone": "None",
+    "valueYes": "Yes",
+    "valueNo": "No",
+    "filterAny": "Any",
+    "filterSet": "Has a value",
+    "filterUnset": "No value",
+    "filterContains": "Contains",
+    "filterFrom": "From",
+    "filterTo": "To",
+    "groupedNone": "No value",
+    "errors": {
+      "nameRequired": "Enter a field name.",
+      "nameTaken": "This project already has a field with that name.",
+      "unknownField": "That field no longer exists.",
+      "unknownOption": "That option no longer exists.",
+      "unknownKind": "That field type does not exist.",
+      "tooManyFields": "This project has as many custom fields as it can hold.",
+      "tooManyOptions": "This field has as many options as it can hold.",
+      "hasValues": "This field holds values. Confirm that they should go too.",
+      "optionInUse": "Items still use this option. Confirm that those values should be cleared.",
+      "notANumber": "Enter a number.",
+      "notADate": "Enter a date.",
+      "notAnOption": "That choice is no longer available.",
+      "tooLong": "That is longer than this field allows.",
+      "tooMany": "That is more choices than this field takes.",
+      "unknownMember": "That person is no longer a member.",
+      "needsOptions": "Add an option before anyone can fill this in."
+    }
+  },
+  "cycles": {
+    "title": "Cycles",
+    "subtitle": "Date-bounded runs of work, with progress and a burndown.",
+    "empty": "No cycles yet. A cycle is a date-bounded run of work — a sprint, a release week, a push before a deadline — with its own progress and burndown.",
+    "overlapping": "Overlaps",
+    "itemCount": "{completed} of {total} done",
+    "work": "Work in this cycle",
+    "workingDaysLeft": "{count, plural, =0 {ends today} =1 {# working day left} other {# working days left}}",
+    "status": {
+      "upcoming": "Upcoming",
+      "active": "Active",
+      "ended": "Ended",
+      "completed": "Closed"
+    },
+    "form": {
+      "heading": "Plan a cycle",
+      "name": "Name",
+      "nameHelp": "What the team calls it — “Sprint 14”, “April”, “Launch week”.",
+      "startDate": "Starts",
+      "endDate": "Ends",
+      "goal": "Goal",
+      "goalHelp": "One line on what this cycle is for. It is what makes a burndown legible months later.",
+      "submit": "Create cycle",
+      "overlapWarning": "{count, plural, =1 {This range overlaps {names}. That is allowed.} other {This range overlaps {names}. That is allowed.}}"
+    },
+    "errors": {
+      "nameRequired": "Give the cycle a name.",
+      "nameTooLong": "That name is too long.",
+      "nameTaken": "This project already has a cycle with that name.",
+      "invalidDates": "Pick a start and an end date.",
+      "endBeforeStart": "The end date cannot come before the start date.",
+      "tooLong": "A cycle cannot run longer than a year.",
+      "closed": "That cycle has closed, so work cannot be planned into it.",
+      "wrongProject": "That cycle belongs to another project.",
+      "notFound": "That cycle no longer exists."
+    },
+    "progress": {
+      "summary": "{completed} of {total} items complete",
+      "label": "Cycle progress",
+      "open": "Open",
+      "done": "Done",
+      "cancelled": "Cancelled",
+      "points": "Points"
+    },
+    "burndown": {
+      "heading": "Burndown",
+      "actual": "Remaining",
+      "ideal": "Ideal",
+      "closed": "Non-working day",
+      "tableCaption": "Work remaining at the end of each day, against the ideal line.",
+      "day": "Day",
+      "notYet": "Not yet",
+      "unavailable": "There is nothing to chart yet.",
+      "ahead": "Ahead of the line",
+      "on_track": "On the line",
+      "behind": "Behind the line"
+    },
+    "close": {
+      "heading": "This cycle has ended",
+      "body": "{count, plural, =1 {# item is still open. What should happen to it?} other {# items are still open. What should happen to them?}}",
+      "nothingOpen": "Everything in it is finished. Close the cycle to file it away.",
+      "toNext": "Move them to {name}",
+      "toBacklog": "Return them to the backlog",
+      "leave": "Leave them where they are",
+      "submit": "Close cycle"
+    },
+    "delete": {
+      "start": "Delete cycle",
+      "confirm": "{count, plural, =1 {# item goes back to the backlog. Nothing is lost.} other {# items go back to the backlog. Nothing is lost.}}",
+      "confirmEmpty": "This cycle holds no work.",
+      "submit": "Delete it"
+    },
+    "plan": {
+      "heading": "Add work to this cycle",
+      "empty": "Nothing in the backlog — every open item in this project is already planned.",
+      "submit": "{count, plural, =0 {Add to cycle} =1 {Add # item} other {Add # items}}",
+      "clear": "Clear selection"
+    },
+    "item": {
+      "label": "Cycle",
+      "backlog": "Backlog",
+      "none": "This project runs no cycles yet.",
+      "closedOption": "{name} (closed)"
+    },
+    "filter": {
+      "any": "Any cycle",
+      "backlog": "Backlog"
+    },
+    "groupBy": "Cycle"
+  },
+  "table": {
+    "resize": "Resize the {column} column",
+    "columns": {
+      "identifier": "ID",
+      "title": "Title",
+      "state": "State",
+      "assignees": "Assignees",
+      "priority": "Priority",
+      "due": "Due",
+      "labels": "Labels",
+      "estimate": "Estimate",
+      "cycle": "Cycle",
+      "updated": "Updated"
+    }
+  },
+  "calendar": {
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "thisMonth": "This month",
+    "more": "+{count} more"
+  },
+  "savedViews": {
+    "title": "Saved views",
+    "save": "Save",
+    "saveCurrent": "Save this view",
+    "name": "View name",
+    "namePlaceholder": "Overdue, mine",
+    "update": "Update to what is on screen",
+    "updateNamed": "Update {name} to what is on screen",
+    "delete": "Delete this view",
+    "deleteNamed": "Delete the view {name}",
+    "errors": {
+      "nameRequired": "Give this view a name.",
+      "nameTooLong": "That name is too long.",
+      "nameTaken": "You already have a view with that name.",
+      "queryTooLong": "This view has too many filters to save.",
+      "tooMany": "You have reached the limit of saved views. Delete one to save another.",
+      "notFound": "That view no longer exists."
+    }
+  },
+  "myWork": {
+    "title": "My Work",
+    "count": "{count, plural, =0 {nothing open} one {# open item} other {# open items}}",
+    "clear": "You're clear.",
+    "clearHint": "Here's what your team is working on.",
+    "bucket": {
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This week",
+      "later": "Later",
+      "none": "No date"
+    }
+  },
+  "dashboards": {
+    "teamTitle": "Team",
+    "teamLink": "See the team's work",
+    "teamSwitcher": "Team",
+    "allTeams": "All teams",
+    "tabs": "Views",
+    "workload": "Workload",
+    "noProjects": "No projects in scope yet. Create one, or pick another team.",
+    "showingOf": "Showing {shown} of {total}",
+    "copySummary": "Copy status summary",
+    "copied": "Copied",
+    "copyFailed": "Couldn't copy — your browser blocked clipboard access.",
+    "export": "Export"
+  },
+  "needsAttention": {
+    "title": "Needs attention",
+    "clear": "Nothing needs your attention.",
+    "clearHint": "No overdue, blocked, unassigned, undated or stale work in this scope.",
+    "row": {
+      "overdue": "Overdue",
+      "blocked": "Blocked",
+      "unassigned": "Unassigned",
+      "no_due_date": "No due date",
+      "stale": "No update in {days} working days"
+    }
+  },
+  "workload": {
+    "capacity": "{available, plural, one {# person here} other {# people here}} · {open, plural, one {# open item} other {# open items}} · {average} each on average",
+    "awayCount": "{count, plural, one {# away} other {# away}}",
+    "overdueCount": "{count} overdue",
+    "emptyFree": "Nothing assigned.",
+    "emptyAway": "Nothing assigned, and away.",
+    "reassignedToAway": "Assigned to {name}, who is away until {date}.",
+    "reassignFailed": "{identifier} moved back — {reason}",
+    "pickedUp": "Picked up {identifier}. Use the arrow keys to move it to another person, space to drop, escape to cancel.",
+    "movedTo": "{identifier} moved to {name}.",
+    "dropped": "{identifier} assigned to {name}.",
+    "cancelled": "Reassignment cancelled. {identifier} returned to where it was.",
+    "problem": {
+      "not_found": "that item no longer exists.",
+      "forbidden": "you can't change that item.",
+      "read_only": "you're viewing as someone else.",
+      "archived": "that project is archived.",
+      "unknown_member": "that person isn't in this workspace."
+    }
+  },
+  "availability": {
+    "title": "Availability",
+    "description": "Mark yourself away so your team's workload stays honest while you're gone.",
+    "until": "Back on",
+    "untilFor": "{name} is back on",
+    "untilHelp": "Leave empty if you're available.",
+    "reason": "Reason (optional)",
+    "reasonHelp": "Shown to anyone looking at the team's workload.",
+    "reasonPlaceholder": "Annual leave",
+    "save": "Save",
+    "clear": "Save",
+    "back": "I'm back",
+    "limits": "Up to {days} days ahead, and {chars} characters of reason.",
+    "statusHere": "You're available.",
+    "statusAway": "You're marked away until {date}.",
+    "awayUntil": "Away until {date}",
+    "setFor": "Set availability for {name}",
+    "notTimeTracking": "This is a flag, not time tracking — one date, no hours and no approvals.",
+    "errors": {
+      "notFound": "That member is no longer here.",
+      "forbidden": "You can't change that person's availability.",
+      "pastDate": "Pick a date in the future.",
+      "tooFar": "That's more than a year away.",
+      "reasonTooLong": "That reason is too long.",
+      "reasonWithoutDate": "Add a return date, or clear the reason."
+    }
+  },
+  "search": {
+    "title": "Search",
+    "label": "Search",
+    "placeholder": "Search work, projects, people — or type ENG-142",
+    "submit": "Search",
+    "includeArchived": "Include archived projects",
+    "hint": "Type at least {min} characters.",
+    "noResults": "No results for \"{query}\".",
+    "showingFirst": "Showing the {shown} most recently updated of {total}.",
+    "seeAll": "{count} matches in all",
+    "formerMember": "Left the company",
+    "failed": "Search could not run. Check your connection and try again.",
+    "footerHint": "Enter to open · Esc to close",
+    "footerShortcuts": "Press ? for keyboard shortcuts",
+    "unknownReference": "No item {identifier}",
+    "sections": {
+      "reference": "Exact match",
+      "items": "Work items",
+      "projects": "Projects",
+      "people": "People",
+      "actions": "Actions"
+    },
+    "actions": {
+      "goMyWork": "Go to My Work",
+      "goInbox": "Go to Inbox",
+      "goTeam": "Go to Team",
+      "goProjects": "Go to Projects",
+      "goSearch": "See all results",
+      "newProject": "New project",
+      "assignToMe": "Assign this item to me",
+      "switchLanguage": "Switch language",
+      "toggleTheme": "Switch light and dark",
+      "assignedToMe": "Assigned to you."
+    }
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "note": "Shortcuts are ignored while you are typing.",
+    "palette": "Open the command palette",
+    "search": "Search",
+    "help": "Show this list",
+    "goMyWork": "Go to My Work",
+    "goInbox": "Go to Inbox",
+    "goTeam": "Go to Team",
+    "goProjects": "Go to Projects"
+  },
+  "settings": {
+    "title": "Settings",
+    "readOnly": "You can see these settings but not change them. Ask an owner or admin.",
+    "sections": {
+      "label": "Settings sections",
+      "general": "Company",
+      "members": "Members",
+      "teams": "Teams",
+      "labels": "Labels",
+      "holidays": "Public holidays",
+      "branding": "Branding",
+      "notificationDefaults": "Notification defaults",
+      "notifications": "My notifications",
+      "availability": "My availability"
+    },
+    "company": {
+      "subtitle": "The company's name, address and working calendar. Everything here has a working default.",
+      "name": "Company name",
+      "slug": "Address",
+      "slugHelp": "This is in every link to this workspace. Changing it breaks links people have already shared.",
+      "timeHeading": "Time",
+      "timezone": "Timezone",
+      "timezoneHelp": "Every due date and reminder in the product is judged in this zone, for everyone — never on each person's device.",
+      "weekStart": "Week starts on",
+      "weekStartHelp": "Which day the calendar view starts each row on.",
+      "workingDays": "Working days",
+      "workingDaysHelp": "Used for staleness and the evening reminder. Due dates still count every calendar day.",
+      "defaultLocale": "Company language",
+      "defaultLocaleHelp": "What a new member sees before they choose, and the language invitations are written in. Your own language is unaffected.",
+      "days": {
+        "0": "Monday",
+        "1": "Tuesday",
+        "2": "Wednesday",
+        "3": "Thursday",
+        "4": "Friday",
+        "5": "Saturday",
+        "6": "Sunday"
+      }
+    },
+    "errors": {
+      "forbidden": "You do not have permission to change these settings.",
+      "nameRequired": "Enter a company name.",
+      "slugTaken": "That address is already taken.",
+      "invalidTimezone": "That is not a timezone we recognise.",
+      "noWorkingDays": "Pick at least one working day. With none, nothing in the product can say what is overdue or stale."
+    },
+    "holidays": {
+      "subtitle": "Days the company is closed. Staleness, the evening reminder and every burndown skip them.",
+      "date": "Date",
+      "name": "Name",
+      "nameHelp": "Whatever the company calls it.",
+      "add": "Add",
+      "remove": "Remove {name}",
+      "seed": "Add {count} public holidays",
+      "emptyYears": "Nothing is set for {years}. Until it is, the product will treat those days as ordinary working days.",
+      "noneThisYear": "No days off recorded for this year.",
+      "empty": {
+        "title": "No public holidays yet. Add the days the company closes."
+      },
+      "moveable": {
+        "title": "Not set automatically",
+        "description": "These move every year and are decided by sub-decree, so we never guess a date. Add them yourself once the dates are announced."
+      },
+      "errors": {
+        "date_required": "Pick a date.",
+        "name_required": "Give the day a name.",
+        "name_too_long": "That name is too long.",
+        "duplicate": "That day is already on the calendar.",
+        "not_found": "That day is no longer on the calendar."
+      }
+    },
+    "branding": {
+      "subtitle": "How the product looks for everyone in this company.",
+      "accent": "Accent colour",
+      "accentHelp": "Used for buttons and highlights. Each choice is adjusted automatically for light and dark mode.",
+      "accentDefault": "Default",
+      "accents": {
+        "navy": "Navy",
+        "sky": "Sky",
+        "lilac": "Lilac",
+        "chartreuse": "Chartreuse"
+      },
+      "logo": "Logo",
+      "logoHelp": "Shown in the header. PNG, JPEG or WebP, up to 512 KB.",
+      "logoAlt": "Company logo",
+      "noLogo": "None",
+      "uploadLogo": "Upload a logo",
+      "replaceLogo": "Replace logo",
+      "removeLogo": "Remove logo",
+      "logoSaved": "Logo updated.",
+      "errors": {
+        "forbidden": "You do not have permission to change branding.",
+        "invalid_accent": "That is not a colour you can choose.",
+        "unsupported_type": "Use a PNG, JPEG or WebP image.",
+        "too_large": "That image is larger than 512 KB.",
+        "upload_failed": "The upload did not finish. Try again.",
+        "bad_key": "That upload does not belong to this company.",
+        "bad_request": "Something about that request was wrong.",
+        "not_found": "We could not find this company.",
+        "unknown": "Something went wrong."
+      }
+    },
+    "teams": {
+      "subtitle": "Teams own projects. Being on one grants no permissions by itself.",
+      "newTeam": "New team",
+      "create": "Create",
+      "name": "Name",
+      "rename": "Rename",
+      "delete": "Delete {name}",
+      "noMembers": "Nobody on this team yet.",
+      "addMember": "Add somebody",
+      "add": "Add",
+      "removeMember": "Remove {name}",
+      "empty": "No teams yet.",
+      "errors": {
+        "name_required": "Give the team a name.",
+        "slug_taken": "A team with that address already exists.",
+        "invalid_slug": "That name cannot be turned into an address.",
+        "not_found": "That team no longer exists."
+      }
+    },
+    "notificationDefaults": {
+      "subtitle": "What people get before they have chosen anything themselves.",
+      "memberWins": "These are defaults. Anyone who changes their own notification settings keeps their choice."
+    }
+  },
+  "viewAs": {
+    "start": "View as {name}",
+    "viewing": "Viewing as {name}",
+    "readOnly": "Read-only — nothing can be changed while this is on.",
+    "exit": "Exit",
+    "ended": "That person is no longer a member, so viewing as them has ended.",
+    "dismiss": "Dismiss",
+    "errors": {
+      "not_found": "That person is no longer a member.",
+      "self": "That is the screen you are already on.",
+      "already_viewing": "Exit the current session first."
     }
   }
 }

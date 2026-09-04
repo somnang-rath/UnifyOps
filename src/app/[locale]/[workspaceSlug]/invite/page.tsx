@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { InviteForm } from '@/components/invite/invite-form';
+import { OnboardingStep } from '@/components/onboarding/onboarding-step';
 import { resolveActorContext } from '@/server/auth/context';
 import { can } from '@/server/authz/policy';
 import { listTeamsForInvite } from '@/server/services/invitations';
@@ -35,6 +36,7 @@ export default async function OnboardingInvitePage({
   return (
     <div className="mx-auto max-w-lg space-y-6">
       <header className="space-y-1">
+        <OnboardingStep current={2} />
         <h1 className="font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight">
           {t('onboarding.invite.title')}
         </h1>
@@ -46,10 +48,25 @@ export default async function OnboardingInvitePage({
         teams={teams}
         onSkip={
           <Link
-            href={`/${workspaceSlug}`}
+            href={`/${workspaceSlug}/projects/new?onboarding=1`}
             className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition-colors duration-120 ease-[var(--ease-out-soft)] hover:bg-surface-hover"
           >
             {t('onboarding.invite.skip')}
+          </Link>
+        }
+        /*
+          §7.1's chain does not end here: invite → **create project** → board.
+          Sending mail leaves the form on screen with its per-address summary
+          (§7.10 refuses to roll a batch back, so that summary is the result),
+          and until this slice there was no way forward from it — a first-run
+          path that sent invitations and then stopped on its own success page.
+        */
+        onContinue={
+          <Link
+            href={`/${workspaceSlug}/projects/new?onboarding=1`}
+            className="inline-flex h-10 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg transition-colors duration-120 ease-[var(--ease-out-soft)] hover:bg-accent-hover"
+          >
+            {t('onboarding.invite.continue')}
           </Link>
         }
       />

@@ -1,7 +1,7 @@
 # UnifyOps — Plan · ផែនការ
 
-**Version 3 · Approved for build, 31 August 2026 · Slices 1–3 done**
-**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–៣ រួចរាល់**
+**Version 3 · Approved for build, 31 August 2026 · Slices 1–15 done**
+**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–១៥ រួចរាល់**
 
 ---
 
@@ -45,13 +45,15 @@ All settled. The last two — audit records from `withActor` (§18-11) and the p
 
 https://claude.ai/code/artifact/df48ef68-f940-4e47-9184-c1bbe14e3fa9
 
-> **Behind the Markdown as of slice 3.** §8's auth row and §17's findings 29–31 are in `PLAN.en.md` and
-> `PLAN.km.md` but not yet in the artifact — it is a third surface for the same content and has to be
-> republished by hand.
-> **យឺតជាង Markdown ចាប់ពីដំណាក់កាល ៣។** ជួរផ្ទៀងផ្ទាត់ក្នុង §៨ និងលទ្ធផល ២៩–៣១ ក្នុង §១៧ មានក្នុង
-> `PLAN.en.md` និង `PLAN.km.md` តែមិនទាន់មានក្នុងឯកសារគេហទំព័រនៅឡើយ។
+> **Behind the Markdown since slice 3, and now by a good deal.** §8's auth row, §17's findings 29–31, and
+> every §18 resolution recorded since — #5 and #6 (2026-09-03) and #10 (2026-09-04) — are in `PLAN.en.md`
+> and `PLAN.km.md` but not in the artifact. It is a third surface for the same content and has to be
+> republished by hand; until that happens, **the Markdown is the plan and the artifact is a stale copy.**
+> **យឺតជាង Markdown ចាប់ពីដំណាក់កាល ៣ ហើយឥឡូវយឺតច្រើន។** ជួរផ្ទៀងផ្ទាត់ក្នុង §៨ លទ្ធផល ២៩–៣១ ក្នុង §១៧
+> និងរាល់ការសម្រេចក្នុង §១៨ តាំងពីពេលនោះ — លេខ ៥ និង ៦ (០៣-០៩-២០២៦) និងលេខ ១០ (០៤-០៩-២០២៦) — មានក្នុង
+> `PLAN.en.md` និង `PLAN.km.md` តែមិនមានក្នុងឯកសារគេហទំព័រទេ។ **Markdown ជាផែនការពិត ឯកសារគេហទំព័រជាច្បាប់ចម្លងចាស់។**
 
 ---
 
-> **Build in progress. Slices 1–3 of 16 are done; §14 lists what follows.**
-> **កំពុងសាងសង់។ ដំណាក់កាល ១–៣ ក្នុងចំណោម ១៦ រួចរាល់; §១៤ រាយអ្វីដែលបន្តបន្ទាប់។**
+> **Build in progress. Slices 1–15 of 16 are done; §14 lists what follows.**
+> **កំពុងសាងសង់។ ដំណាក់កាល ១–១៥ ក្នុងចំណោម ១៦ រួចរាល់; §១៤ រាយអ្វីដែលបន្តបន្ទាប់។**

@@ -46,12 +46,7 @@ export async function installJobSchema(pool: Pool): Promise<void> {
     if (installed === null) {
       await client.query(getConstructionPlans(BOSS_SCHEMA));
     } else {
-      // `migrationPlans` returns the steps *after* the version it is given, so
-      // an installation already at the current version yields nothing to run.
-      // pg-boss exports no "latest version" constant, so the empty plan is the
-      // signal — which is also the honest one: there is nothing to do exactly
-      // when there is no SQL to do it with.
-      const plan = getMigrationPlans(BOSS_SCHEMA, installed).trim();
+      const plan = migrationPlanFrom(installed);
       if (plan) await client.query(plan);
     }
 
@@ -97,6 +92,33 @@ export async function installJobSchema(pool: Pool): Promise<void> {
      */
   } finally {
     client.release();
+  }
+}
+
+/**
+ * The SQL that upgrades an existing installation, or `null` when it is already
+ * current.
+ *
+ * `getMigrationPlans` returns the steps *after* the version it is given, and
+ * slice 9 assumed that an installation already at the newest version would
+ * yield an empty string. It does not: pg-boss looks the version up in its own
+ * migration list and **throws an assertion** — `Version 39 not found` — because
+ * the newest version is precisely the one nothing migrates away from.
+ *
+ * That made `pnpm db:migrate` succeed once and fail every time after, which is
+ * the wrong way round for a command that runs on every deploy. The library
+ * exports no "latest version" constant to compare against, so the assertion is
+ * the signal, and it means exactly one thing: this installation is at a version
+ * pg-boss has no upgrade path *from*. Any other failure is re-thrown.
+ */
+function migrationPlanFrom(installed: number): string | null {
+  try {
+    return getMigrationPlans(BOSS_SCHEMA, installed).trim() || null;
+  } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ERR_ASSERTION') {
+      return null;
+    }
+    throw error;
   }
 }
 

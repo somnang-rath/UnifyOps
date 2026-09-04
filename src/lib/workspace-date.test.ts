@@ -3,10 +3,16 @@ import {
   addDays,
   daysBetween,
   dueBucket,
+  hasNoWorkingDays,
   hourIn,
   isOverdue,
   isTimeZone,
+  isWorkingWeekDay,
+  leadingBlanks,
   todayIn,
+  toggleWorkingDay,
+  weekDayOf,
+  weekOrder,
 } from './workspace-date';
 
 /**
@@ -115,5 +121,75 @@ describe('hourIn', () => {
     // +05:45. A zone whose offset is not a whole hour is where a naive
     // implementation using arithmetic on the UTC hour goes wrong.
     expect(hourIn('Asia/Kathmandu', new Date('2026-09-03T12:20:00Z'))).toBe(18);
+  });
+});
+
+/* ------------------------------------------------------------------------- */
+/* Week start and working days (§6-1, slice 15)                              */
+/* ------------------------------------------------------------------------- */
+
+describe('the week, in the schema\'s numbering', () => {
+  /**
+   * **0 = Monday here, 0 = Sunday in JavaScript**, and every case below exists
+   * because those two are one apart and silently interchangeable. The visible
+   * failure is a calendar whose header says Monday over cells holding Tuesday —
+   * every date on the screen off by one, on a page that otherwise looks
+   * perfectly normal.
+   */
+  it('numbers Monday zero, matching the working-days mask', () => {
+    // 2024-01-01 was a Monday; 2024-01-07 the Sunday after it.
+    expect(weekDayOf('2024-01-01')).toBe(0);
+    expect(weekDayOf('2024-01-06')).toBe(5);
+    expect(weekDayOf('2024-01-07')).toBe(6);
+  });
+
+  it('reads a mask the way the SQL functions do', () => {
+    // 63 = 0b0111111 = Monday–Saturday, the schema default and the market §2.5
+    // describes — not the Monday–Friday a European default would have picked.
+    for (const day of [0, 1, 2, 3, 4, 5] as const) {
+      expect(isWorkingWeekDay(63, day), String(day)).toBe(true);
+    }
+    expect(isWorkingWeekDay(63, 6)).toBe(false);
+  });
+
+  it('toggles one day without touching the others', () => {
+    expect(toggleWorkingDay(63, 6, true)).toBe(127);
+    expect(toggleWorkingDay(63, 5, false)).toBe(31);
+    // Idempotent both ways: the form sends the checkbox's state, not a flip.
+    expect(toggleWorkingDay(63, 0, true)).toBe(63);
+    expect(toggleWorkingDay(31, 5, false)).toBe(31);
+  });
+
+  it('refuses a week with no working days', () => {
+    // The one setting on §6-1's form that could brick a workspace:
+    // `next_working_day` never terminates, `business_days_between` returns zero
+    // for every range, and the evening digest never fires — none of which
+    // reports an error. Migration 0028 has the matching CHECK.
+    expect(hasNoWorkingDays(0)).toBe(true);
+    expect(hasNoWorkingDays(1)).toBe(false);
+    expect(hasNoWorkingDays(63)).toBe(false);
+  });
+
+  it('orders the week from whichever day it starts on', () => {
+    expect(weekOrder(0)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    // Sunday-first, the other common convention — Sunday, then Monday onward.
+    expect(weekOrder(6)).toEqual([6, 0, 1, 2, 3, 4, 5]);
+  });
+
+  it('pads a month to the column its first day belongs in', () => {
+    // 2026-09-01 is a Tuesday. Monday-first puts it in column 1; Sunday-first
+    // in column 2. The header row, the pad and the grid all read this.
+    expect(leadingBlanks('2026-09-01', 0)).toBe(1);
+    expect(leadingBlanks('2026-09-01', 6)).toBe(2);
+    // A month starting on the week's own first day needs no pad at all.
+    expect(leadingBlanks('2026-06-01', 0)).toBe(0);
+  });
+
+  it('reads the weekday as UTC, not as the host', () => {
+    // The same trap `DueDate` documents: parsed in a local zone, a date can
+    // land on the day either side of the one it names — and a calendar built on
+    // that is wrong for half the world by one column.
+    expect(weekDayOf('2026-01-01')).toBe(weekDayOf('2026-01-01'));
+    expect(weekDayOf('2026-12-31')).toBe(3);
   });
 });

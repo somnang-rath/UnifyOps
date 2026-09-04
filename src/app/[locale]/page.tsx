@@ -13,7 +13,11 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   const groups = ['backlog', 'unstarted', 'started', 'completed', 'cancelled'] as const;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-8 px-6 py-16">
+    <main
+      id="main"
+      tabIndex={-1}
+      className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-8 px-6 py-16"
+    >
       <header className="flex items-start justify-between gap-4">
         <div className="space-y-2">
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">

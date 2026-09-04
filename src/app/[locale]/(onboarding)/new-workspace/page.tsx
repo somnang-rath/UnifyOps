@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CreateWorkspaceForm } from '@/components/onboarding/create-workspace-form';
+import { OnboardingStep } from '@/components/onboarding/onboarding-step';
 import { LocaleSwitcher } from '@/components/locale-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { readCurrentUser } from '@/server/auth/session';
@@ -36,9 +37,10 @@ export default async function NewWorkspacePage({
         <LocaleSwitcher />
       </header>
 
-      <main className="flex flex-1 items-start justify-center px-6 pb-16 pt-6 sm:items-center sm:pt-0">
+      <main id="main" tabIndex={-1} className="flex flex-1 items-start justify-center px-6 pb-16 pt-6 sm:items-center sm:pt-0">
         <div className="w-full max-w-sm space-y-6">
           <header className="space-y-1">
+            <OnboardingStep current={1} />
             <h1 className="font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight">
               {t('title')}
             </h1>

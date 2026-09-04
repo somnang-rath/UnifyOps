@@ -1,16 +1,18 @@
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { ArchiveProject } from '@/components/project/archive-project';
+import { CustomFieldsEditor } from '@/components/project/custom-fields-editor';
 import { ProjectMembers } from '@/components/project/project-members';
 import { StatesEditor } from '@/components/project/states-editor';
 import { Alert } from '@/components/ui/feedback';
 import { resolveActorContext } from '@/server/auth/context';
 import { listMembers } from '@/server/services/members';
+import { listCustomFieldsWithUsage } from '@/server/services/custom-fields';
 import { getProjectBySlug, listProjectMembers } from '@/server/services/projects';
 import { Link } from '@/i18n/navigation';
 
 /**
- * §6-3's workflow configuration, and §4's archive.
+ * §6-3's workflow configuration, §6-4's custom fields, and §4's archive.
  *
  * §10 gives "Project settings, states, custom fields" to Owner, Admin and a
  * project Lead. Anyone else gets a 404 rather than a read-only copy of this
@@ -32,9 +34,13 @@ export default async function ProjectSettingsPage({
   if (!project) notFound();
   if (!project.canEditSettings) notFound();
 
-  const [projectMembers, workspaceMembers, t] = await Promise.all([
+  const [projectMembers, workspaceMembers, customFields, t] = await Promise.all([
     listProjectMembers(resolved.context, project.id),
     listMembers(resolved.context),
+    // Null only when the actor may not configure this project, which the
+    // `canEditSettings` check above has already turned into a 404 — so it is a
+    // second opinion from the service rather than a case this screen renders.
+    listCustomFieldsWithUsage(resolved, project.id),
     getTranslations(),
   ]);
 
@@ -80,6 +86,31 @@ export default async function ProjectSettingsPage({
           // An archived project is read-only, and that is enforced in the
           // service as well — this only stops the screen from offering an action
           // it already knows will be refused.
+          canEdit={project.archivedAt === null}
+        />
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="space-y-1">
+          <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
+            {t('customFields.title')}
+          </h2>
+          <p className="text-sm text-text-muted">{t('customFields.subtitle')}</p>
+        </div>
+
+        <CustomFieldsEditor
+          workspaceSlug={workspaceSlug}
+          projectSlug={projectSlug}
+          projectId={project.id}
+          fields={(customFields ?? []).map((field) => ({
+            id: field.id,
+            name: field.name,
+            kind: field.kind,
+            options: field.options.map((option) => ({ id: option.id, name: option.name })),
+            valueCount: field.valueCount,
+          }))}
+          // §4 again: an archived project is read-only, and the service refuses
+          // this too — the screen only stops offering what it knows is refused.
           canEdit={project.archivedAt === null}
         />
       </section>

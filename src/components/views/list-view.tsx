@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { StatePill } from '@/components/ui/state-pill';
-import { FilterBar } from '@/components/work-item/filter-bar';
+import { FilterBar, type FilterField } from '@/components/work-item/filter-bar';
 import { GroupList } from '@/components/work-item/group-list';
 import { InlineCreate } from '@/components/work-item/inline-create';
 import type { ItemActionContext, StateOption } from '@/components/work-item/state-select';
@@ -54,6 +54,8 @@ export async function ListView({
   listing,
   headings,
   states,
+  fields,
+  cycles = [],
   projectId,
   canCreate,
   canEdit,
@@ -65,6 +67,10 @@ export async function ListView({
   headings: readonly ListGroupHeading[];
   /** The project's states, for each row's state select. */
   states: readonly StateOption[];
+  /** The project's custom fields (§6-4) — one filter control each, and the group-by entries. */
+  fields: readonly FilterField[];
+  /** The project's cycles (§7.6). Empty on a surface that has not loaded them. */
+  cycles?: readonly { id: string; name: string }[];
   projectId: string;
   canCreate: boolean;
   canEdit: boolean;
@@ -91,6 +97,8 @@ export async function ListView({
         states={states}
         people={people}
         labels={labels.map((label) => ({ id: label.id, name: label.name }))}
+        cycles={cycles}
+        fields={fields}
       />
 
       <div className="space-y-3">

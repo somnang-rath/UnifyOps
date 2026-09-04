@@ -10,6 +10,7 @@ import { withActor } from '@/server/db/tenant';
 import {
   notification,
   notificationPreference,
+  workspaceNotificationDefault,
   outboxMessage,
   project,
   user,
@@ -346,29 +347,52 @@ async function loadRecipient(tx: TenantDb, userId: string): Promise<Recipient | 
 /**
  * Which channels this person wants for this kind.
  *
- * An absent row means the defaults in `src/lib/notification-kinds.ts`, never
- * "off" — almost nobody opens the preference screen, and a product whose
- * notifications are opt-in is a product with no notifications.
+ * §6-6's three layers, resolved by `wants` in `src/lib/notification-kinds.ts`:
+ * **this member's own row, then the company's default, then the product's.** An
+ * absent row means the layer below at both levels, never "off" — almost nobody
+ * opens the preference screen, and a product whose notifications are opt-in is a
+ * product with no notifications.
+ *
+ * Both rows are read in one round trip, not two, because this runs once per
+ * recipient per message: a workspace of forty people on one item is forty
+ * lookups either way, and eighty is twice a cost the worker pays on the hot
+ * path of every mention.
  */
 export async function channelsFor(
   tx: TenantDb,
   memberId: string,
   kind: NotificationKind,
 ): Promise<NotificationChannel[]> {
-  const [row] = await tx
-    .select({ channels: notificationPreference.channels })
-    .from(notificationPreference)
-    .where(
-      and(
-        eq(notificationPreference.workspaceMemberId, memberId),
-        eq(notificationPreference.kind, kind),
-        isNull(notificationPreference.deletedAt),
-      ),
-    )
-    .limit(1);
+  const [[row], [fallback]] = await Promise.all([
+    tx
+      .select({ channels: notificationPreference.channels })
+      .from(notificationPreference)
+      .where(
+        and(
+          eq(notificationPreference.workspaceMemberId, memberId),
+          eq(notificationPreference.kind, kind),
+          isNull(notificationPreference.deletedAt),
+        ),
+      )
+      .limit(1),
+    tx
+      .select({ channels: workspaceNotificationDefault.channels })
+      .from(workspaceNotificationDefault)
+      .where(
+        and(
+          eq(workspaceNotificationDefault.kind, kind),
+          isNull(workspaceNotificationDefault.deletedAt),
+        ),
+      )
+      .limit(1),
+  ]);
 
   const saved = row ? { [kind]: row.channels } : {};
-  return (['in_app', 'email'] as const).filter((channel) => wants(saved, kind, channel));
+  const companyDefaults = fallback ? { [kind]: fallback.channels } : {};
+
+  return (['in_app', 'email'] as const).filter((channel) =>
+    wants(saved, kind, channel, companyDefaults),
+  );
 }
 
 /**

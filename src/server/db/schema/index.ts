@@ -14,7 +14,14 @@
  * attachments that hang off either an item or a comment. Slice 9 adds the
  * transactional outbox, the inbox it feeds, per-user notification preferences,
  * and the holiday calendar §7.8's evening digest has to consult before it sends
- * anything. The rest arrive in their own slices (§14) — each one adds
+ * anything. Slice 10 adds custom fields — the per-project definitions, their
+ * options, and the typed value rows §9 insists are real columns rather than
+ * JSONB. Slice 11 adds `cycle`, and the one nullable column on `work_item`
+ * that puts an item in one. Slice 12 adds `saved_view`, the one row behind
+ * §4's "saved views" and §12's per-view table column widths. Slice 15 adds
+ * `workspace_notification_default` and four columns on `workspace` — week
+ * start, default language, logo key and accent — which is the whole of §6-1 and
+ * §6-7 that was not already a column, and completes §6. The rest arrive in their own slices (§14) — each one adds
  * `...tenantPolicies()` and gets FORCE RLS from the hardening step, or it does
  * not ship.
  */
@@ -31,3 +38,6 @@ export * from './activity';
 export * from './comment';
 export * from './attachment';
 export * from './notification';
+export * from './custom-field';
+export * from './cycle';
+export * from './saved-view';

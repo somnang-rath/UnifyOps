@@ -6,6 +6,7 @@ import type { ResolvedActor } from '@/server/auth/context';
 import { assertCan, can } from '@/server/authz/policy';
 import type { TenantDb } from '@/server/db/client';
 import {
+  cycle,
   project,
   projectCounter,
   user,
@@ -17,6 +18,7 @@ import {
 } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { isClosedGroup, type StateGroup } from '@/lib/state-groups';
+import { OPEN_STATE_GROUPS } from '@/lib/needs-attention';
 import { isPriority } from '@/lib/priorities';
 import { rankAfter, rankBetween } from '@/lib/rank';
 import { todayIn } from '@/lib/workspace-date';
@@ -25,11 +27,22 @@ import {
   type WorkItemQuery,
 } from '@/lib/work-item-query';
 import {
+  countWorkItemsByGroup,
   fetchChangeToken,
+  fetchStaleBefore,
   fetchWorkItemGroups,
+  type CustomFieldKinds,
   type WorkItemGroupPage,
   type WorkItemRow,
 } from '@/server/queries/work-items';
+import {
+  fetchCustomFields,
+  fetchCustomValues,
+  fetchCustomValuesForItems,
+  type CustomFieldDefinition,
+  type CustomValueRow,
+} from '@/server/queries/custom-fields';
+import { customFieldIdOf, operatorSuits } from '@/lib/custom-fields';
 import {
   isArchived,
   loadProject,
@@ -100,6 +113,16 @@ export type WorkItemListing = {
   labels: LabelRow[];
   /** Today in the workspace timezone, so the view's overdue badge uses the same date the filter did. */
   today: string;
+  /**
+   * Every custom-field value on the rows returned, by item and then by field
+   * (§6-4) — present only when the caller asked for it.
+   *
+   * Only the Table view does, which is the same shape of decision as "only the
+   * board polls, so only the board pays for the token": the List and the board
+   * draw item *cards*, which §12 specifies without custom fields on them, and a
+   * query they do not use is a query they should not pay for on every render.
+   */
+  customValues?: Map<string, Map<string, CustomValueRow>>;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -119,15 +142,21 @@ export async function listWorkItems(
   options: {
     groupKeys: readonly string[];
     cursors?: Readonly<Record<string, string | null | undefined>>;
+    /** §6-4's values for the rows returned. The Table view's columns need them; nothing else does. */
+    withCustomValues?: boolean;
   },
 ): Promise<WorkItemListing> {
   const today = todayIn(resolved.workspace.timezone);
 
   return withActor(resolved.context, async (tx) => {
-    const groups = await fetchWorkItemGroups(tx, query, {
+    const fields = await customFieldKinds(tx, query);
+    const scoped = withKnownCustomFilters(query, fields);
+
+    const groups = await fetchWorkItemGroups(tx, scoped, {
       groupKeys: options.groupKeys,
       cursors: options.cursors,
       today,
+      fields,
     });
 
     // The second pass `listProjects` established. RLS has already made another
@@ -149,9 +178,18 @@ export async function listWorkItems(
     const memberIds = [...new Set(kept.flatMap((g) => g.rows.flatMap((r) => r.assigneeIds)))];
     const labelIds = [...new Set(kept.flatMap((g) => g.rows.flatMap((r) => r.labelIds)))];
 
-    const [people, labels] = await Promise.all([
+    const itemIds = kept.flatMap((g) => g.rows.map((r) => r.id));
+
+    const [people, labels, customValues] = await Promise.all([
       readPeople(tx, memberIds),
       readLabelsByIds(tx, labelIds),
+      // One query for the page, not one per row. `undefined` rather than an
+      // empty map when nobody asked, so a caller cannot mistake "not fetched"
+      // for "nothing filled in" — the second is a real answer and the first is
+      // not an answer at all.
+      options.withCustomValues
+        ? fetchCustomValuesForItems(tx, itemIds)
+        : Promise.resolve(undefined),
     ]);
 
     return {
@@ -160,6 +198,151 @@ export async function listWorkItems(
         rows: group.rows.map((row) => ({
           ...row,
           identifier: `${keys.get(row.projectId) ?? '?'}-${row.number}`,
+        })),
+      })),
+      people,
+      labels,
+      today,
+      customValues,
+    };
+  });
+}
+
+/**
+ * Several listings, in one transaction (§7.4, slice 13).
+ *
+ * §7.4's Needs Attention is five lists on one screen — overdue, blocked,
+ * unassigned, undated, stale — and its Workload is a per-person grouping beside
+ * a second count. Run through `listWorkItems`, that is six or seven `withActor`
+ * transactions on the screen a manager opens most, each re-reading the same
+ * people, the same labels and the same project visibility.
+ *
+ * This is the same trap slice 8 hit when `getCommentThread` opened its own
+ * transaction, slice 9 hit with the unread count and slice 10 hit with the
+ * custom-field definitions, and the answer is the one those three arrived at:
+ * ask every question inside the transaction that is already open. The
+ * per-request cost here is one round trip per set plus **one** hydration pass
+ * for all of them, rather than four round trips per set.
+ *
+ * Each set carries its own fully-formed query, so `assertAnchored` still holds
+ * for every one of them individually — batching is not a way around §16, and a
+ * caller that hands in one unanchored set gets the same refusal it would have
+ * got alone.
+ */
+export type WorkItemSetRequest = {
+  /** The caller's own name for this set — a Needs Attention row, say. Opaque here. */
+  key: string;
+  query: WorkItemQuery;
+  /** Every group to draw, as `listWorkItems` takes them. `['all']` for an ungrouped set. */
+  groupKeys: readonly string[];
+  /**
+   * Skip the page query and return totals only.
+   *
+   * Workload's second question is "how many of these are overdue, per person",
+   * and it draws no rows from the answer. Fetching a page per person to throw it
+   * away is the same waste the calendar avoids by lowering its page size.
+   */
+  countsOnly?: boolean;
+};
+
+export type WorkItemSetResult = {
+  key: string;
+  groups: WorkItemGroupView[];
+};
+
+export type WorkItemSets = {
+  sets: WorkItemSetResult[];
+  /** Everyone referenced across every set, hydrated once. */
+  people: PersonRef[];
+  labels: LabelRow[];
+  today: string;
+};
+
+export async function listWorkItemSets(
+  resolved: ResolvedActor,
+  requests: readonly WorkItemSetRequest[],
+): Promise<WorkItemSets> {
+  const today = todayIn(resolved.workspace.timezone);
+
+  return withActor(resolved.context, async (tx) => {
+    /**
+     * The staleness cutoff, resolved once for the whole screen (§9).
+     *
+     * Every set that filters on staleness shares one instant, which is not
+     * merely an optimisation: two rows of the same tab computing "five working
+     * days ago" separately could straddle midnight in the workspace's zone and
+     * disagree about one item, on the one screen whose entire job is to be the
+     * agreed picture.
+     *
+     * Asked only when something actually filters on it — most screens do not.
+     */
+    const staleDays = requests
+      .map((request) => request.query.filters.stale)
+      .find((value): value is number => value !== undefined);
+
+    const staleBefore =
+      staleDays === undefined
+        ? null
+        : await fetchStaleBefore(tx, resolved.workspace.id, today, staleDays);
+
+    const fetched = await Promise.all(
+      requests.map(async (request) => {
+        const groups = request.countsOnly
+          ? await countWorkItemsByGroup(tx, request.query, { today, staleBefore }).then((totals) =>
+              request.groupKeys.map((key) => ({
+                key,
+                total: totals.get(key) ?? 0,
+                rows: [],
+                nextCursor: null,
+              })),
+            )
+          : await fetchWorkItemGroups(tx, request.query, {
+              groupKeys: request.groupKeys,
+              today,
+              staleBefore,
+            });
+
+        return { key: request.key, groups };
+      }),
+    );
+
+    // §10's second pass, once across every set — the same one `listWorkItems`
+    // makes, and for the same reason: RLS has already ruled out another
+    // workspace, and this rules out a private project this actor cannot see.
+    const projectIds = [
+      ...new Set(fetched.flatMap((set) => set.groups.flatMap((g) => g.rows.map((r) => r.projectId)))),
+    ];
+    const visible = await visibleProjects(tx, resolved, projectIds);
+
+    const kept = fetched.map((set) => ({
+      key: set.key,
+      groups: set.groups.map((group) => ({
+        ...group,
+        rows: group.rows.filter((row) => visible.has(row.projectId)),
+      })),
+    }));
+
+    const memberIds = [
+      ...new Set(kept.flatMap((s) => s.groups.flatMap((g) => g.rows.flatMap((r) => r.assigneeIds)))),
+    ];
+    const labelIds = [
+      ...new Set(kept.flatMap((s) => s.groups.flatMap((g) => g.rows.flatMap((r) => r.labelIds)))),
+    ];
+
+    const [people, labels] = await Promise.all([
+      readPeople(tx, memberIds),
+      readLabelsByIds(tx, labelIds),
+    ]);
+
+    return {
+      sets: kept.map((set) => ({
+        key: set.key,
+        groups: set.groups.map((group) => ({
+          ...group,
+          rows: group.rows.map((row) => ({
+            ...row,
+            identifier: `${visible.get(row.projectId)?.key ?? '?'}-${row.number}`,
+          })),
         })),
       })),
       people,
@@ -188,7 +371,60 @@ export async function boardChangeToken(
   query: WorkItemQuery,
 ): Promise<string> {
   const today = todayIn(resolved.workspace.timezone);
-  return withActor(resolved.context, (tx) => fetchChangeToken(tx, query, { today }));
+  return withActor(resolved.context, async (tx) => {
+    // The token has to ride the *same* predicate the board does, custom filters
+    // included — a token computed over a wider set would move when a row the
+    // board is not showing changed, and the board would refetch all afternoon.
+    const fields = await customFieldKinds(tx, query);
+    return fetchChangeToken(tx, withKnownCustomFilters(query, fields), { today, fields });
+  });
+}
+
+/**
+ * The kinds of every custom field the query could mention, or an empty map when
+ * it mentions none.
+ *
+ * Skipped entirely for a query with no custom filter and no custom grouping,
+ * which is most of them — a list view that has never seen a custom field should
+ * not pay a query to find that out.
+ *
+ * Keyed off the project anchor: a custom field belongs to a project (§6-4), so
+ * the fields in scope are the fields of the projects being listed. An
+ * assignee-anchored query (My Work, slice 13) reaches many projects and gets an
+ * empty map, which is correct for now — nothing builds a cross-project custom
+ * filter, and when something does it will supply its own project set rather
+ * than widening this.
+ */
+async function customFieldKinds(tx: TenantDb, query: WorkItemQuery): Promise<CustomFieldKinds> {
+  const mentioned = query.filters.custom.length > 0 || customFieldIdOf(query.groupBy) !== null;
+  if (!mentioned || query.filters.projectIds.length === 0) return new Map();
+
+  const perProject = await Promise.all(
+    query.filters.projectIds.map((projectId) => fetchCustomFields(tx, projectId)),
+  );
+
+  return new Map(perProject.flat().map((field) => [field.id, field.kind]));
+}
+
+/**
+ * The query with any custom filter this project cannot answer removed.
+ *
+ * §9's tolerance rule — "discarding rather than failing" — applied where it can
+ * be: the URL parser checks a filter's shape, and this checks it against the
+ * project's actual fields. A link naming a field somebody has since deleted, or
+ * asking a date field what it contains, widens the list rather than showing a
+ * stranger an error page.
+ */
+function withKnownCustomFilters(query: WorkItemQuery, fields: CustomFieldKinds): WorkItemQuery {
+  if (query.filters.custom.length === 0) return query;
+
+  const custom = query.filters.custom.filter((filter) => {
+    const kind = fields.get(filter.fieldId);
+    return kind !== undefined && operatorSuits(filter.op, kind);
+  });
+
+  if (custom.length === query.filters.custom.length) return query;
+  return { ...query, filters: { ...query.filters, custom } };
 }
 
 /**
@@ -209,6 +445,19 @@ export async function getWorkItem(
       stateGroup: StateGroup;
       assignees: PersonRef[];
       labels: LabelRow[];
+      /** The project's field definitions (§6-4), in display order. */
+      customFields: CustomFieldDefinition[];
+      /** This item's values, by field id. A field with no entry has none. */
+      customValues: Map<string, CustomValueRow>;
+      /**
+       * The name of the cycle this item is in, or null for the backlog (§7.6).
+       *
+       * Carried because the item's cycle may have **closed**, in which case it
+       * is not among the open ones the project loaded — and a picker that could
+       * not name its own current value would read as though the item were
+       * planned into nothing.
+       */
+      cycleName: string | null;
       canEdit: boolean;
       archived: boolean;
       today: string;
@@ -226,10 +475,14 @@ export async function getWorkItem(
         projectVisibility: project.visibility,
         projectArchivedAt: project.archivedAt,
         stateGroup: workflowState.group,
+        // Left, because the backlog is the common case and an inner join would
+        // make an unplanned item disappear from its own page.
+        cycleName: cycle.name,
       })
       .from(workItem)
       .innerJoin(project, eq(project.id, workItem.projectId))
       .innerJoin(workflowState, eq(workflowState.id, workItem.stateId))
+      .leftJoin(cycle, eq(cycle.id, workItem.cycleId))
       .where(
         and(
           eq(project.slug, input.projectSlug),
@@ -250,9 +503,17 @@ export async function getWorkItem(
     };
     if (!can(resolved.actor, 'project.view', resource)) return null;
 
-    const [assignees, labels] = await Promise.all([
+    // The custom fields ride along in the transaction that is already open
+    // (§6-4, slice 10). A service of their own would have been a second
+    // `withActor` on every item page render, which is the trap slice 8 hit with
+    // `getCommentThread` and slice 9 hit with the unread count — and the item
+    // page already opens more transactions than any other screen in the
+    // product.
+    const [assignees, labels, customFields, customValues] = await Promise.all([
       readPeople(tx, found.item.assigneeIds),
       readLabelsByIds(tx, found.item.labelIds),
+      fetchCustomFields(tx, found.item.projectId),
+      fetchCustomValues(tx, found.item.id),
     ]);
 
     return {
@@ -261,8 +522,11 @@ export async function getWorkItem(
       projectKey: found.projectKey,
       projectSlug: found.projectSlug,
       stateGroup: found.stateGroup,
+      cycleName: found.cycleName,
       assignees,
       labels,
+      customFields,
+      customValues,
       // An archived project is read-only for everyone including its owner (§4),
       // so the screen has to know both facts separately: may you edit, and is
       // anything editable at all.
@@ -852,6 +1116,94 @@ export async function setWorkItemAssignees(
   });
 }
 
+/**
+ * §7.12's required choice, carried out: move somebody's **open** work to
+ * somebody else, or to nobody.
+ *
+ * "Removing a member requires choosing what happens to their open work" (§4),
+ * and until slice 15 there was nothing to choose about — `removeMember`'s own
+ * comment says work items did not exist when it was written. This is the
+ * function it was waiting for.
+ *
+ * **It takes a transaction rather than opening one**, because it is called from
+ * inside `removeMember`'s: the reassignment and the removal are one act, and
+ * splitting them leaves a window in which somebody has been offboarded and
+ * still owns forty items. If the removal fails, the reassignment must not have
+ * happened either.
+ *
+ * **Open, not everything.** §7.12 says open work, and it is right: reassigning
+ * work somebody finished last March rewrites history — the item's activity feed
+ * would show a change months after the fact, and the person who actually did it
+ * would disappear from the one place that recorded them. `isClosedGroup` is the
+ * same authority the burndown and the progress bar read, so "done" means the
+ * state **group** rather than a state named "Done" (§4).
+ *
+ * **Workspace-wide, deliberately not filtered by the actor's project
+ * visibility.** Somebody being offboarded may hold work in a private project
+ * the Admin is not in, and that is exactly the work that would otherwise be
+ * orphaned with nobody able to see that it had been. §10 has already gated this
+ * on `workspace.manage_members`, and RLS keeps it inside the one company.
+ *
+ * Returns the items it touched, so the caller can emit one event carrying all
+ * of them — see `workspace_member.work_reassigned`, whose projector writes one
+ * feed line per item so no item changes hands silently.
+ */
+export async function reassignOpenWorkInTx(
+  tx: TenantDb,
+  workspaceId: string,
+  input: { fromMemberId: string; toMemberId: string | null },
+): Promise<{ workItemId: string; projectId: string }[]> {
+  const rows = await tx
+    .select({ workItemId: workItem.id, projectId: workItem.projectId })
+    .from(workItemAssignee)
+    .innerJoin(workItem, eq(workItem.id, workItemAssignee.workItemId))
+    .innerJoin(workflowState, eq(workflowState.id, workItem.stateId))
+    .where(
+      and(
+        eq(workItemAssignee.workspaceMemberId, input.fromMemberId),
+        isNull(workItem.deletedAt),
+        // The same list §7.4's Needs Attention reads, derived from
+        // `isClosedGroup` rather than written out, so "done" cannot come to mean
+        // two different things in two files. Pinned by `needs-attention.test.ts`.
+        inArray(workflowState.group, [...OPEN_STATE_GROUPS]),
+      ),
+    );
+
+  if (rows.length === 0) return [];
+
+  const workItemIds = rows.map((row) => row.workItemId);
+
+  await tx
+    .delete(workItemAssignee)
+    .where(
+      and(
+        eq(workItemAssignee.workspaceMemberId, input.fromMemberId),
+        inArray(workItemAssignee.workItemId, workItemIds),
+      ),
+    );
+
+  if (input.toMemberId) {
+    // §4 makes assignment multiple, so the target may already be on some of
+    // these items — `onConflictDoNothing` rather than a read-then-filter,
+    // because the unique index on (work_item_id, workspace_member_id) is the
+    // authority and a check beforehand is a race with any other assignment
+    // happening in the same second.
+    await tx
+      .insert(workItemAssignee)
+      .values(
+        workItemIds.map((workItemId) => ({
+          id: uuidv7(),
+          workspaceId,
+          workItemId,
+          workspaceMemberId: input.toMemberId!,
+        })),
+      )
+      .onConflictDoNothing();
+  }
+
+  return rows;
+}
+
 export async function setWorkItemLabels(
   resolved: ResolvedActor,
   input: { workItemId: string; labelIds: readonly string[] },
@@ -992,8 +1344,13 @@ type LoadedItem = {
  * The order matters for the same reason it does in `projects.ts`: telling
  * somebody with no access that a project is archived is one bit more than they
  * are entitled to.
+ *
+ * Exported since slice 10, because `custom-fields.ts` writes a value onto an
+ * item and must ask exactly these three questions in exactly this order. One
+ * implementation, imported one way — a copy over there would be a copy of a
+ * permission check, which is the one kind of duplication that fails silently.
  */
-async function guardForWrite(
+export async function guardForWrite(
   tx: TenantDb,
   resolved: ResolvedActor,
   workItemId: string,

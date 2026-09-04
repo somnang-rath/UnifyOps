@@ -2,15 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: approved for build, slice 9 landed (notifications, pg-boss, email, the due-date digest)
+## Status: approved for build, slice 16 landed — **§14's build sequence is complete**
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
 records are a second sink on the event registry, and **#12** the platform operator gets its own read-only
-database role. Both are implemented — see below. The remaining open questions (#5, #6, #7, #9, #10) do not
-block anything now. **§18-10 (holiday calendar maintenance) is still open and is now load-bearing**: slice 9
-created the `workspace_holiday` table the digest reads, so the question is no longer hypothetical — it is
-where the first year of rows comes from.
+database role. Both are implemented — see below. **§18-10 (holiday calendar maintenance) was answered on
+2026-09-04 and is no longer open**: slice 9 created the `workspace_holiday` table the digest reads and named
+the question it could not answer — where the first year of rows comes from — and slice 15 is the answer, seed
+and refusal both (see the slice 15 section). **Two questions remain open, #7 and #9**, and neither blocks
+anything: #7 is a business decision, #9 is deferred to Phase 2 by its own dependency.
 
 Slices are still built **one at a time, in §14's order, on request**. The approval was to start, not a
 standing licence to run ahead. **§18-5 and §18-6 were answered on 2026-09-03** — attachment storage is
@@ -22,12 +23,57 @@ behind us. Slice 7 added a second field to the `eventRegistry` entry that slices
 filling in all along, and **slice 9 added the third and last one** — the outbox. The entry is now complete
 as §8 draws it: audit, activity, notify.
 
-**Slice 9 left one thing it was expected to do.** The periodic job that sweeps abandoned uploads (slice 8's
-`pending` attachment rows) was not built. The worker and its schedule now exist, so it is a handler and a
-cron line rather than any new machinery — but it is not done, and an abandoned upload still occupies storage
-indefinitely.
+**Slice 16 is the last slice in §14, and it is the only one that added no table, no service and no
+query.** Onboarding, the five states, the accessibility baseline, responsive and install — one route, seven
+components, four boundaries and three e2e specs. It is worth noticing what it *found* rather than what it
+built: §7.1's seven-step path had been delivering five of them since slice 5, §15-6's 390px had never been
+tested because the mobile Playwright project sat at 412, and the 404 was the one screen in the product that
+was not in the reader's language. All three had been true for several slices, and none of them was visible
+from inside the slice that introduced it. **Two §4 must-haves are still not built and belong to slice 3** —
+Google OAuth and password reset — and are named at the end of the slice 16 section rather than hidden.
 
-What exists: **slices 0 through 9** — the i18n scaffold, the design-token layer, the tenancy foundation
+**Slice 10 is the first slice that only extended what was already there.** No new sink, no new process, no
+new §10 row — one branch in the §9 builder, six entries on the registry, three tables. That is what §6 means
+by "cheap now and expensive to retrofit", and it is worth noticing that it came true.
+
+**Slice 12 cashed the largest bet in the plan.** §14 called slices 1, 2, 5 and 6 the expensive ones and
+front-loaded them; slice 12 is where slice 5's half of that is paid back. "All four view types" added **no
+query, no second DSL and one table** — the Table is the §9 query grouped into one group, the Calendar is the
+same query grouped by day over one month, and a saved view is a *name for a URL*, which §5 had already made
+the whole of a view's state. Four renderers, one builder. That is the shape §9 was designed for, and slice 12
+is the first slice that tested it.
+
+**Slice 13 is the first slice whose screens are not one project's.** My Work, Needs Attention and
+Workload each read across every project a person can see, and the thing worth noticing is what that cost:
+**no new query, no new table, one new column pair, one SQL function.** The list query gained one grouping
+(§7.3's five due buckets) and one filter (staleness); everything else is the §9 builder called with different
+filters. §14 front-loaded slice 5 because "a wrong decision is expensive to reverse" there, and this is the
+third slice in a row — after 11 and 12 — where that bet paid rather than merely held.
+
+**Slice 11 did the same and cashed two earlier bets.** One table, one nullable column, five registry entries,
+one more branch in the §9 builder — and the two things it did *not* have to build are the point. `completed_at`
+has been on `work_item` since slice 5 for exactly this, and the comment there ("history not recorded is history
+gone") turned out to be literally true: the burndown is arithmetic over it and no migration could have
+backfilled it. §9's `business_days_between` and its two companions landed in slice 9 with a note naming cycle
+progress as the second of three callers; this is that caller, and it called them rather than writing the
+calculation again in TypeScript. Slice 11 also earned a **fourth anchor** on the §9 list query rather than
+deleting the invariant — see below.
+
+**Slice 9 left one thing it was expected to do, and it is still not done.** The periodic job that sweeps
+abandoned uploads (slice 8's `pending` attachment rows) was not built. The worker and its schedule exist, so
+it is a handler and a cron line rather than any new machinery — but an abandoned upload still occupies
+storage indefinitely.
+
+**Slice 12 closed all but one word of §14 slice 10's outcome line.** "Define a field; it appears in create,
+detail, filter, group, **table**" — *table* is built now, as one column per field on the Table view, its
+values fetched in a single query for the whole page. What is still missing is *create*, and it is **not a
+slice-10 or slice-12 gap**: §7.2's inline composer is deliberately one field (a five-second target, "no
+create-task modal in the default path"), and §4's other half — "Inline **+ full create**" — was never built
+in slice 5. So the full create form is a **slice-5 gap**, and when it is built the panel on the item page is
+the component it reuses. `createWorkItem` does not take custom values today; adding an input is cheap, and one
+nothing calls would have been speculative.
+
+What exists: **slices 0 through 15** — the i18n scaffold, the design-token layer, the tenancy foundation
 (`src/server/db`, `drizzle/`), the policy module (`src/server/authz/`), authentication, workspace creation,
 teams and invitations (`src/server/auth`, `src/server/services`), projects, project membership and workflow
 states, work items, labels, the §9 list query and the List view (`src/lib/work-item-query.ts`,
@@ -47,11 +93,62 @@ and the `attachment-*.tsx` components under `src/components/work-item/`), and no
 transactional outbox, the inbox and its bell, per-user preferences, and the evening due-date digest
 (`src/lib/notification-kinds.ts`, `src/server/db/schema/notification.ts`, `src/server/queries/notifications.ts`,
 `src/server/services/notifications.ts`, `src/server/jobs/`, the `notifications/` components, and the
-`inbox/` and `settings/notifications/` routes). All the `db:*` scripts work once `pnpm db:setup` has run.
+`inbox/` and `settings/notifications/` routes), and now custom fields — the three tables, the filter branch,
+the group-by, the settings editor and the item panel (`src/lib/custom-fields.ts`,
+`src/server/db/schema/custom-field.ts`, `src/server/queries/custom-fields.ts`,
+`src/server/services/custom-fields.ts`, `src/components/project/custom-fields-editor.tsx` and
+`src/components/work-item/custom-field-values.tsx`), and now cycles — the `cycle` table, the item's
+membership column, the progress and burndown queries, and the two routes under `cycles/`
+(`src/lib/cycles.ts`, `src/server/db/schema/cycle.ts`, `src/server/queries/cycles.ts`,
+`src/server/services/cycles.ts`, and the `src/components/cycle/` components), and now the Table view, the
+Calendar view and saved views — the `saved_view` table, the two new renderers, and the bar that puts a name
+on a query (`src/lib/saved-views.ts`, `src/server/db/schema/saved-view.ts`,
+`src/server/queries/saved-views.ts`, `src/server/services/saved-views.ts`,
+`src/components/views/table-view.tsx`, `calendar-view.tsx` and `saved-views-bar.tsx`), and now My Work,
+Needs Attention, workload and availability — two columns on `workspace_member`, §9's fourth working-day
+function, the five due buckets, the staleness filter and the two screens that read them
+(`src/lib/availability.ts`, `src/lib/needs-attention.ts`, `src/lib/status-summary.ts`,
+`src/server/services/workload.ts`, `listWorkItemSets` in `src/server/services/work-items.ts`,
+`src/components/views/{cross-project-rows,needs-attention-view,workload-view,status-summary}.tsx`,
+`src/components/members/availability-form.tsx`, `src/app/api/internal/reassign/`, and the
+`[workspaceSlug]/page.tsx`, `team/` and `settings/availability/` routes), and now the command palette,
+search and shortcuts — one generated column and two indexes, a `q` filter on the §9 query, the first modal
+in the product and a pure keystroke matcher (`src/lib/search.ts`, `src/lib/shortcuts.ts`,
+`src/server/queries/search.ts`, `src/server/services/search.ts`, `src/app/api/internal/search/`,
+`src/components/ui/{dialog,command-palette}.tsx`, the four files under `src/components/search/`, and the
+`[workspaceSlug]/search/` route), and now settings, the holiday calendar and view-as — the settings shell and
+its nine sections, the company form, branding, the seeded holiday calendar, workspace notification defaults,
+§7.12's offboarding choice, and §7.13's view-as (`src/lib/branding.ts`, `src/lib/holidays.ts`,
+`src/server/auth/view-as.ts`, `src/server/services/{workspace-settings,workspace-logo,holidays,view-as}.ts`,
+the components under `src/components/settings/`,
+`src/components/members/{offboard-dialog,view-as-button}.tsx`, `src/app/api/internal/upload/logo/`, and the
+routes under `[workspaceSlug]/settings/`), and now §7.1's completed first-run path, the five states, the
+accessibility baseline, the 390px pass and the install manifest — the per-locale web manifest, the theme
+colour, the skip link, the four error and not-found boundaries and the view-aware skeletons
+(`src/lib/app-icons.ts`, `src/app/[locale]/manifest.webmanifest/route.ts`, `src/app/global-error.tsx`,
+`src/app/[locale]/{error,not-found}.tsx`, `src/app/[locale]/[workspaceSlug]/error.tsx`, the four
+`loading.tsx` files under `[workspaceSlug]/`, `src/components/ui/{skip-to-content,skeletons}.tsx`,
+`src/components/views/view-skeleton.tsx`, `src/components/ui/offline-banner.tsx` and
+`src/components/onboarding/onboarding-step.tsx`).
+All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-03 after slice 9 — `typecheck`, `lint`, `test` (229 unit), `build`, `test:e2e`
-(98 across three Playwright projects, 1 pre-existing skip) and `test:tenancy` (148 against real Postgres
-18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a promise.
+Every gate passed on 2026-09-04 after slice 16 — `typecheck`, `lint`, `test` (434 unit), `build`,
+`test:e2e` (201 across three Playwright projects, 13 skips) and `test:tenancy` (271 against real
+Postgres 18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a promise.
+
+The e2e count jumped by fifty because slice 16 added three specs that are **sweeps rather than flows** —
+`onboarding.spec.ts` walks §7.1 end to end, `responsive.spec.ts` asserts no sideways scroll on every screen
+at 390px, and `a11y.spec.ts` asserts an accessible name on every control of every screen, per locale. Two of
+the skips are slice 13's and 15's; the rest are the two sweeps declining the projects they say nothing about
+(`responsive` runs on `mobile-km` only, `a11y` on the two desktop locales).
+
+**`test:e2e` flaked once in four full runs after slice 10**, with eight `toHaveURL` failures across
+`board.spec.ts` and `comments.spec.ts` and `The destination stream closed early` in the server log — the
+same signature as the race slice 8 fixed in two other specs, and the same trigger: slice 10 added two
+queries to `getWorkItem` and one to `getProjectBySlug`, and slice 8's note already records that "adding a
+second panel to the item page was enough to expose it". Three of the four runs, and a targeted re-run of
+both specs, were green. If it fails again, the fix is slice 8's — wait for the control that owns the
+mutation to re-enable itself before navigating — not a retry count.
 
 Slice 8 fixed a latent race in two earlier e2e tests rather than working around it. `activity.spec.ts` and
 `work-item.spec.ts` both changed a state and then immediately called `page.goto`, which can abort the server
@@ -100,10 +197,12 @@ committed — CI installs with `--frozen-lockfile`.
 | `pnpm typecheck` | `tsc --noEmit` — the fastest real signal in this repo right now |
 | `pnpm lint` | ESLint 9 flat config; bans `next/link` and `DATABASE_URL_OWNER` in `src/` |
 | `pnpm test` / `pnpm test:watch` | Vitest — unit only, `src/**`; e2e is excluded |
-| `pnpm test -- <pattern>` | Single file or test-name pattern |
+| `pnpm test <pattern>` | Single file or test-name pattern. **No `--`** — see below |
 | `pnpm test:e2e` | Playwright, three projects: `en`, `km`, `mobile-km`. **Needs Postgres** — it provisions its own |
+| `pnpm test:e2e <spec> --project=en` | One spec, one locale. The fast loop while writing a spec; run all three before calling it done |
 | `pnpm test:tenancy` | The RLS suite, on real Postgres. Its own config (`vitest.tenancy.config.ts`), not part of `pnpm test` |
-| `pnpm db:setup` | One-time: create the database and all three roles. Prompts for the superuser password |
+| `pnpm test:tenancy <pattern>` | One tenancy file. Each starts its own harness, so this is worth doing |
+| `pnpm db:setup` | One-time: create the database and all **four** roles. Prompts for the superuser password |
 | `pnpm db:generate` | Drizzle migration from `src/server/db/schema/index.ts` |
 | `pnpm db:migrate` / `pnpm db:seed` | `tsx` scripts under `src/server/db/`. `db:migrate` also installs pg-boss's schema, as the owner |
 
@@ -117,6 +216,22 @@ database-shaped works before that.
 Docker), or uses an existing server if `TENANCY_SUPERUSER_URL` points at one with superuser rights. It is
 deliberately excluded from `pnpm test`: folding it in would make the fast unit suite depend on Docker, and
 the usual response to that is to skip it — which is the one suite that must never be quietly green.
+
+**Do not write `pnpm test -- <pattern>`.** On pnpm 10 the `--` is swallowed rather than forwarded, so the
+filter never reaches Vitest and the *whole* suite runs — silently, reporting a pass. This line said `--` until
+slice 13, which is how it was found: `pnpm test -- slug` ran 23 files and `pnpm test slug` ran one. The same
+applies to `test:tenancy`, where the cost is a 45-second full run instead of a 3-second one. Playwright takes
+its filters the same way: `pnpm test:e2e theme --project=en`.
+
+**Docker does not work on this machine**, so in practice both `test:tenancy` and `test:e2e` run against a
+hand-started Postgres with `TENANCY_SUPERUSER_URL` pointing at it. The recipe, and the two Windows traps that
+cost an hour in slice 4, are under **Status** above — read them before assuming Testcontainers is hanging for
+some other reason.
+
+CI (`.github/workflows/ci.yml`) runs the same commands in three jobs — `typecheck`+`lint`+`test`, `test:e2e`,
+and `test:tenancy` — on `ubuntu-latest`, where Docker is present and Testcontainers is the path taken. The
+e2e job sets `NEXT_PUBLIC_APP_URL`, because the build inlines it and an unset value fails the build rather
+than the test.
 
 ## The one architectural rule that everything else hangs off
 
@@ -203,9 +318,9 @@ belong to later slices.
 Planned layout (`PLAN.en.md` §8) — follow it rather than inventing one:
 
 ```
-src/app/[locale]/{(auth),(onboarding),[workspaceSlug]/...}   src/app/api/internal/{reorder,list,upload}
+src/app/[locale]/{(auth),(onboarding),[workspaceSlug]/...}   src/app/api/internal/{reorder,list,upload,reassign,search}
 src/server/{db/{schema,client.ts,tenant.ts,identity.ts},auth,authz/policy.ts,queries,services,events,jobs}
-src/components/{ui,auth,invite,members,work-item,views}   src/i18n   src/lib   drizzle/
+src/components/{ui,auth,invite,members,work-item,views,search}   src/i18n   src/lib   drizzle/
 ```
 
 `src/lib` is for code **both sides run** — `slug.ts`, `recipients.ts`, `form-state.ts`, `cn.ts`. Anything in
@@ -215,8 +330,8 @@ carries `import 'server-only'` at the top so a mistaken client import is a build
 The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*` functions **before** `0001`
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
 grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
-4, `0007`/`0008` for slice 5. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
-`0004`, `0006`, `0008`, `0010`, `0012`, `0014` and `0016` are hand-written and must stay that way. A hand-written migration is
+4, `0007`/`0008` for slice 5, and so on to `0027`/`0028` for slice 15. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
+`0004`, `0006`, `0008`, `0010`, `0012`, `0014`, `0016`, `0018`, `0020`, `0022`, `0024`, `0026` and `0028` are hand-written and must stay that way. A hand-written migration is
 scaffolded with `db:generate --custom` so the journal and snapshot stay consistent. **Renaming a generated
 migration means editing its `tag` in `drizzle/meta/_journal.json` too, and deleting one means deleting its
 snapshot** — drizzle-kit diffs against the highest snapshot it finds, so a stale `000N_snapshot.json` makes
@@ -748,6 +863,895 @@ checkboxes: a checkbox already carries the role, the keyboard behaviour and the 
 would have to be given by hand, and building a one-off Switch for one screen is how a design system ends up
 with two of them.
 
+## Custom fields, and why a value is a row per kind
+
+Slice 10. `src/lib/custom-fields.ts`, `src/server/db/schema/custom-field.ts`,
+`src/server/queries/custom-fields.ts`, `src/server/services/custom-fields.ts`, the `custom` branch in
+`src/lib/work-item-query.ts` and `src/server/queries/work-items.ts`, and the two components
+`custom-fields-editor.tsx` (project settings) and `custom-field-values.tsx` (the item page).
+
+**§9 settled the storage question in one line and everything follows from it**: "Real tables, not JSONB.
+Typed indexed columns per value kind. A `custom:{fieldId}` filter is one branch in the builder." JSONB would
+make every filter a sequential scan with a cast in it, which is precisely the §16 risk that says custom
+fields must not slow the list query.
+
+**Three tables, where §6 costed two.** The third is the option list, and it exists because of §7.11's
+promise that renaming preserves values: a value that stored the *word* "Acme" would be orphaned the moment
+somebody corrected it to "Acme Ltd". A value stores an option **id** and the word is resolved at render —
+the same rule `activity.data` and a comment's mentions already follow. Options as a `text[]` on the
+definition would have been the second table exactly, and would have made a rename a data migration.
+
+**A row exists only where there is a value**, and that is load-bearing in four places. Adding a field to a
+project holding 5,000 items writes nothing. Every index stays the size of the items that actually use the
+field. "Nobody has filled this in" is a `NOT EXISTS` probe rather than a scan for nulls. And an unticked
+checkbox is the *absence* of a row rather than a stored `false` — which is also the only answer that is
+correct for every item that existed before the field did, with no backfill.
+
+**A field's kind is fixed at creation, and the schema is what fixes it.** §7.11 offers a rename and nothing
+else; turning a text field into a date is a migration over every stored value with no answer for the ones
+that will not convert. A value references `(field_id, workspace_id, kind)`, so changing a kind would orphan
+every value rather than silently reinterpret it. The settings screen omits the control rather than disabling
+it — a disabled select invites somebody to go looking for the permission that would enable it.
+
+**Two invariants live in migration 0018, not in the service**, for the reason slice 5 put `root_id`, `depth`
+and the assignee arrays in 0008: a row written by a seed script, a CSV importer or a Phase 2 MCP tool has to
+be as correct as one written by `custom-fields.ts`.
+
+- A **CHECK** that exactly one value column is populated and it is the one the kind names — `num_nonnulls`
+  for "exactly one", a `CASE` for "which". It also pins the two rules above: a checkbox row is always
+  `true`, and a single-select holds exactly one option while a multi-select holds at least one.
+- A **trigger** that strips a deleted option's id out of every value that held it, deleting the rows that
+  would be left with an empty array. `value_option_ids` is a `uuid[]` and an array cannot carry a foreign
+  key — the same trade `work_item.assignee_ids` makes, and the same answer.
+
+**§10 has no custom-field row and none was invented** — the fourth time this decision has gone the same way,
+after labels, attachments and notifications. Defining a field is `project.settings`, which §10's row already
+spells out as "Project settings, states, custom fields". *Filling one in* is `work_item.edit`, because a
+value is a property of a work item in the same way a priority is. That split is the one labels already make:
+an Owner decides what tags exist, anyone who can edit can apply one.
+
+**Only four kinds can be grouped by, and the reason is §9's page query.** It is handed its group keys rather
+than discovering them — "a board column that disappears when it empties is a column nothing can be dragged
+into" — so a grouping is only possible where the complete key set is known before the query runs. A select's
+options, the workspace's members and `true`/`false` are enumerable; a free-text field, a number and a date
+are not. **Filtering has no such limit**: every kind is filterable, which is the half of §6-4 that free text
+actually needs.
+
+**The filter is five operators, not one per kind.** `in` (select, multi-select, user — `none` allowed, ORed
+with the ids exactly as the assignee filter does), `is` (checkbox), `has` (text contains), `range` (number,
+date, either end open) and `set` (every kind: has a value, or has none). The kind decides which operator a
+field offers and which column the builder reads; the operator decides the shape of the comparison. Each one
+compiles to an `EXISTS` over `custom_field_value` keyed on `(field_id, <typed column>)`, which is the shape
+every index on that table takes.
+
+**`has` escapes LIKE's metacharacters and rides a partial trigram index.** Unescaped, a client called
+"50% Co" searches for anything at all. `ILIKE` rather than `strpos` so 0018's `gin_trgm_ops` index can serve
+it — pg_trgm is already installed because §13's Khmer search needs it.
+
+**A filter naming a field the project does not have is dropped by the service, and `false` in the builder.**
+The URL parser tolerates junk by design (§9's "discarding rather than failing") but has no idea what kind a
+field is, so `withKnownCustomFilters` drops what cannot be evaluated — a link naming a deleted field widens
+the list rather than showing a stranger an error page. If one somehow reaches the builder it resolves to
+`false`, because a filter that cannot be applied must never *silently widen* a result.
+
+**The fields ride in transactions that were already open.** `getWorkItem` loads the definitions and the
+item's values alongside its assignees and labels; `getProjectBySlug` loads the definitions alongside the
+states. A service of their own would have been a second `withActor` on every item-page and list-page render
+— the trap slice 8 hit with `getCommentThread` and slice 9 hit with the unread count. The settings screen is
+the one caller that pays extra, for the value **counts** §7.11's confirmation has to show before anybody
+clicks.
+
+**Deleting says how many values go with it, before the click.** §7.11: "deleting a field with values →
+choose: delete values, or export first. Explicit, never silent." Exporting first is CSV export, a §4
+should-have that does not exist — so the screen offers the honest half and names the number. Removing a
+select *option* asks the same question separately, because renaming one keeps every value and deleting one
+takes them.
+
+**A length cap counts graphemes, not code points.** `[...text].length` gives a Khmer workspace roughly a
+third of the field an English one gets, silently, and refuses text that fits — one Khmer syllable is
+routinely three or four code points. §13 makes this rule for truncation; a cap is the same arithmetic
+pointed the other way. The unit test that caught it is `counts length by grapheme`.
+
+**Two defects found on the way through, both outside this slice and both fixed.**
+
+- `pnpm db:migrate` failed on its **second** run against any database whose pg-boss schema was current:
+  `getMigrationPlans` does not return an empty plan at the newest version, it throws `Version 39 not found`.
+  Slice 9's comment asserted the opposite. `migrationPlanFrom` in `src/server/jobs/install.ts` now treats
+  that assertion as "nothing to do" and re-throws anything else — a command that runs on every deploy has to
+  be idempotent.
+- The **due filter threw `MISSING_MESSAGE` in both languages**. Slice 9 added `soon` to `DUE_WINDOWS` for
+  §7.8's digest and gave it no message, and the FilterBar renders every window. Missing from *both*
+  catalogues, so `messages.test.ts` passed on parity while the dropdown broke at render — visible only in
+  the server log, because next-intl swallows it. The bar now omits `soon`, which is the right fix rather
+  than a new string: `soon` takes a **horizon** the DSL deliberately keeps out of the URL, so offered here
+  it would resolve to `today` and mean exactly "overdue" — a filter that lies about itself.
+
+## Cycles, and why a status is never stored
+
+Slice 11, and §14's "run a two-week cycle end to end". `src/lib/cycles.ts`, `src/server/db/schema/cycle.ts`,
+`src/server/queries/cycles.ts`, `src/server/services/cycles.ts`, the `cycle` branch in
+`src/lib/work-item-query.ts` and `src/server/queries/work-items.ts`, the components under
+`src/components/cycle/`, and the two routes under `projects/[projectSlug]/cycles/`.
+
+**A cycle's status is derived from two dates and today, and there is no `status` column.** §7.6 says a cycle
+"becomes active on start date", and the obvious reading is a stored status that something flips. That
+something would be a scheduled job per cycle — created at creation, rescheduled on every date edit, repaired
+after any of that happened while the worker was down — and a missed repair is a cycle that silently never
+starts. That is the failure slice 9 refused when it made the digest one hourly tick rather than a schedule
+per workspace. `cycleStatus` in `src/lib/cycles.ts` is the one place the comparison happens, and `today` is
+always the **workspace's** (§17-13).
+
+**`completed_at` on the cycle is not the status.** The end date having passed and a human having decided what
+happens to the work still open are different facts, which is why the derived set has four members rather than
+three: `ended` puts §7.6's prompt in front of somebody, `completed` records that they answered it. **"Leave
+them where they are" is a real answer and sets the column exactly as the other two do** — a prompt that
+reappears after being dismissed is one nobody ever finishes.
+
+**Membership is one nullable column on `work_item`, not a join table.** §7.6: "cycle membership is per item,
+never inherited." An item is in at most one cycle, which is single-valued and belongs on the row that has it;
+a join table would permit two, and the first query to assume otherwise would be the burndown counting an item
+twice. Null is the backlog — a destination, not a missing value — which is also why adding a cycle to a
+project holding 5,000 items writes nothing.
+
+**The foreign key carries three columns, and that is §9's device pushed one level down.** `(cycle_id,
+project_id, workspace_id)` against a matching unique on `cycle`, because the tenant check alone would let an
+item in Engineering join Marketing's sprint — both are in one workspace. It is `ON DELETE RESTRICT`, like
+`work_item_state_fk`: deleting a container must never decide the fate of what is in it, so `deleteCycle`
+releases every item first and the constraint is the second layer. `SET NULL` was not an option — on a
+composite key it nulls *every* column, `project_id` and `workspace_id` included. Postgres reports the refusal
+as `23001`, not `23503`, and the tenancy suite asserts that specifically.
+
+**The burndown calls `is_working_day`; it does not reimplement it.** §9 put one SQL function behind working
+days so "staleness, the reminder digest, and cycle progress" cannot disagree, and named this as the second of
+the three callers. The ideal line descends across **working** days only, so a Monday-to-Saturday market (the
+schema's default mask of 63, §2.5) burns twelve days in a fortnight and not fourteen — and Khmer New Year
+flattens the line for a week (§17-18) instead of telling a team they are behind on the morning they return.
+`withIdealLine` is the arithmetic and is pure, so both sides can run it; the *flags* come from the database,
+which is the only thing that knows a company's calendar.
+
+**`completed_at` is compared in the workspace's timezone.** It is a `timestamptz`, and which *day* it fell on
+is a question only a zone answers: work finished at 8pm in Phnom Penh is the next day in UTC, and a burndown
+computed in the server's zone shows a team finishing the morning after they did. The tenancy suite pins this
+with a completion either side of local midnight.
+
+**The future is `null`, not carried forward.** A line running flat to the end of the range reads as a team
+that has stopped working, which is the opposite of what a chart on day three of ten should say. `standing`
+compares at the last day that actually happened, never against the final ideal of zero — that would report
+every cycle as behind until its last afternoon.
+
+**Cancelled work leaves the denominator rather than joining either side of it.** §4 gives `cancelled` its own
+state group precisely so this can be a third answer: counted as done, a team hits 100% by abandoning the
+sprint; counted as outstanding, the cycle never finishes for work somebody decided not to do. The bar is
+honest arithmetic and the count beside it says what was left out. Everything reads the state **group**, never
+a state name — a company that renames "Done" to "Shipped" has changed nothing, and one with two completed
+states has both counted.
+
+**The burndown is by item count, and points appear only where a team estimates.** A points burndown means
+nothing unless every item carries an estimate, and §17-9 hides estimates by default. The number is computed
+and shown when it is non-zero rather than displaying a confident zero to everyone else.
+
+**Slice 11 added a fourth anchor to the §9 list query rather than deleting the invariant.** `anchorOf` returns
+`'cycle'` when the filter names a real cycle id, because a cycle belongs to one project and holds a planned,
+bounded set — at least as tight as naming the project. **The `none` sentinel alone does not anchor**: "in no
+cycle" is the whole backlog of the whole workspace, which is exactly the §16 scan wearing a filter. That
+distinction is the one worth remembering if another anchor is ever added.
+
+**Two permissions, and neither is new — the fifth time this decision has gone the same way**, after labels
+(slice 5), attachments (slice 8), notifications (slice 9) and custom fields (slice 10). Planning a cycle is
+`project.settings`; putting an item into one is `work_item.edit`, because §7.6 makes membership a property of
+the item and that is not only a data shape but who may change it. A Member plans their own work into the
+sprint their Lead set up.
+
+**`work_item.cycle_changed` is the one `noNotify` in the slice that needs defending.** §7.8's general rule
+would make it `item_activity` and tell every assignee — right for one item, catastrophic for the act it
+describes. §7.6's "add items (multi-select from backlog)" is one person, one sitting, thirty items; under the
+general rule that is thirty emails in ten minutes, which §7.8 is blunt about being how a team learns to filter
+the product's mail. It projects to **activity**, where somebody scanning an item's history can see why their
+work moved. `work_item.labelled` is silent for the same shape of reason. The four `cycle.*` events project to
+no item's feed at all — a container is not an item — and only `cycle.deleted` is audited, joining the five
+other actions that destroy rather than change.
+
+**Two invariants live in migration 0020, not only in `validatePeriod`.** A backwards range and one longer than
+a year, for the reason slice 5 put `root_id` in 0008 and slice 10 the value CHECK in 0018: a row written by a
+seed script, a CSV importer or a Phase 2 MCP tool has to be as correct as one the service wrote. A backwards
+range is not a rendering problem — `generate_series` over it returns nothing, so the chart silently draws an
+empty cycle. The year bound is what stops a mistyped `2126` from asking for thirty-six thousand rows.
+
+**The burndown is inline SVG and there is no charting library.** The same bargain `sigv4.ts` makes by not
+adding `@aws-sdk`: two polylines, a set of bands and an axis, and a dependency would bring its own colour
+system — the one thing §12's three-layer token architecture cannot accommodate. **No new token family was
+added**, and that is the first time a slice with a visual surface has not needed one: the actual line is
+`--accent`, the ideal is `--text-subtle` dashed, a closed day is `--surface-sunken`. Those are emphasis
+levels, which layer 2 already has; slices 4 and 5 added families because a company's own *data* carried a
+colour, and nothing here does. The chart carries a `sr-only` table of the same numbers, because an
+`aria-label` summarising a fortnight is not reachable data.
+
+**`getProjectBySlug` now loads the project's open cycles**, beside its states and custom fields and in the
+same transaction — the trap slice 8 hit with `getCommentThread`, slice 9 with the unread count and slice 10
+with custom fields. Open ones only, which is what keeps it cheap: a project accumulates a cycle a fortnight
+and this is always the two or three a team is working in. The cycles *page* loads the full history, because
+that is the page that shows it. `getWorkItem` additionally left-joins the cycle's **name**, because an item's
+cycle may have closed and a picker that could not name its own current value would read as though the item
+were planned into nothing.
+
+**One thing §7.6 offers that is not built, deliberately.** "Add items (multi-select from backlog, **or
+drag**)" — the multi-select is built and the drag is not. The board's drag is `moveWorkItem`, whose whole
+contract is neighbour ids and a state change (slice 6), and teaching it a second meaning would make one
+gesture do two different things depending on where it was dropped. §7.6 offers either, and the multi-select is
+the one that works with a keyboard, which §11's baseline requires of everything.
+
+**A known limitation, stated rather than hidden: the burndown redraws when scope changes.** It is computed
+against the cycle's *present* membership, so an item added on day five appears to have been there since day
+one, and one removed disappears from the history entirely. Recording scope changes needs a membership-history
+table, which §7.6 does not ask for and which would be the only append-only table in the product with no reader
+outside one chart. The `work_item.cycle_changed` events are written and are the raw material if it is ever
+wanted.
+
+## The other two views, and why a saved view is a URL with a name
+
+Slice 12, and §14's "all four view types". `src/lib/saved-views.ts`, `src/server/db/schema/saved-view.ts`,
+`src/server/queries/saved-views.ts`, `src/server/services/saved-views.ts`, the `table`/`calendar` entries in
+`VIEWS`, the `day` grouping and `month` filter in `src/lib/work-item-query.ts` and
+`src/server/queries/work-items.ts`, and the three components `table-view.tsx`, `calendar-view.tsx` and
+`saved-views-bar.tsx`.
+
+**Two views, no new query.** The Table is the §9 list query with `groupBy: 'none'`; the Calendar is the same
+query with `groupBy: 'day'` over a one-month range on `due_date`. Both are imposed by the page the way the
+board imposes `state`, and the grouping control is **hidden** on all three rather than disabled — a control
+offering a choice the view will discard is worse than no control. That the whole slice needed one new SQL
+branch (`day`) and one new predicate (the month) is the payoff for §9's "one DSL, one builder": four
+renderers now share them.
+
+**A saved view stores a query string, not a parsed filter.** §5 already made a URL the whole of a view's
+state, so a saved view is a name for one. Storing a parsed object would be a second schema for what the Zod
+DSL defines, kept in step by hand, and the first slice to add a filter would invalidate every row written
+before it. A stored query string goes back through `parseWorkItemQuery`, which discards what it does not
+understand — so a view saved by an older build still opens, one filter wider at worst.
+
+**Views are personal, and that is §4's reading rather than a shortcut.** "Saved view sharing with teammates"
+is in the should-have list, not the must-have one. So a row belongs to `owner_member_id`, every predicate
+carries it, and **no §10 row was invented — the sixth time that decision has gone the same way**, after
+labels, attachments, notifications, custom fields and cycles. What stops one person reaching another's is not
+a role; it is that column, underneath the RLS that already scoped the row to the workspace. RLS cannot help
+here — both people are in one company — so `saved-views.test.ts` asserts the owner predicate directly.
+Sharing is the slice that adds a visibility column and *then* has a question for §10.
+
+**No events either**, which is `setNotificationPreference`'s call from slice 9. §8's registry is for things
+that happened to a company's *work*; naming a filter is furniture. An entry reading `audit: false, activity:
+false, notify: false` would be three decisions recorded as "no" for an event nobody would read.
+
+**The month belongs to the calendar and to nothing else.** It is a filter in the DSL — it restricts rows and
+it is shareable, which is what makes it a filter rather than a fetch option like the digest's horizon — but
+the page clears it on every other view, and `hasActiveFilters` does not count it. Left in force on the List
+it would silently hide every undated item, with nothing on screen to say why and no control to clear it: a
+filter a person can neither see nor undo. The same is true of the `day` grouping, and for the same reason
+`PICKABLE_GROUP_BY` exists: `day` is only a *finite* set of headings because the calendar also fixes a month,
+so it round-trips through the URL and stays out of the picker.
+
+**A calendar URL with no month means "the current month", and the calendar does not rewrite the URL to pin
+one.** That is the bargain the named due windows already make: `d=overdue` still means overdue tomorrow,
+where a resolved date would quietly become a different question overnight. Paging to a month pins it, and
+from then on the link names what it showed.
+
+**Undated work has no cell, on purpose.** The month is a range on `due_date`, so an item with no due date is
+outside every month rather than inside all of them. An "unscheduled" strip would need the predicate to be `or
+due_date is null`, which would make the month mean "September, plus everything ever" — and the List already
+answers that honestly with `d=none`.
+
+**The calendar fetches ten rows per day, not fifty.** It asks for thirty-one `LATERAL` pages at once, and
+`DEFAULT_LIMIT` in each would be fifteen hundred rows to draw cells that show ten. The cell's count is the
+day's **real** total either way, because that comes from the counts query — which is exactly the split §9
+made two queries for.
+
+**Column widths are per saved view, and with no view selected a drag is not stored anywhere.** §12 says
+"persisted per saved view"; the alternative — a per-member default layout — is a second thing to keep in step
+for a preference nobody asked for. An unsaved resize lives in component state for as long as the page does,
+which is what an unsaved change should do. `saveTableLayoutAction` deliberately **does not revalidate**:
+rebuilding the route would re-render the table under a pointer still on the column edge, to arrive at the
+layout already on screen.
+
+**The resize handle is keyboard-operable**, because §11's baseline says "throughout" and a handle is not
+exempt for being usually a drag. Arrow keys move a step, Home and End go to the bounds, and the e2e suite
+resizes a column without a mouse.
+
+**The layout is `jsonb`, which is the opposite of the call §9 made for custom field values — and the
+difference is why that call was right.** A field value is filtered, grouped and sorted by, so it needs a
+typed indexed column. A column layout is read once, by the one component that draws the table, and is never a
+predicate. It is a blob because it genuinely is one. It is parsed on read *and* sanitised on write: the read
+protects the screen from a row an older build wrote, the write protects the row from a client that sent
+something the screen could never produce.
+
+**Slice 12 found and fixed a latent bug older than itself.** `tx.execute` bypasses drizzle's column mappers,
+so every date and timestamp arrives from the driver as a **string** — `RawRow` had typed `created_at` and
+`updated_at` as `Date`, which the compiler could not catch and nothing exercised: `completed_at` is only
+compared to null, and the other two are read only by `cursorFor`, which calls `.toISOString()` and is reached
+only when somebody sorts by `created` or `updated` **and** pages past the first page. It threw there. `toRow`
+now converts once, so `WorkItemRow`'s declared types are true for every caller, and `list-query.test.ts` pins
+both the type and that paging.
+
+**One thing §4 asks for that is not built, and it is named rather than hidden.** Saved views are per project;
+the workspace-wide surfaces are slice 13's (My Work, Needs Attention), and `saved_view.project_id` is nullable
+now rather than added later — the same call slice 5 made for `rank` and `completed_at`, because adding a
+column to a table already holding a workspace's rows is a backfill under a lock.
+
+## My Work, Needs Attention, workload, and the flag that keeps them honest
+
+Slice 13, and §14's "the §7.3 and §7.4 loops; a member on leave shows as such instead of as idle capacity".
+`src/lib/availability.ts`, `needs-attention.ts`, `status-summary.ts`, `src/server/services/workload.ts`,
+`listWorkItemSets` in `work-items.ts`, migrations `0023`/`0024`, the components under `src/components/views/`
+named above, and the `[workspaceSlug]/page.tsx`, `team/` and `settings/availability/` routes.
+
+**The workspace root is now My Work.** §7.3: "Open app → lands on MY WORK (never a project list)", and §17-6
+records why — "§2.1 says the employee must be paid back first". The old landing page listed projects, members
+and teams; it is gone, and `membership.spec.ts` was updated rather than worked around, because §7.10's promise
+was always "lands directly in the workspace, in the right teams, **on My Work**".
+
+**Two new pieces of the §9 query, and nothing else.** The grouping `due` — §7.3's five buckets, as one SQL
+expression (`dueBucketExpression`) that the counts query, the page query and the group key all read. It
+mirrors `dueBucket` in `src/lib/workspace-date.ts`, which slice 5 wrote in anticipation of this screen. **One
+expression rather than five branches** is the load-bearing part: a hand-written mirror fails as a group whose
+header says three over a body that shows two, and the tenancy suite asserts `rows.length === total` for every
+bucket. And the filter `stale: N` — §7.4's fifth row.
+
+**`due` is in the group-by picker and `day` is not, and the contrast is the rule.** Both key on a due date;
+only one has a finite key set without a second filter to bound it. `day` needs the calendar's month to be
+finite at all; `due` is always exactly five headings.
+
+**Staleness is §9's third caller and its fourth function.** Migration 0024 adds `stale_before(workspace,
+today, days) → timestamptz`, built on `is_working_day` exactly as `business_days_between` is, so the four
+cannot drift. It is a fourth function rather than a per-row `business_days_between` because that would be a
+`generate_series` and a holiday probe **per candidate row**, on the one screen that looks at every open item
+in a team. Asked once it is a cutoff instant, and the comparison against `updated_at` is an ordinary
+index-usable predicate. It returns a `timestamptz` in the **workspace's** zone, because which day an
+`updated_at` fell on is a question only a zone answers (§17-13) — the same trap slice 11's burndown hit.
+
+**The DSL carries `N`; the resolved instant is a fetch option.** Exactly the split `soon` and its horizon
+make, for the same reason: "five working days" means the same thing next Tuesday, and the instant it resolves
+to does not. `fetchStaleBefore` asks once per screen, so two rows of the same tab cannot straddle midnight
+and disagree about one item.
+
+**`listWorkItemSets` exists because this screen asks six questions.** Needs Attention is five lists and
+Workload is a grouping plus a second count; through `listWorkItems` that is six or seven `withActor`
+transactions, each re-reading the same people, labels and project visibility. This is the trap slice 8 hit
+with `getCommentThread`, slice 9 with the unread count and slice 10 with the custom fields, and the answer is
+theirs: ask inside the transaction that is already open. Every set still carries its own anchored query, so
+batching is not a way around §16.
+
+**Needs Attention's rows overlap on purpose.** An item can be overdue *and* blocked *and* unassigned and
+appears under all three. Any precedence order that picks one reason is wrong for somebody — the person
+clearing blockers wants it under blocked, the person chasing dates wants it under overdue — and §7.4 lists
+five rows, not one classified list.
+
+**The scope is an enumerated project set, and that is the §16 anchor rather than an exception to it.**
+`resolveWorkspaceScope` resolves the visible projects (optionally one team's) before any query is built. That
+is what makes the *unassigned* row answerable: `none` bounds nothing.
+
+**Slice 13 found a hole in `anchorOf` older than itself and closed it.** `assignees` anchored on any non-empty
+list, so `a=none` — "every item in this company nobody owns" — passed `assertAnchored`. That is the §16 scan
+wearing a filter, and it is precisely the distinction slice 11 wrote for a cycle's `none` and did not apply
+here. A **named** person anchors; the sentinel alone does not. Nothing regressed, because every surface that
+uses the sentinel supplies a project set too.
+
+**§17-25 is arithmetic, not a badge.** "Workload assumed everyone is always available… the picture was
+confidently wrong about the one person it mattered most about." So `getWorkload` excludes an away member from
+`capacity.available` and from the average — dividing by everybody is the confidently-wrong number, because a
+team of five with two away reads as comfortable at the moment the three left are drowning. The badge on the
+column is the visible half; the denominator is the half that would otherwise still lie.
+
+**Availability is two nullable columns on `workspace_member` and deliberately not an entity.** §4: "one date
+— no hours, no balances, no approval flow — because time tracking is a §3 non-goal." Every absent thing is one
+table away, and each is how this becomes the feature §3 rules out. The settings screen says so in as many
+words, because that is what stops the next request being "can it track my remaining days".
+
+**`until` is the day they are back**, so `isAway` is a strict comparison and the label reads "Back on". A
+derived status with nothing to flip it, for the reason slice 11 derives a cycle's: a stored flag needs a job,
+and a missed run is somebody who reads as on leave forever.
+
+**Two people may set it and there is no new §10 row — the seventh time that decision has gone the same way**,
+after labels, attachments, notifications, custom fields, cycles and saved views. Your own always; anybody
+else's with `workspace.manage_members`, which is the row that already says who may change a membership. The
+availability *reason* never reaches the audit log: the log is Owner-visible and permanent, and "surgery" is
+not a record anybody asked us to keep — the same line `comment.deleted` draws when it audits the deletion and
+withholds the body.
+
+**A drag on the workload means something different from a drag on the board**, so it goes to a different
+endpoint. §7.5's drag changes a state and computes a rank; §7.4's changes an assignee and computes nothing.
+`api/internal/reassign` is a **fourth folder where §8's layout names three** — named rather than hidden — but
+it is the *first* of §8's five route-handler exceptions ("drag-and-drop reorder"), not a sixth. Teaching
+`moveWorkItem` a second meaning would make one gesture do two things depending on where it landed, which is
+the line slice 11 already drew when it declined to teach the board about cycles.
+
+**Reassigning onto somebody unavailable is warned, never blocked** (§7.4: "the manager knows things the flag
+does not"). The write succeeds and a toast names who is away and until when. That needed a third Toast tone —
+`warning`, taking its colours from the semantic aliases `Alert` has used since slice 1, so it is one row in a
+map and not a new token family.
+
+**Export is a print stylesheet** (§17-26), at the foot of `globals.css`. Three things it has to get right, each
+a way the naive version fails: the **Khmer face is re-stated** rather than inherited, because a print
+stylesheet that only sets colours lets the browser substitute a default with no Khmer coverage and §17-26 names
+that failure exactly ("perfect on screen and prints Khmer as boxes"); the light palette is **forced**, or
+somebody in dark mode prints white on white; and the workload's horizontal scroller becomes a stack, because
+§7.4 says "printing a board with 30 columns → the print layout is the grouped list, never the board".
+
+**These surfaces do not page, and that is stated rather than hidden.** Each caps its list and shows the
+group's real total from the counts query. Keyset paging goes through `/api/internal/list`, which returns rows
+for one project's context and one project's states; a cross-project page-two needs `GroupList` to carry the
+project map, which neither §7.3 nor §7.4 asks for. A person with more than fifty items in one My Work bucket
+has a problem a second page does not solve.
+
+**The e2e run caught a missing message key within the hour, and the gap that let it through is now closed.**
+Adding the `due` grouping without `workItems.groups.due` reproduced slice 10's `soon` defect exactly: absent
+from *both* catalogues, so `messages.test.ts` passed on parity while the picker threw `MISSING_MESSAGE` into a
+log next-intl swallows. `messages.test.ts` now asserts a label exists for every member of the enums a screen
+renders one option per — the pickable groupings, the views, the due buckets, the attention rows, and the due
+windows minus `soon`, which is the one member that correctly has no label.
+
+**The new e2e drag test found a defect in the drag it was written for.** `onDragOver` moves the card into the
+column it is hovering, so by the time `onDragEnd` runs, `over.id` is usually a **card in the destination**
+rather than the destination — `closestCorners` prefers the nearest sortable. Resolving that id against the
+*server* snapshot found the card still in the column it started in, concluded the drag was a no-op, and sent
+nothing: a drop that visibly worked, animated into place, and silently did not happen. The two snapshots now
+answer different questions — where it ended up is asked of the optimistic state, where it came from and what
+to roll back to is asked of the server's. Worth knowing before touching `onDragEnd` in either board.
+
+**The second e2e skip is this slice's.** The reassign drag needs both columns on screen at once and the
+`mobile-km` viewport scrolls them, so it is skipped there with the reason on the line. The keyboard path is
+not skipped anywhere — dnd-kit's `KeyboardSensor` is wired and the drag handle is focusable, which is §11's
+baseline — but it is not yet asserted in a browser.
+
+**One thing §7.4 asks for that is not built.** "Copy status summary" and "Export" are both there; the
+`[!]` note's column *virtualization* is not. Thirty columns of twenty cards scroll horizontally without it,
+and virtualizing would cost the keyboard path dnd-kit gives for free — §11's baseline requires the whole loop
+without a mouse.
+
+## The command palette, search, and the shortcut that must not fire while you type
+
+Slice 14, and §14's "`⌘K` finds anything, in both scripts". `src/lib/search.ts`, `src/lib/shortcuts.ts`,
+the `text` filter in `src/lib/work-item-query.ts` and its branch in `src/server/queries/work-items.ts`,
+`src/server/queries/search.ts`, `src/server/services/search.ts`, migrations `0025`/`0026`,
+`src/components/ui/dialog.tsx` and `command-palette.tsx`, the four files under `src/components/search/`,
+`src/app/api/internal/search/` and the `[workspaceSlug]/search/` route.
+
+**Search is a filter on the §9 query, and that is the whole structural decision.** `q` in the DSL, one
+branch in `wherePredicate`, and the results inherit the counts query, the `LATERAL` page, the keyset
+cursors, §17-17's archived default and §10's per-row re-check without any of them being written a second
+time. Written as its own query it would have needed all five again, and it would have been the first place
+"what is overdue" got two answers. The payoff shows in two places that cost nothing extra: the FilterBar now
+has a search box on every list, and `/search?q=` is a URL you can paste in chat exactly as §5 promises of
+every other view.
+
+**It added no new anchor, and that is the part worth remembering.** A text predicate looks like it bounds a
+scan and does not — below three characters no trigram index can serve a `LIKE '%ab%'`, and a one-letter
+Latin prefix matches most of a company. §16's invariant is untouched because slice 13 had already built the
+anchor this needs: `resolveWorkspaceScope`/`listProjects` enumerates the visible projects *before* the query
+is built, and an enumerated project set is the `project` anchor. The feature that most looked like it would
+have to weaken §9's rule is the one that leaned hardest on it.
+
+**One generated column, two indexes** (`0025`/`0026`). `work_item.search_text` is
+`btrim(lower(translate(title || ' ' || description, <zero-width>, '')))`, indexed both by
+`gin (to_tsvector('simple', search_text))` for the Latin route and `gin (search_text gin_trgm_ops)` for the
+Khmer one. **One source for both routes is the §13 requirement, not an optimisation**: if each route read a
+different column the two languages would be searching different text, and the first bug report would be a
+Khmer description nobody could find. Generated rather than trigger-maintained — unlike `assignee_ids` — for
+the reason `root_id` is in the database at all: no seed script, importer or Phase 2 MCP tool can write a row
+that is unsearchable. `lower()` in the column rather than `ILIKE` in the query, because `gin_trgm_ops`
+cannot serve a case-insensitive operator and folding 50,000 descriptions per keystroke is the §16 failure
+this slice exists to avoid. `btrim` because `concat_ws` — the obvious way to join two possibly-null columns
+— is STABLE and a generated column will not take it.
+
+**`simple`, not `english`.** A stemmer would drop "no" and "off" as stopwords, and "No build off master" is
+exactly the title a tracker holds. What replaces stemming is the `:*` `toTsQuery` appends to the last term,
+which is what makes a palette match before the word is finished — `plainto_tsquery` cannot express a prefix,
+which is why the tsquery is built in TypeScript from terms reduced to letters and digits.
+
+**The floor is the same in both scripts, and it costs something.** `MIN_QUERY_LENGTH` is two graphemes for
+Latin and Khmer alike, so a two-character Khmer query is a scan of the visible projects' items rather than an
+index lookup — bounded by RLS, the project set and a `LIMIT`. Raising it to three for the trigram route only
+would make a Khmer speaker type more before anything happened than an English speaker does, which is
+precisely §13's "Khmer is never the degraded path". The scan is the price and it is paid deliberately.
+
+**Any Khmer in a query chooses the trigram route.** Mixed script is the common case here, not the exotic
+one — a Khmer title with a client's Latin name in it — and a substring is a substring in any script, where
+full text would reduce the Khmer half to one lexeme nobody will type again. The more general matcher wins
+wherever there is doubt; full text is the *optimisation* taken when a query is purely Latin.
+
+**Ordering is recency, not `ts_rank`.** `ts_rank` normalises by document length, so a one-word title scores
+below a long description that mentions the word twice — backwards for a tracker, where what you want is
+usually what somebody touched this week. It also cannot rank the trigram route at all, so ranking by it would
+give the two languages different orderings of the same corpus. One rule, correct in both scripts.
+
+**`ENG-142` is a different question, not a ranking hint.** §7.9: a direct lookup "always resolves regardless
+of either" — archived or filtered — "that is the entire reason identifiers are never reused", so
+`findItemByReference` applies neither the archived filter nor the toggle. It does apply `deleted_at is null`
+and the caller re-asks §10 about the project, which matters more here than anywhere else in the slice because
+the lookup is reachable by guessing a key and a number. Two parsing rules earn their comments: a key may
+contain digits after the first, so **without a separator the key half is letters only** (`ENG2142` is
+genuinely ambiguous, and the joined form resolves it one way, deterministically); and the parse is anchored
+end to end, so a text query that merely contains a number never teleports somebody away from results they
+were reading.
+
+**The first modal in the product, built on the native `<dialog>`.** §8's stack table names Radix for
+"accessible behaviour we don't rebuild" and no Radix package is installed; `showModal()` *is* the platform's
+focus trap, plus the top layer, the inert background, `aria-modal`, Escape, and focus restored to whatever
+had it before. This is the same call `sigv4.ts` makes against `@aws-sdk` and the burndown makes against a
+charting library, and a stronger one — the alternative here is not our own code but the browser's. Nine
+slices got by without a dialog at all, which is the outcome §12 wanted. §12's "Escape closes **unless there
+are unsaved changes**" is the one part not implemented: no caller has unsaved changes, and a parameter
+nothing passes is a parameter nothing tests.
+
+**The palette is two components on purpose.** `ui/command-palette.tsx` knows nothing about work items,
+tenancy or the router — it takes sections and reports a choice, and owns the keyboard contract (arrows across
+section boundaries, Home/End to the list's ends rather than the text's, wrapping, scroll-into-view, and the
+combobox ARIA pattern on the *input* so focus never leaves the field, exactly as slice 8's mention picker
+does it). `search/command-bar.tsx` decides what is in it. Two things there are worth knowing before touching
+either: **the active option is held by id, not by index** — an index has to be reset whenever the list
+changes, which is an effect and a cascading render, where an id simply stops resolving and falls back to the
+first row; and **every fetch aborts the one before it**, without which a slow answer to "lo" lands after a
+fast answer to "login" and the results appear to go backwards as you type.
+
+**Actions are matched in the browser, results on the server.** An action's label exists only in the message
+catalogues, so only the client knows what "switch language" is called in Khmer — and nine entries filtered
+locally are the fastest answer the palette can give. The company's data is matched where the company's data
+is.
+
+**§7.9's one contextual action needed a store, not a context.** "Assign to me" only means anything when an
+item is on screen, and the palette lives in the workspace *layout* while the item lives on a page inside it —
+React context flows down, so the page cannot provide to the shell that renders it. `current-item.tsx` is a
+module-level value read through `useSyncExternalStore`: the item page publishes on mount and retracts on
+unmount, and the cleanup clears only if *this* item is still current, because two item pages overlap for one
+commit during a client navigation. The action **adds** rather than replaces, since §4 makes assignment
+multiple and a shortcut that quietly did something different would be worse than no shortcut.
+
+**Shortcut matching is a pure module because the DOM half is untestable.** `src/lib/shortcuts.ts` is a
+function over a sequence of strings: `mod` folds Command and Control into one binding row, single characters
+are lower-cased so caps lock cannot break a chord, and **Alt is namespaced away from every binding** because
+AltGr produces characters on a Khmer layout. Three outcomes rather than a boolean — match, *pending*, none —
+because "wait" is a real answer and treating it as "no" makes a chord fire only when typed twice. A dead-end
+key is **retried on its own**, so `g` then `⌘K` opens the palette instead of being swallowed. A 1.2s chord
+timeout, because a chord with no timeout makes every later keystroke unpredictable, which is what teaches
+people to stop using shortcuts. `shortcuts.test.ts` also asserts that no binding is a prefix of another — the
+shorter one would sit pending forever.
+
+**`isTypingTarget` is the single most important line in the shortcut path.** `/` inside a comment composer
+has to be a slash and `g` inside a title has to be a g; §7.7 is emphatic that typed text is never lost, and
+this is the cheapest way for a product to lose some. The e2e run proved it accidentally and then on purpose:
+`page.locator('body').press('?')` did nothing, because `body.focus()` is a no-op while a real control holds
+focus, so the event still arrived with the input as its target and the guard correctly swallowed it. The test
+now blurs first — which is what a person does by clicking away — and the guard is asserted separately.
+
+**The `?` sheet is generated from `BINDINGS`.** A hand-kept table beside them is a second source of truth
+that goes stale silently: nothing fails, the help is just wrong. Key caps are not translated — `⌘` and `Ctrl`
+are things on a keyboard, not words — and `messages.test.ts` now requires a label for every member of
+`SHORTCUTS`, `PALETTE_ACTIONS` and `SEARCH_SECTIONS`, which is the rule slice 13 wrote down after the `due`
+grouping shipped with no string.
+
+**`api/internal/search` is the *list fetch* exception, not a sixth.** §8 reserves five, and this is the same
+concern `api/internal/list` is — reading a list — asked about four small ones instead of one big one. A
+`GET`, so the browser cancels it for free on the next keystroke.
+
+**No §10 row was invented — the ninth time that decision has gone the same way**, after labels, attachments,
+notifications, custom fields, cycles, saved views and availability. Every palette action either navigates or
+calls a service that already asks §10; search returns rows the list query already filters, from projects
+`listProjects` already vetted.
+
+**One new semantic alias, and no new token family**: `--overlay`, the scrim behind a modal, derived from the
+neutral ramp through `color-mix` so it stays a token reference. It is the only value in the product that is
+translucent by design — `bg-surface` at 100% hides the page, and hiding the page is what a sheet does, not a
+dialog.
+
+**`listProjects` was split into `listProjectsIn(tx, …)`** so the palette can resolve its scope inside the
+transaction it is already in. The public function is now a one-line wrapper, so there is still exactly one
+implementation of §10's visibility — the trap slice 8 hit with `getCommentThread`, slice 9 with the unread
+count, slice 10 with the custom fields and slice 13 with §7.4's six lists, hit here on a keystroke rather
+than on a navigation.
+
+**Two things §7.9 asks for that are not built, both named rather than hidden.** The results screen **does not
+page** — it caps each section and shows the real total, for the reason slice 13 gave for My Work: keyset
+paging goes through `/api/internal/list`, which returns rows for one project's context and one project's
+states, and a cross-project page two needs a project map neither §7.3 nor §7.9 asks for. And §7.9's `[E]` "no
+results + a **create** option" offers the archived half of the corpus instead of a create form, because a
+work item needs a project and §4's full create form is still the **slice-5 gap** recorded above.
+
+## Settings, view-as, and the calendar that answers §18-10
+
+Slice 15, and §14's "§6 complete; an owner can see the product as any member sees it". `src/lib/branding.ts`,
+`src/lib/holidays.ts`, `src/server/auth/view-as.ts`, the four services
+`workspace-settings.ts`, `workspace-logo.ts`, `holidays.ts` and `view-as.ts`, migrations `0027`/`0028`, the
+components under `src/components/settings/`, `offboard-dialog.tsx` and `view-as-button.tsx` under
+`src/components/members/`, and the routes under `[workspaceSlug]/settings/`.
+
+**The header links are gone and Settings is one destination with nine sections.** Four screens reached from
+four links in the workspace header worked while there were four and stops working at nine. The nav's
+`visible` flag is a *nav* decision and never the access control — every page re-asks §10 for itself, because
+a hidden link is not a permission. **Two of the nine are the member's own** — notification preferences and
+availability — and they are deliberately ungated: a preference page an Admin has to unlock is a preference
+page nobody finds.
+
+**§6's governing rule shapes the whole slice**: "a company that never opens Settings must be completely
+fine." So Settings is a destination and never a step — nothing in onboarding routes through it, and every
+page under it edits a value that already has a working default. That is also why **the accent is nullable
+rather than defaulted to `navy`**: a company that never opened the screen has not *chosen* Navy, it has
+simply not chosen, and storing those as the same fact would make the default unrecoverable.
+
+**The company form is one save, not six.** Six actions would be six audit rows for one visit, and a log
+reading as six changes to one company on one afternoon is a log somebody has to reconstruct.
+`workspace.settings_changed` therefore carries all four values **and** a `changed` list — the list
+distinguishes "they changed the timezone" from "they saved the form", and the values answer the question
+actually asked a year later, which is "what was it set to on the day the digests stopped".
+
+**An accent is a token name, never a hex — the third time after `STATE_COLORS` and `LABEL_COLORS`.** A hex
+written into a row in 2026 cannot resolve differently in dark mode, and it would be the one colour in the
+product that stayed a light-mode colour on a dark screen. What the name resolves to is `[data-accent]` in
+`globals.css`, which overrides the five `--accent-*` aliases in both themes; components are untouched
+because they already say `bg-accent`. The attribute goes on a **wrapper inside the workspace layout, not on
+`<html>`** — the root layout does not know which workspace is rendering — and custom properties inherit, so
+the portalled Toast region and the native `<dialog>` in the top layer both pick it up. **Crimson is
+deliberately not offered**: `--danger` is Crimson, and a company choosing it would have a primary button the
+same colour as every delete button in the product. That is a usability defect a settings screen would be
+handing them, not a preference somebody may express.
+
+**No new token family, and one new component rule.** The accent radios hide a real `<input type="radio">`
+under `sr-only` so the swatch can show the actual token resolving on the actual ground. That costs the one
+thing `globals.css` gives every other control for free: `:focus-visible` draws an outline on an element
+clipped to 1px, so the ring is drawn correctly and clipped away with it. **The label draws the ring instead**
+(`has-[:focus-visible]:`), matched to the global rule's own width and offset — this is the only place in the
+product where a component states its own focus ring, and the reason is that the input is invisible rather
+than that the ring is special. The logo's file input is `sr-only` for a different reason — a Button opens the
+picker — so it is `tabIndex={-1}`: left tabbable it would be an unlabelled stop with nothing on screen.
+
+**The logo reuses slice 8's storage port and none of its schema.** Same two drivers, same signed PUT, same
+rule that no byte passes through the app server. An `attachment` row belongs to a work item and carries
+§10's comment permissions; a logo is a property of the company under `workspace.settings`, and there is
+exactly one. Making it an attachment with a null `work_item_id` would have loosened a NOT NULL on the
+busiest table in the schema to save one column on the quietest. There is **no `pending` row**, because the
+row it writes is a column on a workspace that already exists — an abandoned logo upload leaves bytes nothing
+references and no row at all, which is a smaller mess than the one slice 9 was asked to sweep. A fresh uuid
+per upload, so replacing a logo cannot be served stale by anything that saw the old one. 512 KiB against the
+attachment cap's 25 MiB, and three types against nine, because a logo renders at 32px in a header on every
+screen in a market where data costs money (§2.5).
+
+**§6-7 names two more things and neither is built, named here rather than hidden.** The **login page** is
+pre-tenancy — it renders before any workspace is known, so there is nothing to brand it *with* — and the
+**email header** needs the parent Unify mark, which is not in the repo (see "the logo is the exception"
+below). Both are recorded on the branding page itself.
+
+**§18-10 is answered, and the answer includes a refusal.** Cambodian public holidays are set by sub-decree
+each year and several are lunar-dated, so: the **fixed-date** holidays are seeded for the current and next
+year, at signup and on demand from Settings; the **moveable** ones are named but **never dated**; and
+Settings warns when a year the product's own arithmetic will reach has no rows at all. A guessed date is
+worse than an absent one — absent, a company adds it; guessed, the product is confidently wrong about the
+fortnight of Khmer New Year and nobody looks, because the calendar appears to be filled in. Every seeded row
+is an ordinary editable row afterwards, which is §6's rule that no default is one a company cannot delete.
+A holiday is written as a **literal in the workspace's language**, not a `name_key`: there is no English
+default it would be right to fall back to, so the seed picks the name from the workspace's default language
+at the moment it writes and the company owns the string from then on. This is the awkward middle §13
+describes, resolved the other way from `workflow_state.name_key` — and correctly, because nobody renames
+Khmer New Year into existence.
+
+**Everything the product says about time reads these rows**, which is why the whole file is
+`workspace.settings` and why every change is audited. `is_working_day`, `next_working_day`,
+`business_days_between` and `stale_before` all consult them, so a day added here changes what is stale, what
+is due soon, where a burndown's ideal line flattens and which evening the digest goes out — for everybody,
+retroactively.
+
+**Migration 0028 is where §6's second half lives**: "no setting can put a workspace in an unrecoverable
+state." The bound that matters is `working_days BETWEEN 1 AND 127`. **A company that works no days at all is
+the one setting that bricks a workspace**: `next_working_day` walks forward and finds nothing,
+`business_days_between` returns zero for every range so a burndown draws nothing, and the evening digest
+never fires because there is no working evening — none of which reports an error. The product simply stops
+saying anything about time. `week_start` is bounded 0..6 and numbered **0 = Monday**, deliberately not
+JavaScript's numbering, because two day-numbering schemes in one schema is how a calendar ends up one column
+out of step with the mask that shades it. The locale check is deliberately **not** an enumeration of the
+locales the product ships: that set is a fact about `src/i18n/routing.ts`, and a CHECK listing it would have
+to be migrated in step with adding a language. All of it is in the database for the reason slice 5 put
+`root_id` in 0008 and slice 11 the period bounds in 0020: a seed script, a CSV importer or a Phase 2 MCP
+tool has to be as correct as the service.
+
+**View-as is a cookie, not a row, and it is deliberately not signed.** The cookie is a *claim*:
+`resolveActorContext` re-decides on every request whether it may mean anything, re-asking that the viewer
+still holds `workspace.view_as_member` in *that* workspace and that the target is still a live member of it.
+A forged value can therefore only ask for a session the viewer could have started by clicking, which is what
+makes signing pointless rather than merely omitted. It carries the **workspace id as well as the member id**,
+so viewing as a colleague in Acme and then switching workspaces is a no-op rather than a lookup that fails
+in some way nobody predicted. `httpOnly` all the same — a value client script can write is a value something
+other than this product will eventually write. A cookie rather than a row because it is not a credential
+with a lifetime to revoke: it holds no power the viewer does not already hold.
+
+**Both edges of a view-as session run as the viewer, never from inside it.** `uow.emit` refuses while
+`readOnly` is set — correctly, since a view-as session must produce no events of its own — so `stopViewAs`
+rebuilds the viewer's own context rather than using the one the request resolved. A log saying the *target*
+ended the session would be false. **Nesting is refused outright** rather than switching targets: "view as
+Sophea, from inside viewing as Dara" has no meaning §7.13 defines, and the bar has one Exit rather than a
+stack. `workspace.view_as_started`'s audit subject is the member being **viewed**, not the viewer — an owner
+asking "who has been looking at Sophea's screens" is asking about Sophea's row, and the viewer is already on
+every audit row as `actor_user_id` (§18-11, which built the second actor column for exactly this).
+
+**Seven new events, every one of them `audit` only.** Settings changes are not an item's history, so all
+seven project to no feed and notify nobody — the registry's third column stays `noNotify` throughout. The
+one that would look arbitrary later is `workspace.branding_changed`, which records **whether** there is a
+logo rather than the key: an append-only row outlives the object it names.
+
+**§7.12's offboarding choice is not optional, and the type says so.** §4: "Removing a member requires
+choosing what happens to their open work." `reassignTo` takes a member id or an explicit `null` — §7.12's
+other branch, "leave unassigned", which needs no flag because §7.4's unassigned row already is that surface.
+**`undefined` is not a third answer**, because a default here is a screen that silently picked for somebody.
+The reassignment runs inside the same transaction as the removal, so there is no window in which somebody
+has been offboarded and still owns forty items.
+
+**No §10 row was invented — the tenth time that decision has gone the same way**, after labels, attachments,
+notifications, custom fields, cycles, saved views, availability, search and the holiday calendar. There was
+nothing to invent: §10's `workspace.settings` row already reads "Workspace settings, branding, teams", and
+`workspace.manage_members` already says who may change a membership. The matrix named these screens before
+the screens existed.
+
+**The e2e suite found two defects in this slice and one of them was in the test.** The accent test called
+`check()` on the `sr-only` radio, which Playwright correctly refuses as obscured by the swatch — a person
+clicks the label, so the test does too. Behind it was the real one: the assertion `[data-accent="lilac"]`
+matched the **swatch inside the picker**, an element carrying that attribute whether or not anything saved.
+It passed instantly, waited for nothing, and the `reload()` after it then raced the still-in-flight server
+action — **slice 8's race exactly**, and the fix is slice 8's: wait for the control that owns the mutation to
+re-enable itself (`Button` disables while `useActionState` is pending) before navigating. The assertion is
+now scoped to the element that *contains the shell*, which is the claim being made, and a reload proves the
+value was stored rather than merely rendered. Worth knowing generally: **an assertion that can be satisfied
+by the form you just submitted is not a wait**, and it is the shape a settings screen makes easy.
+
+## Onboarding, the five states, and the icon that is deliberately absent
+
+Slice 16, the last in §14, and the only one that added no table, no service and no query.
+`src/lib/app-icons.ts`, `src/app/[locale]/manifest.webmanifest/route.ts`,
+`src/components/ui/{skip-to-content,skeletons,offline-banner}.tsx`,
+`src/components/views/view-skeleton.tsx`,
+`src/components/onboarding/onboarding-step.tsx`, the four boundaries (`global-error.tsx`,
+`[locale]/{error,not-found}.tsx`, `[workspaceSlug]/error.tsx`), the four `loading.tsx` files, and
+`e2e/{onboarding,responsive,a11y}.spec.ts`.
+
+**§7.1's chain did not join up, and that was the whole of the onboarding work.** The plan draws seven
+steps — "Landing → Sign up → Verify email → Create company → Invite teammates → Create project → Land on
+the BOARD" — and the product delivered five of them. Skip and a successful send both went to
+`/{slug}`, which since slice 13 is My Work; a workspace with no project renders that as an empty screen
+with nothing on it to do. So the invite step now leads to project creation, whose redirect **states
+`view=board`** rather than assuming it: the DSL's default view is `list` (§9), so the bare project URL had
+been the List for four slices while `createProjectAction`'s comment said "§7.1 lands the person on the
+board". The comment was right and the code was not.
+
+**`?new=1` is not in the filter DSL, and that is the point.** §7.1's last clause is "'add your first task'
+input already focused", which the board's first column honours through `focusFirstComposer`. A filter is a
+description worth sharing (§5); where somebody's cursor went once is not. Keeping it out of the DSL means
+`toQueryString` drops it on the first filter change — exactly the lifetime a one-render gesture should have
+— and a pasted link carrying it costs a stranger one focused input.
+
+**The step marker is a query parameter, not a property of the route.** `/{slug}/projects/new` is §7.1's
+third step *and* the ordinary new-project form reached from the projects list. Somebody creating their
+fourth project in March is not on step 3 of anything. §7.1 says "no configuration step exists anywhere in
+this path" and a counter does not add one — it says the path is finite, which is what §15-1's "someone who
+has never seen it" actually needs: the failure that check catches is abandonment three screens in, not
+confusion about a field.
+
+**The 404 was the one screen in the product that was not in the reader's language.** Every `notFound()`
+already returned a real 404 (§15-2), and what it rendered was the framework's untranslated English default
+— §13's "Khmer is never the degraded path" failing at the moment somebody is already lost. The replacement
+is one sentence covering four causes (moved, deleted, never existed, another company's) on purpose: the
+workspace layout 404s a non-member so an outsider cannot learn which company slugs exist, and a message
+that distinguished "no such workspace" from "not yours" would hand back exactly what that 404 withholds.
+It offers `/workspaces`, the one route that resolves a destination for itself.
+
+**Four boundaries, and each catches something the next one cannot.** `[workspaceSlug]/error.tsx` keeps the
+shell — a failure on the cycles page should not take the header, the bell and the way back to My Work with
+it. `[locale]/error.tsx` catches the workspace layout itself. `[locale]/not-found.tsx` is the 404.
+`global-error.tsx` catches a failure in the root layout, and it is the odd one:
+
+* **It renders both languages.** next-intl's provider is in the layout, and this component only ever runs
+  when that layout did not. There is no locale to read and no catalogue to read it from, so the honest way
+  to keep §13's promise on the one screen that cannot choose is to say it in both rather than to pick
+  English and call it a default.
+* **It is the one file in `src/` with literal hex in it**, and `check-design-tokens.sh` says so. The four
+  values are the light palette's own anchors, copied rather than referenced, because a reference is the
+  failure this file exists to survive. It follows that it is always light: `.dark` is set by a script in a
+  layout that did not run.
+
+**No error screen shows `error.digest`.** §11 forbids a raw error code, and a hash of a server stack is the
+purest form of one. It goes to the console, where the person who can use it is looking.
+
+**The skeletons match the view, and one of them had to read the URL to do it.** §11 asks for "skeletons
+matching the final layout, never layout shift on arrival", and §7.1 for "`[L]` skeleton board with state
+columns already drawn". A `loading.tsx` is handed no params, so it cannot know whether the board, the List,
+the Table or the Calendar is arriving — and a placeholder shaped like the wrong one *is* the layout shift it
+was added to prevent. `ViewSkeleton` therefore reads `view` from `useSearchParams` on the client: a
+`loading.tsx` **is** a Suspense fallback, which is the boundary that hook requires, and the URL has already
+changed to the destination by the time it renders. One client component, no page refactor, right in all
+four views. The item page, the project settings page and the cycles page each carry their own boundary,
+because without one the nearest ancestor is the project's and they would draw six columns of cards where a
+title and a comment thread are coming.
+
+**Adding a real Suspense boundary broke three tests, and the lesson generalises.** `page.goto` resolves on
+`load`, which now fires with a skeleton on screen — so `locator.count()` and `locator.isVisible()`, neither
+of which auto-waits, started answering about a page that had not arrived. `settings.spec.ts` counted zero
+checkboxes, skipped its loop, and failed claiming the product had not refused an empty working week;
+`board.spec.ts`'s `columnHolding` returned -1 and reported it as two browsers disagreeing. **Anchor on
+something visible before any counting API**, and prefer waiting for the thing being asked about over
+waiting for its container — a column exists in the skeleton too.
+
+**§15-6's 390px was never actually tested, and pinning it found a real defect.** The `mobile-km` Playwright
+project used the Pixel 7 preset at 412px — the twenty-two pixels in which a header stops wrapping and a
+table stops overflowing. `responsive.spec.ts` now walks every v1 screen at 390 and asserts one thing: **the
+document does not scroll sideways.** That is the failure that makes a screen unusable rather than merely
+tight, and it is precisely the one the board, the Table and the workload avoid by scrolling inside their
+own `overflow-x` container — so they pass while still scrolling, which is the distinction being asserted.
+
+What it found is worth knowing before writing another scroller: **`overflow-x: auto` does not clip an
+absolutely-positioned descendant whose containing block is outside it.** Every checkbox in the notification
+preferences grid carries an `sr-only` label, which is `position: absolute`; on a `position: static` wrapper
+those resolve against the initial containing block at their static position — 430px into a 512px table — so
+the *document* grew to 432px while the table itself scrolled correctly. Nothing on screen showed it, because
+a 1×1 clipped label is invisible in every sense but that one. The fix is one word, `relative`, and the
+failure message in `responsive.spec.ts` names the culprit for the next one: it skips elements with a
+scrolling ancestor, and skips `fixed`/`sticky` elements, which stretch to the document's width once it is
+already too wide and so report the overflow rather than cause it.
+
+**A11y is a sweep, not a list.** `a11y.spec.ts` walks the same screens and asserts that every control has an
+accessible name, with the name computed by Playwright's `ariaSnapshot()` rather than by the test —
+re-implementing the accessible-name algorithm would only produce a second, wronger answer. It runs per
+locale, because a name is a string from a catalogue: an `aria-label` present in `en.json` and missing from
+`km.json` is invisible to `messages.test.ts`, which can only compare keys. The skip link is the other half:
+the workspace header is eleven tab stops deep, and it carries `tabIndex={-1}` on every `<main>` because a
+bare `href="#main"` moves the *scroll* and leaves focus on the link in some browsers — so the next Tab goes
+back into the header it just skipped. It states its own focus ring, which is the second place in the product
+to do so after the accent picker, and for the same reason: the element is `sr-only`, so the styles that
+un-clip it and the ring have to arrive together.
+
+**`InlineCreate`'s error id is now `useId()`.** One composer renders per group, so a board draws six, and a
+fixed `id` put the same one on every error a multi-group failure produced — `aria-describedby` resolves to
+the first match in the document, which is the wrong column's message, silently.
+
+**The install pass is complete except for the bytes, and the gap is a refusal.** One manifest **per locale**,
+served from `[locale]/manifest.webmanifest` rather than Next's root `app/manifest.ts` convention, because a
+manifest's `name` is what a person reads under the icon on their home screen and a single one would put the
+app on a Khmer phone under an English name (§15-8: "in both locales"). `start_url` and `scope` carry the
+locale too — that matters more here than anywhere in the browser, because `localePrefix: 'always'` makes the
+locale *the URL* and a standalone window has no address bar to correct it with. `id` is pinned per locale, so
+installing from `/km` after `/en` is a second app rather than an update that silently renames the first.
+`start_url` is `/{locale}/workspaces`, the one route that resolves a destination for itself.
+
+**`icons` is empty, and Chrome therefore declines to offer installation.** CLAUDE.md's rule is that UnifyOps
+uses the parent Unify mark and that nothing may be substituted; the mark is still not in the repo. A
+placeholder is worse than an absence in exactly this place — an icon ships to a home screen, sits there for
+months, and is the one asset nobody re-opens a ticket about because it *looks* done. `src/lib/app-icons.ts`
+is the whole of it: drop four files into `public/icons/`, flip `MARK_AVAILABLE`, and the manifest, the
+`apple-touch-icon` link and the favicon all pick them up. The `apple-touch-icon` is declared **conditionally**
+rather than pointed at a file that is not there, because a 404 behind it makes iOS render a screenshot of the
+page as the icon — which looks like a bug rather than like an absence.
+
+**`app-icons.test.ts` pins the one thing that drifts.** The theme colour has to be literal hex — a manifest
+is JSON served to an installer and a `theme-color` meta is read before any stylesheet, so neither can resolve
+a custom property. The test parses `globals.css` and asserts the two values are still the light and dark
+`--bg`. Retuning layer 2 without them leaves an installed app opening on the old background for a frame on
+every launch, and nothing during development shows it, because a browser tab's colour is not part of any page.
+
+**A `?` in a Playwright URL pattern is written `[?]`, never `\\?`.** Ten specs assert the post-create URL,
+which now carries a query string, and the backslash form degrades silently: written with one backslash it is
+an invalid escape that becomes a bare `?`, which regex-reads as *"the previous character is optional"* — a
+pattern that still matches enough URLs to look correct. Three pre-existing assertions in `views.spec.ts` had
+the same latent bug and are fixed with it.
+
+**The offline banner says only what the product can promise.** §11's edge row names offline, and §7.2 asks
+for more than a banner — "item held locally, marked pending, retried; never lost on refresh". That queue is
+not built. So `OfflineBanner` says "anything you change now may not be saved" rather than "your changes are
+waiting", because the second is the product lying about a mechanism it does not have, on the one screen
+somebody is already unsure whether their work was saved. It renders nothing until an effect has run — the
+server cannot know whether a browser it has never met has a connection, and rendering from `navigator.onLine`
+during SSR flashes an offline warning at everybody on the wrong half of the hydration mismatch.
+`navigator.onLine` is famously optimistic and only trustworthy in the negative, which is the only direction
+this component uses it in.
+
+**Two §4 must-haves are still not built, and neither is slice 16's.** §4's Identity row reads "Email/password
++ **Google OAuth**, verification, password reset, sessions". Google OAuth does not exist — `accounts.ts`
+anticipates it (a null password hash is "an OAuth-only account") and §17-29 records that it "slots in behind
+the same interface", but there is no provider, no button and no callback route. **Password reset** has its
+token machinery — `VerificationPurpose` carries `password_reset` and `tokens.ts` gives it the shortest
+lifetime in the set, deliberately — and no route and no screen: there is no "forgot password" link on the
+sign-in page and no `reset/[token]` page for the link to lead to. Both belong to slice 3 and are recorded
+here rather than hidden, because §14 has no slice left to carry them.
+
 ## Bilingual invariants
 
 English and Khmer ship together or not at all; Khmer is never the degraded path. Retrofitting this is
@@ -796,9 +1800,34 @@ Slice 5 added three more, on the same principle:
   than 3:1, and the label steps sit at 3.8–4.3:1 against Ivory. The avatar steps are the deep end of each
   ramp with initials drawn in `--bg`, which inverts with the theme; the worst pair is 5.78:1.
 
+Slice 14 added one alias and **no family**: `--overlay`, the scrim behind a modal. It is the only value in
+the product that is translucent by design, and it is composed with `color-mix` over the neutral ramp rather
+than written as an rgba literal, so it is still a token reference in both themes — deeper in dark, where the
+page underneath is already dark and 45% would read as a shrug.
+
+Slice 15 added **no family and no alias**, and instead did the one thing this architecture was built to make
+cheap: `[data-accent='<name>']` **overrides layer 2's five `--accent-*` aliases**, per workspace, in both
+themes. It is the first override of a semantic alias by anything other than the theme, and no component
+changed — they all already said `bg-accent`. That is the payoff for never having let a raw ramp value reach
+one. A fourth block per colour under `.dark [data-accent=…]` is required and easy to forget: an accent
+defined only on the light selector is a company whose brand colour disappears at dusk.
+
+Slice 16 added **no family, no alias and no override**, and instead produced the architecture's only two
+sanctioned copies. `src/app/global-error.tsx` and `src/lib/app-icons.ts` are the sole files in `src/`
+outside `globals.css` that hold literal hex, and in both the reason is that **there is nothing to reference
+from**: the global error boundary renders when the layout that imports `globals.css` did not, and a
+manifest is JSON served to an installer while a `theme-color` meta is read before any stylesheet. Both name
+the palette's own anchors and both carry a comment saying so; `app-icons.test.ts` parses `globals.css` and
+fails if the theme colours stop matching layer 2's `--bg`, because a copy that drifts shows up only as an
+installed app opening on last month's background for one frame. `check-design-tokens.sh` will report both —
+that is the hook working, not a violation to fix.
+
 Components use semantic utilities only; never a raw ramp value and never a literal hex. All three shadow
 tokens and both ring tokens are exposed through `@theme inline`, so `shadow-sm` resolves to the token rather
-than to Tailwind's own default — no component should need `shadow-[var(--shadow-sm)]`.
+than to Tailwind's own default — no component should need `shadow-[var(--shadow-sm)]`. Focus rings are the
+global `:focus-visible` rule and a component states its own **only** where the focused element is
+`sr-only` — the accent picker is the one such place, and it matches the global width and offset rather than
+inventing them.
 
 Values marked `BRAND` are the seven flat Unify colours. §18-1 is decided — UnifyOps inherits the Unify
 family palette and typography — so these are the brand's real values, not placeholders: treat them as fixed.

@@ -75,6 +75,7 @@ export function BoardView({
   token,
   canCreate,
   canEdit,
+  focusFirstComposer = false,
 }: {
   context: { workspaceSlug: string; projectSlug: string; locale: string };
   columns: BoardColumn[];
@@ -87,6 +88,12 @@ export function BoardView({
   token: string;
   canCreate: boolean;
   canEdit: boolean;
+  /**
+   * §7.1's last line: a project created a moment ago lands here with "add your
+   * first task" already focused. Only the first column takes it — the six
+   * default states are drawn in order and the first is where work starts.
+   */
+  focusFirstComposer?: boolean;
 }) {
   const t = useTranslations();
   const router = useRouter();
@@ -314,7 +321,7 @@ export function BoardView({
           horizontal scroll is, and it belongs to this container so the page
           body never scrolls sideways. */}
       <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6">
-        {columns.map((column) => (
+        {columns.map((column, index) => (
           <Column
             key={column.key}
             column={column}
@@ -325,6 +332,7 @@ export function BoardView({
             today={today}
             canCreate={canCreate}
             canEdit={canEdit}
+            focusComposer={focusFirstComposer && index === 0}
             isDragging={dragging !== null}
           />
         ))}
@@ -342,6 +350,7 @@ function Column({
   today,
   canCreate,
   canEdit,
+  focusComposer,
   isDragging,
 }: {
   column: BoardColumn;
@@ -352,6 +361,7 @@ function Column({
   today: string;
   canCreate: boolean;
   canEdit: boolean;
+  focusComposer: boolean;
   isDragging: boolean;
 }) {
   const t = useTranslations();
@@ -409,6 +419,7 @@ function Column({
             projectId={projectId}
             stateId={column.key}
             locale={context.locale}
+            autoFocus={focusComposer}
           />
         )}
       </div>

@@ -36,7 +36,7 @@ export default async function WorkspacesPage({
         <LocaleSwitcher />
       </header>
 
-      <main className="flex flex-1 items-start justify-center px-6 pb-16 pt-6 sm:items-center sm:pt-0">
+      <main id="main" tabIndex={-1} className="flex flex-1 items-start justify-center px-6 pb-16 pt-6 sm:items-center sm:pt-0">
         <div className="w-full max-w-sm space-y-6">
           <h1 className="font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight">
             {t('workspace.switcher')}

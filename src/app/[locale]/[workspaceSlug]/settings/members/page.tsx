@@ -6,6 +6,8 @@ import { resolveActorContext } from '@/server/auth/context';
 import { can } from '@/server/authz/policy';
 import { listMembers } from '@/server/services/members';
 import { listPendingInvitations, listTeamsForInvite } from '@/server/services/invitations';
+import { isAway } from '@/lib/availability';
+import { todayIn } from '@/lib/workspace-date';
 
 export default async function MembersPage({
   params,
@@ -24,12 +26,23 @@ export default async function MembersPage({
   const canManage = can(resolved.actor, 'workspace.manage_members');
   if (!canManage) notFound();
 
+  // §7.13, and a *different* §10 row from the one above — `view_as_member`. It
+  // resolves false inside an active session as well, because the resolved actor
+  // is then the target and every action is a mutation to a read-only actor:
+  // §7.13 has one Exit, not a stack of them.
+  const canViewAs = can(resolved.actor, 'workspace.view_as_member');
+
   const [members, invitations, teams, t] = await Promise.all([
     listMembers(resolved.context),
     listPendingInvitations(resolved.context),
     listTeamsForInvite(resolved.context),
     getTranslations(),
   ]);
+
+  // The **workspace's** today (§17-13). The badge on a row and the arithmetic on
+  // §7.4's workload must agree about who is away, and they only can if both ask
+  // the same zone.
+  const today = todayIn(resolved.workspace.timezone);
 
   return (
     <div className="mx-auto max-w-3xl space-y-10">
@@ -55,6 +68,12 @@ export default async function MembersPage({
           name: m.name,
           email: m.email,
           role: m.role,
+          unavailableUntil: m.unavailableUntil,
+          unavailableReason: m.unavailableReason,
+          // Resolved here, against the **workspace's** today (§17-13), so the
+          // badge and §7.4's capacity arithmetic answer "is this person away"
+          // the same way — one function, `isAway`, in `src/lib/availability.ts`.
+          away: isAway(m, today),
         }))}
         invitations={invitations.map((i) => ({
           id: i.id,
@@ -64,6 +83,8 @@ export default async function MembersPage({
         }))}
         currentUserId={resolved.user.id}
         canManage={canManage}
+        canViewAs={canViewAs}
+        today={today}
       />
     </div>
   );

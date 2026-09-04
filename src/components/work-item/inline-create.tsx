@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef } from 'react';
+import { useActionState, useEffect, useId, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Plus } from 'lucide-react';
 import { IDLE, type FormState } from '@/lib/form-state';
@@ -50,6 +50,11 @@ export function InlineCreate({
     createWorkItemAction,
     IDLE,
   );
+  // One composer renders per group, so a board draws six of these and a list
+  // draws one per heading. A fixed id would put the same `id` on every error a
+  // multi-group failure produced, and `aria-describedby` resolves to the first
+  // match in the document — the wrong column's message, silently.
+  const errorId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const submissions = useRef(0);
@@ -96,13 +101,13 @@ export function InlineCreate({
           aria-label={t('workItems.addPlaceholder')}
           placeholder={t('workItems.addPlaceholder')}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? 'inline-create-error' : undefined}
+          aria-describedby={error ? errorId : undefined}
           className="h-7 min-w-0 flex-1 rounded-xs border border-transparent bg-transparent px-1 text-sm text-text transition-colors duration-120 placeholder:text-text-subtle hover:border-border focus:border-border focus:bg-surface disabled:opacity-60"
         />
       </div>
 
       {error && (
-        <p id="inline-create-error" role="alert" className="ps-6 text-2xs text-danger">
+        <p id={errorId} role="alert" className="ps-6 text-2xs text-danger">
           {t(error)}
         </p>
       )}

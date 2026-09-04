@@ -120,6 +120,90 @@
       "when": 1788413321517,
       "tag": "0016_slice9_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788423057174,
+      "tag": "0017_slice10_custom_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788423085155,
+      "tag": "0018_slice10_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788426869226,
+      "tag": "0019_slice11_cycles",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788426889385,
+      "tag": "0020_slice11_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788430860870,
+      "tag": "0021_slice12_saved_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788430873409,
+      "tag": "0022_slice12_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788448018344,
+      "tag": "0023_slice13_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788448028296,
+      "tag": "0024_slice13_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788452690642,
+      "tag": "0025_slice14_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788452728695,
+      "tag": "0026_slice14_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788457469057,
+      "tag": "0027_slice15_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788457475347,
+      "tag": "0028_slice15_hardening",
+      "breakpoints": true
     }
   ]
 }

@@ -88,6 +88,38 @@ function sentence(row: ActivityRow, feed: Feed, t: Translate): string {
         : t('activity.unlabelled', { actor, label });
     }
 
+    case 'work_item.custom_field_changed': {
+      // The name is resolved now, never written into the row — a field renamed
+      // next March reads under its new name in the line that recorded this
+      // change, which is the rule `data` follows everywhere (§13).
+      const field =
+        (typeof data.fieldId === 'string' ? feed.fields[data.fieldId] : undefined) ??
+        t('activity.deletedField');
+      return t('activity.customField', { actor, field });
+    }
+
+    /*
+     * §7.12's offboarding, in the item's own history (slice 15).
+     *
+     * One event produced this line and forty others like it — the registry's
+     * projector returns a list, which is what makes an offboarding say so in
+     * every item it touched rather than silently changing forty owners. It is
+     * the one line in the feed that is about a person leaving rather than about
+     * the item, and it is here because the person picking the work up has no
+     * other way to find out why it is theirs.
+     */
+    case 'workspace_member.work_reassigned': {
+      const from =
+        (typeof data.fromMemberId === 'string' ? feed.people[data.fromMemberId] : undefined) ??
+        t('activity.formerMember');
+      const to =
+        typeof data.toMemberId === 'string' ? feed.people[data.toMemberId] : undefined;
+
+      return to
+        ? t('activity.reassigned', { actor, from, to })
+        : t('activity.reassignedToNobody', { actor, from });
+    }
+
     case 'work_item.blocked_changed':
       return data.blocked === true
         ? t('activity.blocked', {

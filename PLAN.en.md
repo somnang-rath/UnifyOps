@@ -1094,9 +1094,10 @@ step is kept, its position in the sequence is not.
 
 ## 18. Open questions
 
-**Seven resolved, five open.** Nothing blocks the build any more: #11 and #12 were the two that did, and both
-are answered below and built in slice 1. The rest never blocked it — #5 and #6 are needed by slice 8, #7 and
-#10 are decisions only you can make, and #9 is deferred to Phase 2 by its own dependency.
+**Ten resolved, two open.** Nothing blocks the build any more: #11 and #12 were the two that did, and both
+are answered below and built in slice 1. #5 and #6 were answered before slice 8 needed them, and #10 before
+slice 15 built the screen that maintains it. The two still open are **#7**, a business decision only you can
+make, and **#9**, deferred to Phase 2 by its own dependency.
 
 1. **Brand identity — RESOLVED.** UnifyOps inherits the UnifyCharge palette and typography; both products
    belong to the same company, so a separate identity would be cost without benefit. Nothing to commission —
@@ -1125,10 +1126,15 @@ are answered below and built in slice 1. The rest never blocked it — #5 and #6
    first: rate limiting, spam scoring, attachment handling. *Recommendation: per-client tokenised links
    rather than one open URL — it removes most of the abuse surface and is closer to how an agency actually
    works, since submissions arrive from clients who are already known.*
-10. **Holiday calendar maintenance — OPEN (needs an operational answer).** (§17-18) Cambodian public holidays
-   are set by sub-decree each year and several move with the lunar calendar, so the seed is not a constant we
-   ship once. *Recommendation: seed the current and next year at signup, surface a warning in Settings when
-   the calendar runs out, and never silently guess a date the workspace has not confirmed.*
+10. **Holiday calendar maintenance — RESOLVED (2026-09-04).** (§17-18) Cambodian public holidays are set by
+   sub-decree each year and several move with the lunar calendar, so the seed is not a constant we ship once.
+   The recommendation is implemented in slice 15, **including the half of it that is a refusal**: the
+   fixed-date holidays are seeded for the current and next year — at signup and on demand from Settings — the
+   moveable ones are **named but never dated**, and Settings warns when a year the product's own arithmetic
+   will reach has no rows at all. A guessed date is worse than an absent one: absent, a company adds it;
+   guessed, the product is confidently wrong about the fortnight of Khmer New Year and nobody checks, because
+   the calendar appears to be filled in. Every seeded row is an ordinary editable row afterwards, so nothing
+   here is a default a company cannot delete (§6).
 11. **Audit records from `withActor` — RESOLVED.** (§17-27) A second sink on the existing event registry, not
    a blanket "every mutation writes a row" — that duplicates the activity feed and doubles write volume on
    ordinary title edits. Activity and audit differ in scope (item vs workspace), audience (everyone vs

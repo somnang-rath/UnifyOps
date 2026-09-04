@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Columns3, List } from 'lucide-react';
+import { CalendarDays, Columns3, List, Table2 } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/lib/cn';
 import { toQueryString, VIEWS, type View, type WorkItemQuery } from '@/lib/work-item-query';
@@ -18,11 +18,21 @@ import { toQueryString, VIEWS, type View, type WorkItemQuery } from '@/lib/work-
  * The rest of the query rides along untouched, because the href is built by the
  * same `toQueryString` the filter bar writes with — so switching to the board
  * keeps the filter you were looking at, which is the entire point of §5.
+ *
+ * Slice 12 completes §14's "all four view types" and changes nothing here but
+ * the map below — which is the payoff for having put `view` inside the filter
+ * DSL in slice 6 rather than beside it. Two of the four impose something on the
+ * query the URL does not get to choose (the board fixes the grouping to state,
+ * the calendar fixes it to day and supplies a month), and both of those
+ * impositions live on the page that reads the query, not here: this control's
+ * whole job is to hand the *same* query to a different renderer.
  */
 
 const ICONS: Record<View, typeof List> = {
   list: List,
   board: Columns3,
+  table: Table2,
+  calendar: CalendarDays,
 };
 
 export function ViewSwitcher({

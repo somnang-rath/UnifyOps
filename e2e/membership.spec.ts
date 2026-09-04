@@ -68,7 +68,9 @@ test.describe('membership', () => {
     // Straight into the invite step, which is skippable and whose Skip is
     // visually equal to Send (§7.1).
     await expect(page).toHaveURL(new RegExp(`/${locale}/${company.toLowerCase()}/invite$`));
-    await expect(page.getByRole('link', { name: /skip|រំលង/i })).toBeVisible();
+    // Matched on the whole label: slice 16 put a "Skip to content" link first in
+    // every document (§11's keyboard baseline), and a bare /skip/ now finds two.
+    await expect(page.getByRole('link', { name: /skip for now|រំលងសិន/i })).toBeVisible();
 
     // --- the bulk half ------------------------------------------------------
     // Ten addresses, one malformed, one duplicate — because that is what a
@@ -141,19 +143,33 @@ test.describe('membership', () => {
 
     await signUp(inviteePage, locale, { name: 'Invited Person', email: invitee }, { invite: token });
 
-    // §7.10: "lands directly in the workspace" — not in onboarding, and not in
-    // a company of their own.
+    /**
+     * §7.10: "lands directly in the workspace, in the right teams, **on My
+     * Work**" — not in onboarding, and not in a company of their own.
+     *
+     * The heading is My Work rather than the company name from slice 13 on, and
+     * that is §7.3 being kept rather than a regression: "Open app → lands on MY
+     * WORK (never a project list)." The company is still named, in the shell's
+     * header link, which is where it belongs on every screen instead of only on
+     * this one.
+     */
     await expect(inviteePage).toHaveURL(new RegExp(`/${locale}/${slug}$`));
-    await expect(inviteePage.getByRole('heading', { level: 1 })).toContainText(company);
+    await expect(inviteePage.getByRole('banner').getByRole('link', { name: company })).toBeVisible();
+    await expect(inviteePage.getByRole('heading', { level: 1 })).toHaveText(
+      /my work|ការងាររបស់ខ្ញុំ/i,
+    );
 
-    // Both people, one workspace. This is the sentence §14 asks for.
-    //
-    // Scoped to the member list: the header also carries the signed-in person's
-    // name, and an unscoped match would be ambiguous on desktop and absent on
-    // mobile, where the header hides it.
-    const members = inviteePage.getByRole('listitem');
-    await expect(members.filter({ hasText: 'Company Owner' })).toHaveCount(1);
-    await expect(members.filter({ hasText: 'Invited Person' })).toHaveCount(1);
+    /**
+     * Both people, one workspace — the sentence §14 asks for.
+     *
+     * Asserted from the **owner's** members screen below rather than from the
+     * invitee's landing page, which since slice 13 is My Work and lists work
+     * rather than people (§7.3: "never a project list", and never a directory
+     * either). §7.4's workload would show one column per member, but this test
+     * creates no project, so its scope is legitimately empty — the invitee-side
+     * proof here is that the workspace resolved at all, which is what the two
+     * assertions above establish. RLS makes a 404 the alternative (§15).
+     */
 
     // And the owner's members screen agrees.
     await ownerPage.goto(`/${locale}/${slug}/settings/members`);

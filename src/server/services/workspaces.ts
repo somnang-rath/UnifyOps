@@ -7,6 +7,21 @@ import { withIdentity } from '@/server/db/identity';
 import { team, workspace as workspaceTable, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { deriveSlug, slugify, slugProblem, type SlugProblem } from '@/lib/slug';
+import { horizonYears } from '@/lib/holidays';
+import { todayIn } from '@/lib/workspace-date';
+import { seedHolidaysInTx } from './holidays';
+
+/**
+ * What a brand-new workspace is, before anybody opens Settings.
+ *
+ * Both mirror the column defaults in `schema/workspace.ts` and exist here
+ * because signup needs them *before* the row is readable back. Two constants
+ * that must agree with two defaults is one more coupling than ideal; the
+ * alternative is a `RETURNING` round trip on the one path §7.1 measures with a
+ * stopwatch.
+ */
+const DEFAULT_TIMEZONE = 'Asia/Phnom_Penh';
+const DEFAULT_LOCALE = 'en' as const;
 
 /**
  * Creating a company (§7.1).
@@ -128,6 +143,34 @@ export async function createWorkspace(
         slug: DEFAULT_TEAM.slug,
         name: DEFAULT_TEAM.name,
         nameKey: DEFAULT_TEAM.nameKey,
+      });
+
+      /*
+       * §18-10's "seed the current and next year at signup" (§6-1, §17-18).
+       *
+       * Here rather than on first visit to Settings, because the calendar is
+       * read by arithmetic that starts running immediately — a workspace
+       * created on 10 April with an empty calendar computes Khmer New Year as
+       * four ordinary working days, and nobody opens Settings in their first
+       * week. §6's governing rule is that a company which never opens Settings
+       * must be completely fine, and for this one table that means arriving
+       * with rows in it.
+       *
+       * Only the fixed-date holidays, and only for a timezone whose calendar we
+       * actually hold — see `src/lib/holidays.ts` for why the moveable ones are
+       * named on the screen and never dated here. A new workspace defaults to
+       * `Asia/Phnom_Penh`, so in practice this is the market §2.5 describes; a
+       * company that changes its zone later seeds from Settings.
+       *
+       * Written in the company's own language, which at signup is the product
+       * default — the holiday name is a literal, not a `name_key`, because
+       * there is no English default it would be right to fall back to (§13).
+       */
+      await seedHolidaysInTx(tx, uow, {
+        workspaceId,
+        timezone: DEFAULT_TIMEZONE,
+        locale: DEFAULT_LOCALE,
+        years: horizonYears(todayIn(DEFAULT_TIMEZONE)),
       });
 
       uow.emit({ type: 'workspace.created', workspaceId, slug, name });

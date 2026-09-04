@@ -71,9 +71,20 @@ test.describe('projects', () => {
 
     // §7.1: land on the project's work, six default states already present.
     // Slice 5 made that landing the List view — one titled group per state —
-    // where slice 4 drew a board frame. Slice 6 adds the board back as a second
-    // view over the same query.
-    await expect(page).toHaveURL(new RegExp(`/${locale}/${slug}/projects/website-redesign$`));
+    // where slice 4 drew a board frame. Slice 6 added the board back as a second
+    // view over the same query, and **slice 16 made the landing the board**,
+    // which is what §7.1 said all along while the redirect delivered the DSL's
+    // default. The List is one navigation away and is what the rest of this
+    // test is about.
+    await expect(page).toHaveURL(
+      new RegExp(`/${locale}/${slug}/projects/website-redesign[?]view=board&new=1$`),
+    );
+
+    // §7.1's "add your first task input already focused". The board's first
+    // column owns it; nothing else on the page may take focus on arrival.
+    await expect(page.getByLabel(/add a task|បន្ថែមការងារ/i).first()).toBeFocused();
+
+    await page.goto(`/${locale}/${slug}/projects/website-redesign`);
 
     // Each group is a titled <section>, so six states are six regions.
     const groups = page.getByRole('region');

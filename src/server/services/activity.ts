@@ -4,7 +4,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { ResolvedActor } from '@/server/auth/context';
 import { can } from '@/server/authz/policy';
 import type { TenantDb } from '@/server/db/client';
-import { label, user, workItem, workflowState, workspaceMember } from '@/server/db/schema';
+import { customField, label, user, workItem, workflowState, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { fetchActivity, type ActivityRow } from '@/server/queries/activity';
 import { loadProject, projectResource } from './project-access';
@@ -48,6 +48,12 @@ export type ActivityFeed = {
   labels: Record<string, { name: string; color: string }>;
   /** Referenced workspace members, by member id. */
   people: Record<string, string>;
+  /**
+   * Referenced custom fields, by field id (§6-4). A missing id is a field that
+   * was deleted — which is a *hard* delete, like a workflow state, so the
+   * renderer says "a deleted field" rather than showing a uuid.
+   */
+  fields: Record<string, string>;
 };
 
 const idsOf = (rows: ActivityRow[], key: string): string[] => [
@@ -62,9 +68,19 @@ const idsOf = (rows: ActivityRow[], key: string): string[] => [
 async function hydrate(tx: TenantDb, rows: ActivityRow[]): Promise<Omit<ActivityFeed, 'lines' | 'truncated'>> {
   const stateIds = [...new Set([...idsOf(rows, 'from'), ...idsOf(rows, 'to')])];
   const labelIds = idsOf(rows, 'labelId');
-  const memberIds = idsOf(rows, 'memberId');
+  // `memberId` is the assignment events' key; slice 15's reassignment carries
+  // two members instead of one, because §7.12's line has to name both ends —
+  // "moved Sophea's work to Dara" says nothing useful with either half missing.
+  const memberIds = [
+    ...new Set([
+      ...idsOf(rows, 'memberId'),
+      ...idsOf(rows, 'fromMemberId'),
+      ...idsOf(rows, 'toMemberId'),
+    ]),
+  ];
+  const fieldIds = idsOf(rows, 'fieldId');
 
-  const [states, labels, people] = await Promise.all([
+  const [states, labels, people, fields] = await Promise.all([
     stateIds.length === 0
       ? []
       : tx
@@ -89,6 +105,12 @@ async function hydrate(tx: TenantDb, rows: ActivityRow[]): Promise<Omit<Activity
           .from(workspaceMember)
           .innerJoin(user, eq(user.id, workspaceMember.userId))
           .where(inArray(workspaceMember.id, memberIds)),
+    fieldIds.length === 0
+      ? []
+      : tx
+          .select({ id: customField.id, name: customField.name })
+          .from(customField)
+          .where(inArray(customField.id, fieldIds)),
   ]);
 
   return {
@@ -97,6 +119,7 @@ async function hydrate(tx: TenantDb, rows: ActivityRow[]): Promise<Omit<Activity
     ),
     labels: Object.fromEntries(labels.map((l) => [l.id, { name: l.name, color: l.color }])),
     people: Object.fromEntries(people.map((p) => [p.id, p.name])),
+    fields: Object.fromEntries(fields.map((f) => [f.id, f.name])),
   };
 }
 

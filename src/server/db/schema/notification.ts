@@ -293,9 +293,8 @@ export const notification = pgTable(
  * somebody made a choice, so the defaults can be changed for everyone who has
  * not.
  *
- * §6-6 also names workspace defaults. Those are slice 15's settings screen —
- * the column they will write is not invented here, because a default with no
- * screen to set it is a column nothing can ever have written.
+ * §6-6 also names workspace defaults. Those are `workspaceNotificationDefault`
+ * below, added in slice 15 with the screen that writes them.
  */
 export const notificationPreference = pgTable(
   'notification_preference',
@@ -320,6 +319,43 @@ export const notificationPreference = pgTable(
       foreignColumns: [workspaceMember.id, workspaceMember.workspaceId],
     }).onDelete('cascade'),
 
+    ...tenantPolicies(),
+  ],
+);
+
+/**
+ * Workspace-level notification defaults — the other half of §6-6.
+ *
+ * The same shape as `notification_preference` with the member taken off, and
+ * deliberately so: `wants()` in `src/lib/notification-kinds.ts` now resolves a
+ * channel through three layers, **the member's row, then the workspace's, then
+ * the product's**, and two tables of one shape make that one lookup written
+ * once rather than a table and a blob that have to be read differently.
+ *
+ * Absent still means "the layer below", never "off". A company that has never
+ * opened this screen has no rows here, and every member falls through to
+ * `DEFAULT_PREFERENCES` exactly as they did before slice 15 — which is what
+ * makes adding this table a change no existing workspace can notice.
+ *
+ * It is **defaults, not policy**: a member's own preference still wins, because
+ * §6-6 puts per-user preferences in v1 and the rules engine that could overrule
+ * them in Phase 2. A company that could force email on somebody has built the
+ * thing §7.8 says teaches a team to filter the product's mail.
+ */
+export const workspaceNotificationDefault = pgTable(
+  'workspace_notification_default',
+  {
+    id: primaryId(),
+    workspaceId: workspaceIdColumn().references(() => workspace.id, { onDelete: 'cascade' }),
+    kind: notificationKind('kind').notNull(),
+    channels: notificationChannel('channels')
+      .array()
+      .notNull()
+      .default(sql`'{}'::notification_channel[]`),
+    ...timestamps,
+  },
+  (t) => [
+    unique('workspace_notification_default_key').on(t.workspaceId, t.kind),
     ...tenantPolicies(),
   ],
 );

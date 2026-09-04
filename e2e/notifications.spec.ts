@@ -102,7 +102,10 @@ test.describe('notifications', () => {
     await ownerPage.goto(`/${locale}/${slug}/projects/new`);
     await ownerPage.getByLabel(/project name|ឈ្មោះគម្រោង/i).fill('Field Ops');
     await ownerPage.getByRole('button', { name: /create project|បង្កើតគម្រោង/i }).click();
-    await expect(ownerPage).toHaveURL(new RegExp(`/${locale}/${slug}/projects/field-ops$`));
+    await expect(ownerPage).toHaveURL(
+      new RegExp(`/${locale}/${slug}/projects/field-ops[?]view=board&new=1$`),
+    );
+    await ownerPage.goto(`/${locale}/${slug}/projects/field-ops`);
 
     const addTask = ownerPage.getByLabel(/add a task|បន្ថែមការងារ/i).first();
     await addTask.fill('Check the generator');

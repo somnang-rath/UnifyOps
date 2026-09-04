@@ -5,13 +5,20 @@ import {
   CHANNELS,
   DEFAULT_PREFERENCES,
   NOTIFICATION_KINDS,
+  effectiveDefaults,
   isNotificationChannel,
   isNotificationKind,
 } from '@/lib/notification-kinds';
-import type { NotificationChannel, NotificationKind } from '@/lib/notification-kinds';
+import type {
+  NotificationChannel,
+  NotificationKind,
+  PreferenceMap,
+} from '@/lib/notification-kinds';
 import type { ResolvedActor } from '@/server/auth/context';
-import { notificationPreference } from '@/server/db/schema';
+import { notificationPreference, workspaceNotificationDefault } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
+import type { TenantDb } from '@/server/db/client';
+import { assertCan } from '@/server/authz/policy';
 import {
   countUnread,
   fetchInbox,
@@ -125,8 +132,12 @@ export type PreferenceView = {
 export async function getNotificationPreferences(
   resolved: ResolvedActor,
 ): Promise<PreferenceView[]> {
-  const saved = await withActor(resolved.context, async (tx) =>
-    tx
+  // Both layers in one transaction, for the reason slice 8 folded the
+  // mentionable list into `getCommentThread` and slice 9 the unread count into
+  // `resolveActorContext`: two questions about the same screen asked down two
+  // round trips is a cost every render pays.
+  const { saved, defaults } = await withActor(resolved.context, async (tx) => ({
+    saved: await tx
       .select({
         kind: notificationPreference.kind,
         channels: notificationPreference.channels,
@@ -138,18 +149,116 @@ export async function getNotificationPreferences(
           isNull(notificationPreference.deletedAt),
         ),
       ),
-  );
+    defaults: await readWorkspaceDefaults(tx),
+  }));
 
   const byKind = new Map(saved.map((row) => [row.kind, row.channels]));
+  const fallback = effectiveDefaults(defaults);
 
   return NOTIFICATION_KINDS.map((kind) => {
     const row = byKind.get(kind);
     return {
       kind,
       available: CHANNELS[kind],
-      enabled: row ?? DEFAULT_PREFERENCES[kind],
+      // §6-6's three layers: this person's row, then the company's, then the
+      // product's. `effectiveDefaults` folds the last two, so the screen shows
+      // what a member with no row of their own actually gets — which is what
+      // makes "default" an honest word on it.
+      enabled: row ?? fallback[kind],
       customised: row !== undefined,
     };
+  });
+}
+
+/* ------------------------------------------------------------------------- */
+/* §6-6's other half: the company's defaults (slice 15)                      */
+/* ------------------------------------------------------------------------- */
+
+async function readWorkspaceDefaults(tx: TenantDb): Promise<PreferenceMap> {
+  const rows = await tx
+    .select({
+      kind: workspaceNotificationDefault.kind,
+      channels: workspaceNotificationDefault.channels,
+    })
+    .from(workspaceNotificationDefault)
+    .where(isNull(workspaceNotificationDefault.deletedAt));
+
+  return Object.fromEntries(rows.map((row) => [row.kind, row.channels])) as PreferenceMap;
+}
+
+export type WorkspaceDefaultView = {
+  kind: NotificationKind;
+  available: readonly NotificationChannel[];
+  /** What a member with no row of their own gets — the company's, or the product's. */
+  enabled: readonly NotificationChannel[];
+  /** True when the company has overridden the product's default for this kind. */
+  customised: boolean;
+};
+
+/**
+ * The company's notification defaults (§6-6), for the settings screen.
+ *
+ * Deliberately the same shape as `PreferenceView`, so `PreferencesGrid` renders
+ * both screens: they are the same grid asked about different rows, and two
+ * components would be two places to get the digest's email-only rule wrong.
+ */
+export async function getWorkspaceNotificationDefaults(
+  resolved: ResolvedActor,
+): Promise<WorkspaceDefaultView[]> {
+  const defaults = await withActor(resolved.context, readWorkspaceDefaults);
+
+  return NOTIFICATION_KINDS.map((kind) => ({
+    kind,
+    available: CHANNELS[kind],
+    enabled: defaults[kind] ?? DEFAULT_PREFERENCES[kind],
+    customised: defaults[kind] !== undefined,
+  }));
+}
+
+/**
+ * Set one kind's company default.
+ *
+ * `workspace.settings`, unlike its per-member twin, which asks nothing: this
+ * one changes what everybody who has never opened the screen receives, and §10's
+ * row already covers it. It is also why this emits an event where
+ * `setNotificationPreference` emits none — a company-wide delivery change is an
+ * administrative act somebody may later have to explain (§18-11).
+ */
+export async function setWorkspaceNotificationDefault(
+  resolved: ResolvedActor,
+  input: { kind: string; channels: readonly string[] },
+): Promise<Ok | Failed> {
+  assertCan(resolved.actor, 'workspace.settings');
+
+  if (!isNotificationKind(input.kind)) return { ok: false, problem: 'unknown_kind' };
+  const kind = input.kind;
+
+  const channels = [
+    ...new Set(
+      input.channels.filter(
+        (channel): channel is NotificationChannel =>
+          isNotificationChannel(channel) && CHANNELS[kind].includes(channel),
+      ),
+    ),
+  ];
+
+  return withActor(resolved.context, async (tx, uow) => {
+    await tx
+      .insert(workspaceNotificationDefault)
+      .values({ workspaceId: resolved.workspace.id, kind, channels })
+      .onConflictDoUpdate({
+        target: [workspaceNotificationDefault.workspaceId, workspaceNotificationDefault.kind],
+        set: { channels, updatedAt: new Date(), deletedAt: null },
+      });
+
+    uow.emit({
+      type: 'workspace.notification_defaults_changed',
+      workspaceId: resolved.workspace.id,
+      kind,
+      channels,
+    });
+
+    return { ok: true } as const;
   });
 }
 

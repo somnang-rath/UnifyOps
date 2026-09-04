@@ -3,12 +3,14 @@
 import { useActionState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, EmptyState } from '@/components/ui/feedback';
+import { AvailabilityForm } from './availability-form';
+import { OffboardDialog, type ReassignCandidate } from './offboard-dialog';
+import { ViewAsButton } from './view-as-button';
 import { Button } from '@/components/ui/button';
 import { WORKSPACE_ROLES, type WorkspaceRole } from '@/server/authz/roles';
 import { ROW_IDLE, type RowActionState } from '@/lib/form-state';
 import {
   changeRoleAction,
-  removeMemberAction,
   resendInvitationAction,
   revokeInvitationAction,
 } from '@/app/[locale]/[workspaceSlug]/actions';
@@ -30,6 +32,11 @@ export type MemberRow = {
   name: string;
   email: string;
   role: WorkspaceRole;
+  /** §4's availability flag (§17-25). Null when they are here. */
+  unavailableUntil: string | null;
+  unavailableReason: string | null;
+  /** Resolved on the server against the **workspace's** today (§17-13). */
+  away: boolean;
 };
 
 export type InvitationRow = {
@@ -48,12 +55,26 @@ export function MembersTable({
   invitations,
   currentUserId,
   canManage,
+  canViewAs,
+  today,
 }: {
   workspaceSlug: string;
   members: MemberRow[];
   invitations: InvitationRow[];
   currentUserId: string;
   canManage: boolean;
+  /**
+   * §7.13, Owner and Admin only. A separate flag from `canManage` rather than
+   * the same one, because they are separate §10 rows — `workspace.view_as_member`
+   * and `workspace.manage_members` — and collapsing them here would be the
+   * screen quietly deciding they are the same permission.
+   *
+   * False while a session is already active: §7.13 has one Exit, not a stack,
+   * and `startViewAs` refuses nesting outright.
+   */
+  canViewAs: boolean;
+  /** Today in the **workspace's** zone (§17-13), for the availability control. */
+  today: string;
 }) {
   const t = useTranslations();
 
@@ -83,11 +104,22 @@ export function MembersTable({
             <tbody>
               {members.map((member) => (
                 <MemberTableRow
+                  today={today}
                   key={member.memberId}
                   workspaceSlug={workspaceSlug}
                   member={member}
                   isSelf={member.userId === currentUserId}
                   canManage={canManage}
+                  canViewAs={canViewAs}
+                  /* Everybody but the person being removed. Computed per row
+                     rather than once, because the excluded member differs per
+                     row — and a list of tens is not worth memoizing. */
+                  candidates={members
+                    .filter((other) => other.memberId !== member.memberId)
+                    .map((other) => ({
+                      memberId: other.memberId,
+                      name: other.name || other.email,
+                    }))}
                 />
               ))}
             </tbody>
@@ -142,11 +174,18 @@ function MemberTableRow({
   member,
   isSelf,
   canManage,
+  canViewAs,
+  candidates,
+  today,
 }: {
   workspaceSlug: string;
   member: MemberRow;
   isSelf: boolean;
   canManage: boolean;
+  canViewAs: boolean;
+  /** Everybody this member's open work could be reassigned to (§7.12). */
+  candidates: ReassignCandidate[];
+  today: string;
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -154,12 +193,8 @@ function MemberTableRow({
     changeRoleAction,
     ROW_IDLE,
   );
-  const [removeState, removeAction, removing] = useActionState<RowActionState, FormData>(
-    removeMemberAction,
-    ROW_IDLE,
-  );
 
-  const error = roleState.error ?? removeState.error;
+  const error = roleState.error;
 
   return (
     <>
@@ -167,6 +202,19 @@ function MemberTableRow({
         <td className={CELL}>
           <span className="font-medium">{member.name}</span>
           {isSelf && <span className="ms-1.5 text-xs text-text-subtle">{t('members.you')}</span>}
+          {/*
+            §17-25 on the list a manager reads before they read the workload: a
+            member who is away should not have to be discovered. The reason is a
+            tooltip rather than a second line, because it is optional and often
+            personal — the badge is the fact, the reason is context.
+          */}
+          {member.away && member.unavailableUntil && (
+            <span className="ms-1.5 align-middle" title={member.unavailableReason ?? undefined}>
+              <Badge tone="warning">
+                {t('availability.awayUntil', { date: member.unavailableUntil })}
+              </Badge>
+            </span>
+          )}
         </td>
         <td className={`${CELL} text-text-muted`}>{member.email}</td>
         <td className={CELL}>
@@ -198,17 +246,62 @@ function MemberTableRow({
         </td>
         {canManage && (
           <td className={`${CELL} text-end`}>
-            <form action={removeAction}>
-              <input type="hidden" name="locale" value={locale} />
-              <input type="hidden" name="workspaceSlug" value={workspaceSlug} />
-              <input type="hidden" name="memberId" value={member.memberId} />
-              <Button type="submit" size="sm" variant="ghost" loading={removing}>
-                {t('members.remove')}
-              </Button>
-            </form>
+            <div className="flex justify-end gap-1">
+              {/* §7.13. Not offered for yourself — viewing as yourself is the
+                  screen you are already on, and `startViewAs` refuses it. */}
+              {canViewAs && !isSelf && (
+                <ViewAsButton
+                  workspaceSlug={workspaceSlug}
+                  memberId={member.memberId}
+                  memberName={member.name || member.email}
+                />
+              )}
+
+              {/* §7.12's required choice. A dialog rather than a button,
+                  because "remove" on its own cannot express the answer §4
+                  insists on. */}
+              <OffboardDialog
+                workspaceSlug={workspaceSlug}
+                memberId={member.memberId}
+                memberName={member.name || member.email}
+                candidates={candidates}
+              />
+            </div>
           </td>
         )}
       </tr>
+
+      {/*
+        §4 puts the availability flag in the same row of features as the member
+        list and roles, so this is where an Admin sets somebody else's.
+        `<details>` rather than a modal or client state: a form that is only
+        occasionally wanted should not be twenty forms rendered flat, and the
+        disclosure is keyboard-operable and announced without any of our code
+        (§11).
+      */}
+      {canManage && (
+        <tr>
+          <td colSpan={4} className="px-3 pb-2">
+            <details>
+              <summary className="cursor-pointer text-xs text-text-muted transition-colors duration-120 hover:text-text">
+                {t('availability.setFor', { name: member.name || member.email })}
+              </summary>
+              <div className="pt-2">
+                <AvailabilityForm
+                  workspaceSlug={workspaceSlug}
+                  locale={locale}
+                  memberId={member.memberId}
+                  memberName={member.name || member.email}
+                  today={today}
+                  unavailableUntil={member.unavailableUntil}
+                  unavailableReason={member.unavailableReason}
+                  compact
+                />
+              </div>
+            </details>
+          </td>
+        </tr>
+      )}
 
       {error && (
         <tr>

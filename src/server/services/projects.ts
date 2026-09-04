@@ -11,6 +11,10 @@ import { project, projectMember, team, user, workspaceMember } from '@/server/db
 import { withActor, type ActorContext } from '@/server/db/tenant';
 import { deriveProjectKey, normalizeProjectKey, projectKeyProblem } from '@/lib/project-key';
 import { deriveSlug, slugify, slugProblem } from '@/lib/slug';
+import { fetchCustomFields, type CustomFieldDefinition } from '@/server/queries/custom-fields';
+import { fetchOpenCycles } from '@/server/queries/cycles';
+import { fetchSavedViews, type SavedViewRow } from '@/server/queries/saved-views';
+import { todayIn } from '@/lib/workspace-date';
 import {
   isArchived,
   loadProject,
@@ -59,6 +63,32 @@ export type ProjectSummary = {
 export type ProjectDetail = ProjectSummary & {
   description: string | null;
   states: WorkflowStateRow[];
+  /** §6-4's definitions, in display order — what the filter bar and group-by draw from. */
+  customFields: CustomFieldDefinition[];
+  /**
+   * §7.6's cycles that work can still be planned into, earliest first.
+   *
+   * Open ones only, and that is what makes this cheap enough to load on every
+   * project render: a project accumulates a cycle a fortnight, and this is
+   * always the two or three a team is actually working in. The cycles *page*
+   * loads the full history, because that is the page that shows it.
+   */
+  cycles: { id: string; name: string }[];
+  /**
+   * The acting member's own saved views for this project (§4, slice 12).
+   *
+   * Loaded here rather than by a service of its own, which is the same call
+   * slice 10 made for custom fields and slice 11 for cycles: a second
+   * `withActor` on every project render is the trap slice 8 hit with
+   * `getCommentThread` and slice 9 with the unread count. It is one index scan
+   * on `(owner_member_id, project_id)` returning a handful of rows — a person
+   * keeps a few bookmarks, not a table of them, and `MAX_VIEWS_PER_MEMBER`
+   * bounds even the pathological case.
+   *
+   * Personal by construction: the predicate carries the acting member's id, so
+   * this is never anybody else's list. §4 puts sharing in the should-haves.
+   */
+  savedViews: SavedViewRow[];
   canEditSettings: boolean;
 };
 
@@ -113,7 +143,27 @@ export async function listProjects(
   resolved: ResolvedActor,
   options: { includeArchived?: boolean } = {},
 ): Promise<ProjectSummary[]> {
-  const rows = await withActor(resolved.context, async (tx) =>
+  return withActor(resolved.context, async (tx) => listProjectsIn(tx, resolved, options));
+}
+
+/**
+ * The same list, inside a transaction the caller already opened.
+ *
+ * Split out in slice 14 for §7.9's palette, which runs on a keystroke and asks
+ * four questions at once: resolving the visible projects in its own `withActor`
+ * would have put a second round trip in front of every character typed. This is
+ * the trap slice 8 hit with `getCommentThread` and slice 13 with §7.4's six
+ * lists, and the answer is theirs — ask inside the transaction that is open.
+ *
+ * `listProjects` above is now a one-line wrapper, so there is still exactly one
+ * implementation of §10's visibility and the two cannot drift.
+ */
+export async function listProjectsIn(
+  tx: TenantDb,
+  resolved: ResolvedActor,
+  options: { includeArchived?: boolean } = {},
+): Promise<ProjectSummary[]> {
+  const rows = await (
     tx
       .select({
         id: project.id,
@@ -137,7 +187,7 @@ export async function listProjects(
           visibleTo(resolved),
         ),
       )
-      .orderBy(asc(project.name)),
+      .orderBy(asc(project.name))
   );
 
   return rows
@@ -202,12 +252,31 @@ export async function getProjectBySlug(
     if (!can(resolved.actor, 'project.view', resource)) return null;
 
     // Read inside the same transaction the project was read in, so a board
-    // cannot render one request's project against another's columns.
-    const states = await readWorkflowStates(tx, row.id);
+    // cannot render one request's project against another's columns — and, from
+    // slice 10, the same for its custom fields: the filter bar draws a control
+    // per field and the group-by list offers one entry per groupable field, so
+    // a screen holding one request's fields against another's rows would offer
+    // a filter for something that is not there.
+    const [states, customFields, cycles, savedViews] = await Promise.all([
+      readWorkflowStates(tx, row.id),
+      fetchCustomFields(tx, row.id),
+      // Slice 11, on the same argument: the filter bar draws a control per open
+      // cycle and the item panel offers one, so a screen holding one request's
+      // cycles against another's rows would offer to plan work into a sprint
+      // that has since closed.
+      fetchOpenCycles(tx, row.id, todayIn(resolved.workspace.timezone)),
+      // Slice 12, in the same transaction and for the same reason. A saved view
+      // is a query string this render may be *displaying*, so the bar has to be
+      // drawn against the same request that produced the rows.
+      fetchSavedViews(tx, { ownerMemberId: resolved.memberId, projectId: row.id }),
+    ]);
 
     return {
       ...row,
       states,
+      customFields,
+      cycles: cycles.map((cycle) => ({ id: cycle.id, name: cycle.name })),
+      savedViews,
       role: effectiveProjectRole(resolved.actor, resource),
       canEditSettings: can(resolved.actor, 'project.settings', resource),
     };
