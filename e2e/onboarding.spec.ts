@@ -240,12 +240,34 @@ test.describe('§15-8 — install', () => {
     expect(manifest.name).toBe('UnifyOps');
     expect(manifest.theme_color).toMatch(/^#[0-9a-f]{6}$/);
 
-    // The one part of §15-8 that is not built: the icon set needs the parent
-    // Unify mark, which is not in the repo, and CLAUDE.md's rule is to ask
-    // rather than substitute. `icons` is therefore empty *and valid* — the
-    // assertion is here so that the day it stops being empty, somebody has to
-    // come and change this line on purpose.
-    expect(manifest.icons).toEqual([]);
+    /**
+     * **This is the line the empty-set assertion asked somebody to come and
+     * change, and this is that change.**
+     *
+     * It read `toEqual([])` while §15-8's icons were the one part of the install
+     * pass that was not built: the set needed the parent Unify mark, which was
+     * not in the repo, and CLAUDE.md's rule was to ask rather than substitute.
+     * That question was answered on 2026-09-04 — ship the UnifyCharge primary
+     * logomark until the parent file exists — `MARK_AVAILABLE` was flipped, and
+     * `public/icons/` was filled. The assertion was not updated with it, which
+     * is exactly the drift the original comment predicted.
+     *
+     * What replaces it asserts the two properties that actually matter and that
+     * a regenerated set must keep, rather than a literal list that would have to
+     * be edited every time a size changes: the set is **non-empty**, and it
+     * carries a **maskable** entry. The second is the one Android needs — a
+     * `purpose: 'any'` icon gets cropped to a circle and loses its corners — and
+     * it is the one nobody notices is missing until an app is already installed.
+     */
+    expect(manifest.icons.length).toBeGreaterThan(0);
+    expect(manifest.icons.some((icon: { purpose?: string }) => icon.purpose === 'maskable')).toBe(
+      true,
+    );
+    for (const icon of manifest.icons as { src: string; sizes: string; type: string }[]) {
+      expect(icon.src).toMatch(/^\/icons\/.+\.png$/);
+      expect(icon.sizes).toMatch(/^\d+x\d+$/);
+      expect(icon.type).toBe('image/png');
+    }
   });
 
   test('the theme colour follows the palette in both schemes', async ({ page }, testInfo) => {

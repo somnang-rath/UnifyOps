@@ -24,6 +24,7 @@ import {
 } from './_shared';
 import { comment } from './comment';
 import { user } from './user';
+import { wikiPage } from './wiki';
 import { workItem } from './work-item';
 import { workspace, workspaceMember } from './workspace';
 
@@ -98,8 +99,25 @@ export const outboxMessage = pgTable(
       .notNull()
       .default(sql`'{}'::uuid[]`),
 
-    /** The item the notification points at, so a consumer need not parse the payload. */
+    /**
+     * What the notification points at, as a **subject** rather than as an item
+     * (§20.6).
+     *
+     * Until slice 18 this was one nullable `work_item_id`, because until slice
+     * 18 every notification was about an item. A page mention has no item, so
+     * `NotifyDraft` carries a subject union and the row stores it as two
+     * nullable columns under a CHECK that at most one is set (migration 0032).
+     *
+     * Two columns rather than a `(type, id)` pair, because a polymorphic id
+     * cannot carry a foreign key — and the composite keys below are what make a
+     * cross-workspace reference physically impossible (§9). §20.16-4 asks that
+     * "`NotifyDraft`'s subject stays a union that can gain members — a chat
+     * message (§19.3) is the next one, and it should cost an entry rather than a
+     * refactor", which is a column and a key each time rather than a rewrite.
+     */
     workItemId: uuid('work_item_id'),
+    /** The wiki page a mention was written in (§20.6). Null for an item subject. */
+    wikiPageId: uuid('wiki_page_id'),
     /** Set when the notification deep-links to a specific comment (§7.8). */
     commentId: uuid('comment_id'),
 
@@ -122,6 +140,13 @@ export const outboxMessage = pgTable(
       name: 'outbox_item_fk',
       columns: [t.workItemId, t.workspaceId],
       foreignColumns: [workItem.id, workItem.workspaceId],
+    }).onDelete('cascade'),
+
+    /** The page half of §20.6's subject union, keyed the same way. */
+    foreignKey({
+      name: 'outbox_page_fk',
+      columns: [t.wikiPageId, t.workspaceId],
+      foreignColumns: [wikiPage.id, wikiPage.workspaceId],
     }).onDelete('cascade'),
 
     /**
@@ -201,7 +226,18 @@ export const notification = pgTable(
      * `data` — the inbox groups by item and links by comment, and both are
      * query predicates.
      */
-    workItemId: uuid('work_item_id').notNull(),
+    workItemId: uuid('work_item_id'),
+    /**
+     * The page half of §20.6's subject union.
+     *
+     * `work_item_id` **lost its NOT NULL here** and gained a CHECK in migration
+     * 0032 requiring exactly one of the two — which is stricter than what it
+     * replaced, the same trade §20.9 makes on `attachment`. The inbox row and
+     * the email's deep link read the subject rather than assuming it, and
+     * `subjectOf` in `src/server/queries/notifications.ts` is the one place that
+     * branch is written.
+     */
+    wikiPageId: uuid('wiki_page_id'),
     commentId: uuid('comment_id'),
 
     /** The outbox row this came from. One per recipient, so it is not unique alone. */
@@ -247,6 +283,17 @@ export const notification = pgTable(
       name: 'notification_item_fk',
       columns: [t.workItemId, t.workspaceId],
       foreignColumns: [workItem.id, workItem.workspaceId],
+    }).onDelete('cascade'),
+
+    /**
+     * `cascade` like the item side. A page is soft-deleted (§20.3.6), so this
+     * fires only on a real removal, and an inbox line pointing at a row that is
+     * gone for good is a line whose click has nowhere to land.
+     */
+    foreignKey({
+      name: 'notification_page_fk',
+      columns: [t.wikiPageId, t.workspaceId],
+      foreignColumns: [wikiPage.id, wikiPage.workspaceId],
     }).onDelete('cascade'),
 
     /**

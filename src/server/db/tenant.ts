@@ -207,7 +207,14 @@ export class UnitOfWork {
           kind: draft.kind,
           actorUserId: this.ctx.actorUserId,
           recipientUserIds,
-          workItemId: draft.workItemId,
+          /**
+           * §20.6's subject union, flattened into the two nullable columns the
+           * outbox holds it in. Exactly one is set, and migration 0032's CHECK
+           * says so — a polymorphic id could not carry the composite foreign key
+           * that makes a cross-workspace reference impossible (§9).
+           */
+          workItemId: draft.subject.kind === 'work_item' ? draft.subject.id : null,
+          wikiPageId: draft.subject.kind === 'wiki_page' ? draft.subject.id : null,
           commentId: draft.commentId,
         },
       ];

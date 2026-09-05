@@ -10,6 +10,7 @@ import {
 import { primaryId, tenantPolicies, timestamps, workspaceIdColumn } from './_shared';
 import { comment } from './comment';
 import { project } from './project';
+import { wikiPage } from './wiki';
 import { workItem } from './work-item';
 import { workspace, workspaceMember } from './workspace';
 
@@ -39,11 +40,50 @@ export const attachment = pgTable(
     id: primaryId(),
     workspaceId: workspaceIdColumn().references(() => workspace.id, { onDelete: 'cascade' }),
 
-    /** Denormalized from the item, for the reason `comment.project_id` is:
+    /**
+     * Denormalized from the item, for the reason `comment.project_id` is:
      * every read asks §10 a question about the *project*, and a join to find
-     * out which project would sit on the path of the permission check. */
-    projectId: uuid('project_id').notNull(),
-    workItemId: uuid('work_item_id').notNull(),
+     * out which project would sit on the path of the permission check.
+     *
+     * **Nullable since slice 18**, and null exactly when this file belongs to a
+     * wiki page rather than to an item. A page's permission question is asked of
+     * its *space* (§20.5), which is the unit of access — and a page in the
+     * company space has no project to denormalize. The CHECK in 0032 pins the
+     * correspondence rather than leaving it to whoever writes the next insert.
+     */
+    projectId: uuid('project_id'),
+
+    /**
+     * The item this file hangs on, or null when it belongs to a wiki page.
+     *
+     * **Loosening this NOT NULL is the cost §20.9 weighs, and the CHECK is what
+     * pays it back.** "A page needs images, and a screenshot pasted into a page
+     * is the same operation as a screenshot pasted into a comment: the same
+     * signed ticket, the same direct PUT, the same rule that no byte passes
+     * through the app server, the same 25 MiB cap, the same allowlist refusing
+     * SVG and HTML, the same soft delete, the same download route. So it is the
+     * same table."
+     *
+     * This is deliberately the opposite of the call slice 15 made for the
+     * workspace logo, and §20.9 states the difference: a logo is "one row per
+     * workspace with a different lifecycle — no ticket queue, no sweep, no
+     * per-item permissions, no thread", and making it an attachment "would have
+     * loosened a NOT NULL on the busiest table in the schema to save one column
+     * on the quietest". Page images are "many rows with an identical lifecycle:
+     * the same noun with a different parent". The constraint that replaces the
+     * NOT NULL is stricter than the one it removes, because it also refuses a
+     * row belonging to both.
+     */
+    workItemId: uuid('work_item_id'),
+
+    /**
+     * The wiki page this file was pasted into, or null when it belongs to an
+     * item (§20.9).
+     *
+     * Exactly one of this and `work_item_id` is set — `num_nonnulls` in
+     * migration 0032, the device 0018 already uses for custom field values.
+     */
+    wikiPageId: uuid('wiki_page_id'),
 
     /**
      * The comment this file was posted with, or null when it hangs on the item
@@ -109,6 +149,25 @@ export const attachment = pgTable(
       columns: [t.projectId, t.workspaceId],
       foreignColumns: [project.id, project.workspaceId],
     }).onDelete('cascade'),
+
+    /**
+     * The page side of §20.9's shared table.
+     *
+     * `cascade` like the item side, and for the same reason: a page is only ever
+     * *soft*-deleted (§20.3.6), so this fires only if a row is removed for real,
+     * and bytes whose page no longer exists have nothing to render them. The
+     * sweeper (§20.9) is what eventually collects the objects themselves — the
+     * same deferral slice 8 made when it decided a delete must not depend on
+     * Cloudflare having a good minute.
+     */
+    foreignKey({
+      name: 'attachment_page_fk',
+      columns: [t.wikiPageId, t.workspaceId],
+      foreignColumns: [wikiPage.id, wikiPage.workspaceId],
+    }).onDelete('cascade'),
+
+    /** The page editor's file panel: this page's own images, oldest first. */
+    index('attachment_page_idx').on(t.wikiPageId, t.createdAt, t.id),
 
     /**
      * Cascade, unlike the item and project links above it are for a different

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: **§14's build sequence is complete**; closing the gaps it named, one at a time
+## Status: **§14 is complete and §20 is complete**; slices 17 and 18 are built
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -32,7 +32,22 @@ was not in the reader's language. All three had been true for several slices, an
 from inside the slice that introduced it. **Two §4 must-haves were left unbuilt and belong to slice 3** —
 Google OAuth and password reset. **Password reset was built on 2026-09-04** and has its own section below;
 **Google OAuth is the one §4 must-have still outstanding**, named at the end of the slice 16 section rather
-than hidden. Work after §14 is gap-closing, and each gap is still taken one at a time, on request.
+than hidden. Work after §14 is gap-closing and §20, and each piece is still taken one at a time, on request.
+
+**The first work that is *not* a gap is §20, the wiki and notes** — two nouns rather than one feature (a
+page is the company's record, a note is one person's thinking). **Both slices are built**: slice 17 on
+2026-09-04 and slice 18 on 2026-09-05, each with its own section below. Between them they added the document
+format, five tables, §20.5's **two new §10 rows** — the first genuinely new rows since the matrix was
+written — eight events and the subject union that widened `NotifyDraft`, a fourth search corpus, **slice 9's
+unbuilt abandoned-upload sweeper**, and §13's per-content `lang` fix applied to page bodies, comment bodies,
+item titles and descriptions together (§20.10 asked for all four in one slice "because fixing it in one place
+and not the others is how one gap becomes four").
+
+**§20 is finished, and there is no §14 slice left.** What remains is the gap list, three items long, each
+named where it lives: **Google OAuth** (§4's last unbuilt must-have, a slice-3 gap), **§4's full create
+form** (a slice-5 gap, and what note-promotion and §7.9's "no results + create" should both open once it
+exists), and **a workspace-wide recovery screen** for §4's 30-day window — which §20.3.6 assumed already
+existed and which does not.
 
 **Slice 10 is the first slice that only extended what was already there.** No new sink, no new process, no
 new §10 row — one branch in the §9 builder, six entries on the registry, three tables. That is what §6 means
@@ -131,12 +146,31 @@ colour, the skip link, the four error and not-found boundaries and the view-awar
 `src/app/[locale]/{error,not-found}.tsx`, `src/app/[locale]/[workspaceSlug]/error.tsx`, the four
 `loading.tsx` files under `[workspaceSlug]/`, `src/components/ui/{skip-to-content,skeletons}.tsx`,
 `src/components/views/view-skeleton.tsx`, `src/components/ui/offline-banner.tsx` and
-`src/components/onboarding/onboarding-step.tsx`).
+`src/components/onboarding/onboarding-step.tsx`), and now §20's first half — the document format and notes:
+the Markdown parser and its allowlist, the three token formats, the `note` table, the notes screen and the
+`⌘K` capture (`src/lib/{documents,doc-refs,notes}.ts`, `src/server/db/schema/note.ts`,
+`src/server/queries/notes.ts`, `src/server/services/notes.ts`, `src/components/ui/document-body.tsx`, the
+four files under `src/components/notes/`, and the `[workspaceSlug]/notes/` route), and now §20's second
+half — the wiki: the four tables, the two new §10 rows, the space/page/revision/link services, the
+abandoned-upload sweeper and the screens that read them (`src/lib/wiki.ts`,
+`src/server/db/schema/wiki.ts`, `src/server/queries/wiki.ts`,
+`src/server/services/{wiki,space-access}.ts`, `src/server/jobs/sweep.ts`, the eight files under
+`src/components/wiki/`, `src/components/work-item/related-pages.tsx`, and the routes under
+`[workspaceSlug]/wiki/`).
 All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-04 after slice 16 — `typecheck`, `lint`, `test` (434 unit), `build`,
-`test:e2e` (201 across three Playwright projects, 13 skips) and `test:tenancy` (271 against real
+Every gate passed on 2026-09-05 after **slice 18** — `typecheck`, `lint`, `test` (529 unit), `build`,
+`test:e2e` (218 across three Playwright projects, 13 skips) and `test:tenancy` (314 against real
 Postgres 18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a promise.
+
+**The full e2e run after slice 17 found three failures that were nothing to do with it**, and they are worth
+knowing about because the shape recurs. `onboarding.spec.ts` still asserted `manifest.icons` was **empty** —
+true when slice 16 shipped, and false a few hours later when the logomark question was answered and
+`MARK_AVAILABLE` was flipped. The assertion's own comment had asked for exactly this ("the day it stops being
+empty, somebody has to come and change this line on purpose"), and nobody had. It now asserts the two
+properties a regenerated set has to keep — non-empty, and carrying a `maskable` entry — rather than a literal
+list that would go stale the same way. **A test that pins an absence has a deadline on it**, and the deadline
+is whenever the absence is filled.
 
 The e2e count jumped by fifty because slice 16 added three specs that are **sweeps rather than flows** —
 `onboarding.spec.ts` walks §7.1 end to end, `responsive.spec.ts` asserts no sideways scroll on every screen
@@ -338,7 +372,7 @@ Planned layout (`PLAN.en.md` §8) — follow it rather than inventing one:
 ```
 src/app/[locale]/{(auth),(onboarding),[workspaceSlug]/...}   src/app/api/internal/{reorder,list,upload,reassign,search}
 src/server/{db/{schema,client.ts,tenant.ts,identity.ts},auth,authz/policy.ts,queries,services,events,jobs}
-src/components/{ui,auth,invite,members,work-item,views,search}   src/i18n   src/lib   drizzle/
+src/components/{ui,auth,invite,members,work-item,views,search,notes,wiki}   src/i18n   src/lib   drizzle/
 ```
 
 `src/lib` is for code **both sides run** — `slug.ts`, `recipients.ts`, `form-state.ts`, `cn.ts`. Anything in
@@ -348,8 +382,9 @@ carries `import 'server-only'` at the top so a mistaken client import is a build
 The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*` functions **before** `0001`
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
 grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
-4, `0007`/`0008` for slice 5, and so on to `0027`/`0028` for slice 15. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
-`0004`, `0006`, `0008`, `0010`, `0012`, `0014`, `0016`, `0018`, `0020`, `0022`, `0024`, `0026` and `0028` are hand-written and must stay that way. A hand-written migration is
+4, `0007`/`0008` for slice 5, and so on to `0027`/`0028` for slice 15 and `0029`/`0030` for
+slice 17 and `0031`/`0032` for slice 18. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
+`0004`, `0006`, `0008`, `0010`, `0012`, `0014`, `0016`, `0018`, `0020`, `0022`, `0024`, `0026`, `0028`, `0030` and `0032` are hand-written and must stay that way. A hand-written migration is
 scaffolded with `db:generate --custom` so the journal and snapshot stay consistent. **Renaming a generated
 migration means editing its `tag` in `drizzle/meta/_journal.json` too, and deleting one means deleting its
 snapshot** — drizzle-kit diffs against the highest snapshot it finds, so a stale `000N_snapshot.json` makes
@@ -1867,6 +1902,301 @@ not set this" to that env block.
 accessible name is `New password`, and a `$` matches nothing. And the pre-tenancy sweep in
 `responsive.spec.ts` used to continue from wherever its loop left the browser; adding a path to that list
 broke a block thirty lines below it with a timeout that named neither. It navigates explicitly now.
+
+## Notes, the document format, and the predicate RLS cannot enforce
+
+Slice 17, the first half of §20 and the first work in this repo that is not a §14 slice or a gap in one.
+`src/lib/documents.ts`, `doc-refs.ts` and `notes.ts`, `src/server/db/schema/note.ts`, migrations
+`0029`/`0030`, `src/server/queries/notes.ts` and `src/server/services/notes.ts`, the `notes` section in
+`search.ts` on both sides, `src/components/ui/document-body.tsx`, the four files under
+`src/components/notes/`, and the `[workspaceSlug]/notes/` route.
+
+**The whole slice hangs off one sentence in §20.1: a page is the company's record, a note is one person's
+thinking.** They look like one table with a `visibility` column, and that shape is refused — because merged,
+every query touching either would have to read *"the §10 project rule **or** `owner_member_id = me`"*, and the
+first query written that forgets the second half shows a colleague somebody's private notes. So it is two
+tables, and slice 18's wiki shares the editor and nothing else.
+
+**The consequence is the one thing about this slice that is genuinely new: RLS is not what makes a note
+private.** Every other tenant table in this product is protected by a policy — ask for another company's rows
+and Postgres returns nothing. A note has to be hidden from a *colleague in the same workspace*, so the policy
+passes and `owner_member_id` in the predicate is the only thing left. That is why
+`__tenancy__/notes.test.ts` seeds a **second member's rows in the same workspace** and asserts they are absent
+**by id**: a test that counted what came back would still pass with the predicate deleted, because the count
+would simply be larger. It is also why `queries/notes.ts` has no function that takes a note id without an
+owner — a "load this note" that trusted its caller to check afterwards is exactly the shape the one forgotten
+call site takes.
+
+**No §10 row, and there can never be one — the twelfth time that decision has gone the same way**, after
+labels, attachments, notifications, custom fields, cycles, saved views, availability, search, the holiday
+calendar, settings and password reset. The eleven before it were "the matrix already says this"; this one is
+different and stronger: there is no version of §10 in which an Admin may read a colleague's note, because the
+whole promise of the screen is that nobody can. §20.5's two genuinely new rows are the *wiki's*, and they
+arrive with slice 18 and the noun that needs them.
+
+**No events at all** — not audit, not activity, not notification (§20.6). This is `saved_view`'s call from
+slice 12 taken further and for a stronger reason: there the argument was that naming a filter is furniture,
+and here it is that a permanent, Owner-visible, append-only record of what somebody privately wrote is the
+harm itself. That extends to offboarding, which destroys a departing member's notes and emits nothing about
+it: an audit line reading "12 notes destroyed" would be that record in miniature. The number is said *before*
+the click instead, on §7.12's dialog, which is where a fact somebody may want to act on belongs.
+
+**Offboarding is the asymmetry stated out loud.** Work is reassigned and comments and activity stay
+attributed, because those are the company's record — which is why `comment` and `comment_mention` are
+`ON DELETE restrict`. Notes are destroyed, because they are not. `note_owner_fk` is therefore the one
+`cascade` in the schema where an offboarding cascade is the *right* answer, and `deleteNotesOf` runs inside
+`removeMember`'s own transaction so there is no window in which somebody has been offboarded and their notes
+are still readable through a view-as session.
+
+**"Private" is qualified on screen, and that is deliberate.** An Owner in a §7.13 view-as session reads these
+rows, because `withActor` scopes as the target member. That is what view-as is *for* and it is already
+audited — so the banner says "private to you and to anyone who can view the workspace as you" rather than
+"private". A screen that promised more than the architecture delivers would be the one lie in the product
+that matters most.
+
+### The body format, which is the expensive-to-reverse decision here
+
+§20.13 puts 17 before 18 for one reason: "getting the body format wrong is the expensive-to-reverse decision
+here, in the way slice 5's list query was", and notes are the cheap place to find that out — no permission
+model, no tree, no revision table, no concurrency rule.
+
+**Markdown, in a `text` column, parsed into an allowlisted node tree.** `src/lib/documents.ts` parses and
+emits **nodes, never markup**; `src/components/ui/document-body.tsx` turns nodes into elements. That split is
+what makes §20.7's "raw HTML is refused, not sanitised" a property of the architecture rather than of a
+filter: there is no `dangerouslySetInnerHTML` anywhere downstream and nothing for a sanitiser to stand in
+front of. A `<script>` somebody types is a `<script>` somebody reads, because a text node is the only thing
+the parser can emit for it.
+
+**No dependency**, which is the same bargain `sigv4.ts` makes against `@aws-sdk`, the burndown against a
+charting library and `dialog.tsx` against Radix — with one argument specific to this feature: a Markdown
+library's *extensions* are where the HTML passthrough lives, and the setting that disables it is one upgrade
+away from being renamed.
+
+Three rules in the parser will look arbitrary later and are not:
+
+- **A newline inside a paragraph is a hard break.** CommonMark folds it into a space and wants two trailing
+  spaces for a break; that rule was written for typeset prose, and this is a box people paste addresses and
+  checklists into. The escape is invisible in a textarea and stripped by half the editors that would touch
+  the text.
+- **A delimiter that finds its partner is emphasis, and one that does not is the character it was.** No
+  delimiter stack, no left-flanking rules — one sentence instead, so `2 * 3 * 4` stays arithmetic and
+  `snake_case_name` stays a name. Everything not in the grammar renders as the text it was, which is the one
+  failure mode a person can see and correct.
+- **`safeHref` is an allowlist, not a blocklist** — `http`, `https`, `mailto`, and a relative URL starting
+  with a single `/`. `//evil.example` is protocol-relative and is refused by the second character; a refused
+  link renders as its own text rather than as the raw source, because putting `javascript:` on screen reads
+  as the product quoting it back approvingly.
+
+**All three token formats are defined now, including the one with nothing to resolve to.** `@[uuid]` is slice
+8's mention token parsed by the same `mentions.ts`; `#[uuid]` is slice 18's page reference; `ENG-142`
+autolinks. A page token costs a regex today and a rewrite of every stored body if it were retrofitted, which
+is the whole of why §20.13 ordered the two slices this way. It renders as an absence until slice 18 gives it
+something to name — the same fallback slice 7 chose for an activity line naming a hard-deleted state.
+
+**`ENG-142` autolinks only in its separated form**, unlike `parseItemReference`, which accepts `ENG142` from
+the palette. A person typing an identifier into a search box has said what they mean; running prose is the
+opposite case, where `A4` is a paper size and `COVID19` is a word. The dash is what the product prints and
+what anybody pastes, so requiring it costs nothing and removes the whole class of false positives.
+
+**An item reference links through `/search?q=ENG-142`, not straight to the item.** A direct link needs the
+project's *slug* and a body only carries its key, so resolving one would be a key-to-slug lookup for every
+reference on every screen that renders a body. §7.9 already built that lookup and made it unconditional, and
+it is the only version that is correct for an identifier that does not resolve: a constructed link would 404,
+where the search screen says "No item ENG-142".
+
+### The rest, briefly
+
+**A note's title is derived and never stored** (§20.4) — the first line, read *through the parser* so `#
+Standup` is called "Standup". Stored, it would be a copy of a string the body already holds, and the two
+would disagree the first time somebody edited their opening line. Only the first line is parsed, not the whole
+body: a list of fifty notes would otherwise be fifty full parses per render.
+
+**Search is the third corpus on the same recipe, not a second recipe** (§20.8). Migration 0030 is 0026's two
+indexes over a second generated `search_text` column, and `src/lib/search.ts` stays the only place the
+Latin/Khmer routing decision is made — if each corpus detected script its own way, a mixed-script query would
+find items and miss notes. The owner predicate is carried *into* the query and never applied to the rows that
+come back: a `LIMIT` before the predicate is a palette that tells somebody how many notes their colleagues
+have, and it would do it by silently returning fewer rows.
+
+**`createWorkItem` was split into `createWorkItemIn(tx, uow, …)`**, the same move slice 14 made with
+`listProjectsIn` and for the same reason. Promoting a note reads the note, creates the item and records what
+the note became, and all three are one thing that either happened or did not; a second `withActor` would hold
+two pooled connections for one click. `CreateWorkItemInput` gained `description` with that caller rather than
+ahead of it.
+
+**Promotion is a copy, never a move** (§20.1) — the note stays where it was and keeps a quiet line saying what
+came out of it. A move would be the one operation in the product that silently changes who can read
+something, performed from the one screen whose whole promise is that nobody else can. §4's **full create form
+is still the slice-5 gap**, so promotion picks a project and lands the person on the item; when that form
+exists, this is the control that should open it.
+
+**`note.work_item_id` is the one tenant column in the schema not held honest by a composite key.** §20.4 makes
+the pin `ON DELETE SET NULL` — a note whose item was deleted is still the person's note — and a composite key
+would null `project_id` and `workspace_id` along with it. What replaces §9's device is narrower but real: the
+pin is only ever written by `pinNote`, which reads the item through `withActor` first, so RLS has already
+refused an item outside the workspace before the id reaches the column.
+
+**The capture dialog mounts its composer only while it is open**, and the e2e run is what found out why. A
+native `<dialog>` that is closed is still in the document — merely `display: none` — so a permanently-mounted
+composer put a *second* note textarea on every workspace screen, behind the one the notes page renders.
+Playwright's strict mode caught it in the first run; somebody using a screen reader's form-controls list would
+have caught it the same way.
+
+**The notes list does not page**, which is slice 13's call for My Work and slice 14's for the search results,
+stated rather than hidden: keyset paging goes through `/api/internal/list`, which returns work-item rows for
+one project's context. It caps at 200 and shows the real total. Somebody with more than that finds a note by
+typing, not by scrolling.
+
+**§13's per-content `lang` gap is half closed and deliberately not more.** `DocumentBody` puts `lang="km"` on
+a body `hasKhmer` detects, which is what `:lang(km)`'s line-height keys off — but comment bodies, item titles
+and project names still inherit the page's. §20.10 asks for all four to be fixed **together**, in slice 18,
+"because fixing it in one place and not the others is how one gap becomes four", and doing the other three
+here would have been slice 18's work done early and untested against a page.
+
+**Two lint rules shaped a component and are worth knowing before writing the next one.**
+`react-hooks/set-state-in-effect` refuses a `setState` sitting under a *second* condition inside an effect, so
+`NoteComposer` clears its box and notifies its parent in two effects rather than one — the mode test is the
+outer guard of the first, not an `if` around the state update. And `react-hooks/refs` refuses writing a ref
+during render, which rules out the usual "hold the callback in a ref" trick; the callback is an ordinary
+dependency instead, and a `lastSaved` guard makes the extra runs no-ops.
+
+## The wiki, and the rule the board deliberately does not follow
+
+Slice 18, the second half of §20, and the last slice §20 asks for. `src/lib/wiki.ts`,
+`src/server/db/schema/wiki.ts`, migrations `0031`/`0032`, `src/server/queries/wiki.ts`,
+`src/server/services/wiki.ts` and `space-access.ts`, `src/server/jobs/sweep.ts`, the eight files under
+`src/components/wiki/`, `src/components/work-item/related-pages.tsx`, and the routes under
+`[workspaceSlug]/wiki/`.
+
+**A stale save is refused, never merged, and that is the whole feature.** §20.3.3 sets it against §7.5's
+drag on purpose: a stale drag "lands correctly relative to present state — this is what stops boards feeling
+haunted", because a card's position is small and recoverable and re-deriving it is what the human meant
+anyway. A document body is neither. So `saveWikiPage` updates **conditionally on `revision_no` in one
+statement** — `where id = $1 and revision_no = $base`, with `returning` as the proof it happened — and a
+zero-row result is the refusal. A `SELECT` then an `UPDATE` has a window between them that two saves both
+pass. The screen then shows the writer's own text *and* the version that landed, because §20.3.3 says
+"their words are never discarded and never merged", and a toast would discard half of that.
+
+**`baseRevision` is derived, not synchronised, and the lint rule is what produced the better version.**
+`react-hooks/set-state-in-effect` refused the obvious `useState` + `useEffect` pair — the same rule slice 17
+worked around in `NoteComposer`. Revision numbers only increase, so the highest number the component has
+heard about *is* the base: `Math.max(page.revisionNo, state.revisionNo ?? 0, state.current?.revisionNo ?? 0)`.
+No state, no effect, and nothing to keep in step.
+
+**The space is the unit of access, and `space-access.ts` is the only module that knows it.** §20.5 refuses
+per-page ACLs for §6-2's reason — "a per-object ACL is a second permission system that has to be joined into
+every list query, shown in every UI, and explained to the non-technical owner of §2.3". So `queries/wiki.ts`
+decides no permissions at all; every function takes an already-resolved space or an already-vetted set of
+space ids. That is a **different shape from `queries/notes.ts`** and deliberately: a note is bounded by
+`owner_member_id` and the predicate has to be *in* every query because nothing else can apply it; a page is
+bounded by a row the caller has already asked about.
+
+**§20.5's two new §10 rows are the first genuinely new rows since the matrix was written**, after eleven
+slices in a row that looked and found what they needed already there. Reading needed nothing either — a
+project space is `project.view`, the company space is the line §10 already draws at *See workspace-visible
+projects*. Only writing needed rows.
+
+**§20.5's table and its prose disagree about Guests, and `policy.ts` follows the prose.** The table's Guest
+column for *Write in a project space* reads "if Member+", which is `work_item.create`'s own answer and would
+make the row identical to it in all four columns — a new §10 row that changes nothing. The paragraph
+underneath names a specific harm in the present tense with the Guest seat as its whole example ("a company
+that hands a contractor a Guest seat … would be surprised to find them rewriting that project's
+documentation"). A capped Guest is also the reading consistent with §10's Guest column being "a cap, not a
+shorthand" since slice 2, and it is the conservative half of the disagreement. `policy.test.ts` asserts it
+directly, so it cannot be reversed silently. **Worth confirming against §20.5 before a pilot (§18-7)** — it
+is one line either way.
+
+**Eight events, and the two that project into an item's feed are the exception proving the rule.** §20.6:
+activity is per work item, and a page is not one — "its history is its revision list, which is a better
+surface for a document than a feed of lines". `wiki_page.linked` and `.unlinked` are the two whose subject
+genuinely *is* the item. `wiki_page.updated` is the one wiki event that is **not audited**, which is
+`work_item.moved`'s call from slice 6: "a log with a row per save is a log nobody reads when it matters".
+
+**`NotifyDraft` gained a subject union, and that is the only built code §20 said this slice would touch.**
+It carried a bare `workItemId: string` because until now every notification was about an item; a page
+mention has no item. `NotifySubject` is a union so the compiler finds every construction site — it turned
+all thirty existing entries into the `work_item` branch mechanically, which is the property the registry was
+built for. §20.16-4 asks that it "stays a union that can gain members", so §19.3's chat message costs an
+entry rather than a refactor. The **inbox query's inner join on `work_item` became a left join** in the same
+change: left as it was, every page mention would have been written, delivered and invisible.
+
+**Mentions ride the existing `mention` kind and only the ones a revision newly adds.** The general §7.8 rule
+would re-notify everybody named in a handbook page every time somebody fixed a typo in it, which is exactly
+what §7.8 says teaches a team to filter the product's mail. `saveWikiPage` diffs against the previous body,
+which the conditional update has just proved was current.
+
+**§20.9's sweeper is built, and slice 9's gap is closed.** Enumeration crosses workspaces on
+`DATABASE_URL_OPERATOR` — `SELECT`-only at the role level, so it *cannot* delete anything — and every delete
+goes through `withActor` in the uploader's own scope, which is slice 9's split exactly. **The bytes go
+before the row**: the other order leaves an object nothing references and no record it exists, which is the
+leak being swept; this order can leave a `pending` row nothing renders, which the next pass collects. A cron
+job rather than the outbox's interval, and the reason is a latency budget rather than consistency: an
+abandoned upload occupying storage for another fifty-nine minutes costs a fraction of a cent.
+
+**The `ObjectStore` port gained its one non-signature method.** `deleteObject` moves no bytes and its caller
+is the worker rather than a request, so there is no browser to hand a URL to — signing a delete for a
+background job to fetch would be an extra round trip and a short-lived destructive credential in a log.
+
+**A `#[page]` token is not a `wiki_page_link` row, and the two are different edges.** A page-to-page
+reference resolves at render, the way a mention does. `wiki_page_link` is page-to-work-item, which has an
+author and a reader on the item side. What *does* create a link is an `ENG-142` in a body: writing one links
+the page to the item it names, so the item's Pages panel fills in for free. Removing the sentence does
+**not** unlink — a link somebody made deliberately from the item's own panel should not be undone by an edit
+to a paragraph, so detaching stays an explicit act.
+
+**§13's oldest gap is closed, in four places at once.** Open since slice 8 — "a Khmer comment in an English
+workspace inherits `lang="en"` and clips its diacritics, and the same is true of item titles, descriptions
+and project names". §20.10 asked for all four together "because fixing it in one place and not the others is
+how one gap becomes four", so page bodies, comment bodies, item titles/descriptions and project names all
+now carry a content-derived `lang`. `hasKhmer` is the detector and it is the *same* one `searchRoute` uses,
+so text that searches as Khmer also renders as Khmer.
+
+**Three things §20 assumed about the code turned out not to be true**, and each is recorded where it bites:
+
+- **§20.3.6's "recovery screen that already exists for items" does not exist.** §4 promises a 30-day window
+  and no slice built a surface for it. The restore list therefore lives at the foot of its own space
+  (`deleted-pages.tsx`), which is where somebody looking for a page they deleted goes. A workspace-wide
+  recovery screen should absorb it rather than reimplement it.
+- **§20.4's `wiki_space_project_key` means a test wanting two project spaces needs two projects.** Obvious
+  in hindsight and not in the fixture that first tried it.
+- **A revision's `ON DELETE RESTRICT` reports `23001`, not `23503`.** The harness already recorded that
+  distinction for slice 11's cycle key: "23503 is *that row does not exist*, 23001 is *that row exists and
+  something still needs it*".
+
+**Adding a section to `SEARCH_SECTIONS` darkened the whole command palette, and the failure named the
+wrong thing.** `pages` was added to the section list, to `src/lib/search.ts`, to the service and to both
+catalogues — and **not** to `api/internal/search`'s response payload. The client reads
+`shown.pages.length`; an absent key is `undefined`; the TypeError took every section down with it, so the
+e2e failure read "cannot find the work item *Replace the intake filter*" in a spec that has nothing to do
+with the wiki. `/search` kept working the whole time, because it calls the service directly and never
+crosses that boundary — which is exactly why nothing pointed at the route handler. Two fixes, and the
+second is the general one: the route returns `pages`, **and** the palette now merges its payload over
+`EMPTY` rather than trusting it whole, so a section a bundle has never heard of costs it nothing. That is
+also the honest shape for a rolling deploy, where yesterday's client talks to today's server.
+
+**Four things the e2e spec learned, all of them scars this repo had already written down once.**
+Playwright labels are matched at their **start** and never end-anchored — §12's field shell appends a
+required marker, so `/^title$/` matches nothing (the password-reset section says so, and it still cost three
+timeouts). A test must **read an identifier off the screen rather than assume it**: `ENG-1` is the plan's
+running example and "Field Ops" derives `FO`, so an assertion looking for a link named ENG-1 passed on the
+*body text* while the link row was never created. A URL assertion has to be **anchored on the destination**,
+because `/wiki/company/new` matches `[^/]+/[^/]+$` as happily as a page does. And slice 8's race is still
+live: navigate only after the mutation has landed — here the signal is not the button re-enabling but the
+button **disappearing**, because deleting a page makes its own reader 404 in place.
+
+**Both sweeps now walk the wiki, and neither had ever walked `/notes` either.** `responsive.spec.ts` and
+`a11y.spec.ts` gained the space list, the space home, the new-page form and the notes screen — slice 17 added
+a route without adding it to either sweep, and slice 18 found that out by doing the same thing. The wiki's
+own screens are reached by clicking through from `/wiki` rather than constructed, because a space's slug is
+derived at signup. Both sweeps also gained `test.setTimeout(120_000)`: they walk twenty-six screens now, and
+at the 30s default the run began timing out on whichever navigation happened to cross the line —
+`/settings/labels` on one run, which has nothing to do with the wiki. A per-screen assertion still fails fast
+and names its own screen; what was raised is the ceiling on the walk.
+
+**`The destination stream closed early` still appears in the server log during `wiki.spec.ts`, and the specs
+pass.** It is slice 8's signature — a `page.goto` overlapping a server action's revalidation — and here it
+follows a create whose redirect the spec has already awaited. Worth knowing rather than worth chasing: if the
+wiki specs ever flake, this is the thread, and the fix is slice 8's rather than a retry count.
 
 ## Bilingual invariants
 

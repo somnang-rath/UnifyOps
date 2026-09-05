@@ -43,11 +43,32 @@ export function OffboardDialog({
   workspaceSlug,
   memberId,
   memberName,
+  noteCount,
+  pageCount,
   candidates,
 }: {
   workspaceSlug: string;
   memberId: string;
   memberName: string;
+  /**
+   * How many private notes this person has (§20.5, slice 17).
+   *
+   * Shown as a number before the click, never as a list and never as content:
+   * "their notes will be deleted is a fact somebody may want to act on first,
+   * and discovering it afterwards is discovering it too late". The count says
+   * enough to act on — ask them to promote the ones that matter — and nothing
+   * about what any of them say.
+   */
+  noteCount: number;
+  /**
+   * How many wiki pages this person has written (§20.5, slice 18).
+   *
+   * The other half of the sentence the notes count started. §20.5: "Pages are
+   * the company's record and survive, attributed, exactly as activity does.
+   * Notes are destroyed with the membership. The offboarding dialog says both in
+   * as many words before the click."
+   */
+  pageCount: number;
   /** Every other live member. Empty in a workspace of one, which is refused anyway. */
   candidates: ReassignCandidate[];
 }) {
@@ -96,6 +117,26 @@ export function OffboardDialog({
           </div>
 
           {state.error && <Alert tone="danger">{tRoot(state.error)}</Alert>}
+
+          {/*
+            §20.5's asymmetry, said out loud. Their work is reassigned by the
+            choice below and their comments and history stay attributed, because
+            those are the company's record; their notes are destroyed, because
+            those are theirs. Only shown when there are any — a warning about
+            nothing is a warning people learn to skip.
+          */}
+          {noteCount > 0 && (
+            <Alert tone="warning">{t('notesDeleted', { count: noteCount })}</Alert>
+          )}
+
+          {/*
+            The reassuring half, and it is not decoration: somebody hesitating
+            over the warning above needs to know that what this person wrote *for
+            the company* is not going anywhere. Shown only when they have written
+            pages, for the reason the warning is — a reassurance about nothing is
+            a line people learn to skip.
+          */}
+          {pageCount > 0 && <Alert>{t('pagesKept', { count: pageCount })}</Alert>}
 
           <fieldset className="space-y-2">
             <legend className="text-xs font-medium text-text-muted">{t('question')}</legend>

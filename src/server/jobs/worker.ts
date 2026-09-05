@@ -13,6 +13,7 @@ import type { DigestJob } from './digest';
 import { closePlatformDb, startBoss, stopBoss } from './client';
 import { NOTIFY_QUEUE, deliverNotification, drainOutbox } from './notify';
 import type { NotifyJob } from './notify';
+import { SWEEP_QUEUE, sweepAbandonedUploads } from './sweep';
 
 /**
  * The job worker — §8's second process type, from the same image as the web
@@ -34,6 +35,13 @@ import type { NotifyJob } from './notify';
  * **The digest tick** is a pg-boss cron schedule, because hourly is exactly
  * what cron is good at and a missed hour should not be replayed — §7.8's digest
  * belongs to an evening, and an evening that has passed is not worth sending.
+ *
+ * **The upload sweep** (§20.9, slice 18) is the fourth thing, and it is a cron
+ * schedule for the opposite reason the outbox sweep is an interval: nothing is
+ * waiting on it. An abandoned upload occupying storage for an extra fifty-nine
+ * minutes costs a fraction of a cent; a mention taking a minute to arrive is a
+ * product that feels broken. Latency budgets are what decide between these two
+ * mechanisms, not consistency.
  */
 
 /**
@@ -49,12 +57,23 @@ const SWEEP_MS = 5_000;
 /** Hourly, on the hour. Each workspace decides whether it is evening there. */
 const DIGEST_CRON = '0 * * * *';
 
+/**
+ * §20.9's sweeper, hourly and deliberately off the hour.
+ *
+ * Twenty past, so it does not contend with the digest tick for the pool at the
+ * exact moment every workspace in an evening timezone is being asked whether it
+ * is 18:00 there. Both are cheap; sharing an instant is a habit worth not
+ * forming.
+ */
+const SWEEP_CRON = '20 * * * *';
+
 export async function startWorker(): Promise<{ stop: () => Promise<void> }> {
   const boss = await startBoss();
 
   await boss.createQueue(NOTIFY_QUEUE);
   await boss.createQueue(DIGEST_WORKSPACE_QUEUE);
   await boss.createQueue(DIGEST_TICK_QUEUE);
+  await boss.createQueue(SWEEP_QUEUE);
 
   await boss.work<NotifyJob>(NOTIFY_QUEUE, async ([job]) => {
     if (job) await deliverNotification(job.data);
@@ -69,11 +88,31 @@ export async function startWorker(): Promise<{ stop: () => Promise<void> }> {
   });
 
   /**
+   * §20.9's sweeper. One handler and one cron line, exactly as §20.9 says —
+   * "the worker and the schedule both already exist".
+   *
+   * A pg-boss job rather than a bare interval, because unlike the outbox sweep
+   * this one deletes things: a failure deserves the retry, the backoff and the
+   * dead-letter queue pg-boss already provides, and a partial pass is safe to
+   * repeat because `sweepAbandonedUploads` is idempotent by construction.
+   */
+  await boss.work(SWEEP_QUEUE, async () => {
+    const result = await sweepAbandonedUploads();
+    if (result.scanned > 0) {
+      console.log(
+        `[jobs] swept ${result.deleted}/${result.scanned} abandoned uploads` +
+          (result.failed > 0 ? ` (${result.failed} failed)` : ''),
+      );
+    }
+  });
+
+  /**
    * Idempotent by name: re-scheduling on every boot is how the schedule stays
    * correct across a deploy that changes the cron expression, and how a fresh
    * database gets one at all.
    */
   await boss.schedule(DIGEST_TICK_QUEUE, DIGEST_CRON);
+  await boss.schedule(SWEEP_QUEUE, SWEEP_CRON);
 
   const sweep = setInterval(() => {
     void runSweep(boss);

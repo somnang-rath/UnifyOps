@@ -37,6 +37,9 @@ export type MemberRow = {
   unavailableReason: string | null;
   /** Resolved on the server against the **workspace's** today (§17-13). */
   away: boolean;
+  /** How many private notes they have, for §7.12's dialog (§20.5). A number, never content. */
+  noteCount: number;
+  pageCount: number;
 };
 
 export type InvitationRow = {
@@ -264,6 +267,8 @@ function MemberTableRow({
                 workspaceSlug={workspaceSlug}
                 memberId={member.memberId}
                 memberName={member.name || member.email}
+                noteCount={member.noteCount}
+                pageCount={member.pageCount}
                 candidates={candidates}
               />
             </div>

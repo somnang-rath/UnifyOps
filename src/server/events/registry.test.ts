@@ -444,6 +444,75 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     filename: 'contract.pdf',
     byUploader: false,
   },
+  'wiki_space.created': {
+    type: 'wiki_space.created',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    kind: 'company',
+    projectId: null,
+    name: 'Company',
+  },
+  'wiki_space.updated': {
+    type: 'wiki_space.updated',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    from: 'Company',
+    to: 'Handbook',
+  },
+  'wiki_page.created': {
+    type: 'wiki_page.created',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    title: 'Leave policy',
+    mentioned: ['m2'],
+  },
+  'wiki_page.updated': {
+    type: 'wiki_page.updated',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    revisionNo: 4,
+    mentioned: ['m3'],
+  },
+  'wiki_page.moved': {
+    type: 'wiki_page.moved',
+    workspaceId: 'w1',
+    pageId: 'wp1',
+    fromSpaceId: 's1',
+    toSpaceId: 's2',
+    fromParentId: null,
+    toParentId: 'wp9',
+  },
+  'wiki_page.deleted': {
+    type: 'wiki_page.deleted',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    title: 'Leave policy',
+    reparented: 2,
+  },
+  'wiki_page.restored': {
+    type: 'wiki_page.restored',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    title: 'Leave policy',
+  },
+  'wiki_page.linked': {
+    type: 'wiki_page.linked',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'i1',
+    pageId: 'wp1',
+  },
+  'wiki_page.unlinked': {
+    type: 'wiki_page.unlinked',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    workItemId: 'i1',
+    pageId: 'wp1',
+  },
   'invitation.accepted': {
     type: 'invitation.accepted',
     workspaceId: 'w1',
@@ -497,6 +566,27 @@ describe('the event registry', () => {
 
     expect(audited.sort()).toEqual(
       [
+        /*
+         * Slice 18's six, and the shape of the set is §20.6's argument.
+         *
+         * Spaces are audited because a space is the unit of access (§20.5), so
+         * which ones exist is a governance question. A page is audited when it
+         * is *created, moved, deleted or restored* — the four facts an owner
+         * needs six months later — and **not** when it is saved. `wiki_page
+         * .updated` is the deliberate omission: "a log with a row per save is a
+         * log nobody reads when it matters", which is `work_item.moved`'s call
+         * from slice 6, and the revision list is the better history anyway.
+         *
+         * `wiki_page.linked` and `.unlinked` are absent for the same reason a
+         * save is: linking is ordinary editorial work, and the link row is
+         * already the record of it.
+         */
+        'wiki_space.created',
+        'wiki_space.updated',
+        'wiki_page.created',
+        'wiki_page.moved',
+        'wiki_page.deleted',
+        'wiki_page.restored',
         'invitation.accepted',
         'project.archived',
         'project.created',
@@ -632,6 +722,21 @@ describe('the activity projectors', () => {
         'work_item.assigned',
         'work_item.labelled',
         'work_item.blocked_changed',
+        /*
+         * Slice 18's two, and they are the exception that proves the same rule
+         * the offboarding entry does.
+         *
+         * §20.6: "No wiki event projects into an item's activity feed except the
+         * two about a link, and that exception is the rule working rather than
+         * bending. Activity is per work item (§9 hangs it under `WorkItem`), and
+         * a page is not a work item — its history is its revision list, which is
+         * a better surface for a document than a feed of lines.
+         * `wiki_page.linked` is the one whose subject genuinely *is* the item:
+         * somebody attached the architecture page to this task belongs in that
+         * task's history, and it is the line that makes the wiki get read."
+         */
+        'wiki_page.linked',
+        'wiki_page.unlinked',
         // Slice 11's. A cycle's own events say nothing here — a container is
         // not an item — but an item joining or leaving one is a change to that
         // item, and its feed is where somebody asks why their work moved.
@@ -795,6 +900,19 @@ describe('the notify projectors', () => {
       [
         'attachment.added',
         'comment.created',
+        /*
+         * Slice 18's two, and both ride the **existing** `mention` kind (§20.6).
+         *
+         * "§6-6's five kinds are a closed set people reason about, and somebody
+         * who switched mentions off meant mentions, wherever their name was
+         * written. A `wiki_mention` row in the preference grid would be a toggle
+         * nobody wants and a second place to forget."
+         *
+         * They are also the first notifications in the product whose subject is
+         * not a work item, which is what `NotifySubject` exists for.
+         */
+        'wiki_page.created',
+        'wiki_page.updated',
         'work_item.assigned',
         'work_item.blocked_changed',
         'work_item.created',

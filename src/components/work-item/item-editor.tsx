@@ -9,6 +9,7 @@ import { LabelChip } from '@/components/work-item/label-chip';
 import { IDLE, ROW_IDLE, type FormState, type RowActionState } from '@/lib/form-state';
 import { PRIORITIES } from '@/lib/priorities';
 import type { RowLabel, RowPerson } from '@/lib/work-item-row';
+import { hasKhmer } from '@/lib/search';
 import {
   deleteWorkItemAction,
   setAssigneesAction,
@@ -117,6 +118,10 @@ export function ItemEditor({
 
         <TextareaField
           name="description"
+          // §20.10: a description is the second-longest run of user text in the
+          // product after a page body, and it is typed in whichever script the
+          // person thinks in.
+          lang={hasKhmer(item.description ?? '') ? 'km' : undefined}
           label={t('workItems.description')}
           rows={6}
           defaultValue={item.description ?? ''}

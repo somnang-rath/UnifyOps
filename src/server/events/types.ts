@@ -627,6 +627,133 @@ export type DomainEvent =
        */
       byUploader: boolean;
     }
+  /* ----------------------------------------------------------------------- */
+  /* The wiki (§20.6 — slice 18)                                             */
+  /* ----------------------------------------------------------------------- */
+  /**
+   * Eight events, on the same registry whose three fields have been exhaustive
+   * over this union since slice 9.
+   *
+   * **No wiki event projects into an item's activity feed except the two about
+   * a link**, and §20.6 states that as the rule working rather than bending:
+   * "Activity is per work item (§9 hangs it under `WorkItem`), and a page is not
+   * a work item — its history is its revision list, which is a better surface
+   * for a document than a feed of lines."
+   */
+  | {
+      type: 'wiki_space.created';
+      workspaceId: string;
+      spaceId: string;
+      kind: 'company' | 'project';
+      projectId: string | null;
+      name: string;
+    }
+  | {
+      type: 'wiki_space.updated';
+      workspaceId: string;
+      spaceId: string;
+      from: string;
+      to: string;
+    }
+  | {
+      /**
+       * A page was written for the first time.
+       *
+       * `mentioned` carries member ids for the reason `comment.created`'s does:
+       * §7.8's rule needs the mention list at the moment of writing, not as
+       * re-parsed from a body that may since have changed. It rides the
+       * **existing** `mention` kind rather than a sixth (§20.6) — "§6-6's five
+       * kinds are a closed set people reason about, and somebody who switched
+       * mentions off meant mentions, wherever their name was written".
+       */
+      type: 'wiki_page.created';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      title: string;
+      mentioned: readonly string[];
+    }
+  | {
+      /**
+       * A save (§20.3.3), and the one wiki event that is **not audited**.
+       *
+       * §20.6: "A log with a row per save is a log nobody reads when it matters
+       * — the call `work_item.moved` already made in slice 6. What an owner
+       * needs six months later is that a page was created, moved, deleted or
+       * restored; what changed inside it is the revision list, which is
+       * append-only, complete and attributed."
+       *
+       * `mentioned` is **only the names this revision newly added**, computed by
+       * the service against the previous body. The general rule would re-notify
+       * everybody named in a handbook page every time somebody fixed a typo in
+       * it, which is precisely the failure §7.8 says teaches a team to filter the
+       * product's mail.
+       */
+      type: 'wiki_page.updated';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      revisionNo: number;
+      mentioned: readonly string[];
+    }
+  | {
+      type: 'wiki_page.moved';
+      workspaceId: string;
+      pageId: string;
+      /** Both spaces, because a cross-space move changes who may read the page (§20.5). */
+      fromSpaceId: string;
+      toSpaceId: string;
+      fromParentId: string | null;
+      toParentId: string | null;
+    }
+  | {
+      /**
+       * Soft-deleted, with §4's 30-day window (§20.3.6).
+       *
+       * `reparented` is the number of children that were lifted to the deleted
+       * page's own parent — "deleting a container must never decide the fate of
+       * what is inside it". A log that said only "a page was deleted" would not
+       * explain why four other pages moved in the sidebar the same afternoon.
+       */
+      type: 'wiki_page.deleted';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      title: string;
+      reparented: number;
+    }
+  | {
+      type: 'wiki_page.restored';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      title: string;
+    }
+  | {
+      /**
+       * A page was attached to a work item, or detached (§20.2).
+       *
+       * **The one wiki event whose subject genuinely is an item**, which is why
+       * it is the one that projects into an item's feed (§20.6): "somebody
+       * attached the architecture page to this task belongs in that task's
+       * history, and it is the line that makes the wiki get read."
+       *
+       * Not audited, for `wiki_page.updated`'s reason: linking is an ordinary
+       * editorial act, and the link itself is the record of it.
+       */
+      type: 'wiki_page.linked';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      pageId: string;
+    }
+  | {
+      type: 'wiki_page.unlinked';
+      workspaceId: string;
+      projectId: string;
+      workItemId: string;
+      pageId: string;
+    }
   | {
       type: 'invitation.accepted';
       workspaceId: string;

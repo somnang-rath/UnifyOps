@@ -23,6 +23,7 @@ import {
   type AttachmentProblem,
 } from '@/lib/attachments';
 import { isArchived, loadProject, projectResource, type ProjectRow } from './project-access';
+import { canReadSpace, checkSpaceWrite, resolvePageSpace } from './space-access';
 
 /**
  * Attachments (§7.7, §2.4, §8 — the last third of slice 8).
@@ -241,7 +242,7 @@ async function claimPending(
 ): Promise<PendingRow[]> {
   if (input.attachmentIds.length === 0) return [];
 
-  return tx
+  const rows = await tx
     .select({
       id: attachment.id,
       projectId: attachment.projectId,
@@ -258,6 +259,20 @@ async function claimPending(
         isNull(attachment.deletedAt),
       ),
     );
+
+  /**
+   * Both columns are nullable since slice 18 (§20.9) and both are non-null on
+   * every row this query can return: the predicate pins `work_item_id` to a
+   * given item, and 0032's CHECK makes `project_id` non-null exactly when
+   * `work_item_id` is. Narrowed by filtering rather than by an assertion,
+   * because a `!` would keep compiling if the CHECK were ever relaxed, and this
+   * drops the row instead of claiming a file into a comment with no project.
+   */
+  return rows.flatMap((row) =>
+    row.projectId !== null && row.workItemId !== null
+      ? [{ ...row, projectId: row.projectId, workItemId: row.workItemId }]
+      : [],
+  );
 }
 
 /**
@@ -376,6 +391,7 @@ export async function deleteAttachment(
         id: attachment.id,
         projectId: attachment.projectId,
         workItemId: attachment.workItemId,
+        wikiPageId: attachment.wikiPageId,
         commentId: attachment.commentId,
         filename: attachment.filename,
         uploadedByMemberId: attachment.uploadedByMemberId,
@@ -387,6 +403,63 @@ export async function deleteAttachment(
     const found = rows[0];
     if (!found) return { ok: false, problem: 'not_found' } as const;
 
+    const byUploader = found.uploadedByMemberId === resolved.memberId;
+
+    /**
+     * §20.9's two parents, and this branch is the whole of what slice 18 added
+     * to deletion.
+     *
+     * A file on an item is governed by the item's project, exactly as it was. A
+     * file in a page is governed by the page's **space**, because the space is
+     * the unit of access (§20.5) — and there is no project to ask about at all
+     * when the page is in the company space.
+     */
+    if (found.wikiPageId !== null) {
+      const context = await resolvePageSpace(tx, found.wikiPageId);
+      if (!context) return { ok: false, problem: 'not_found' } as const;
+
+      /**
+       * **Writing in the space is the whole check, for your own file and for
+       * anybody else's alike** — a real difference from the item branch below,
+       * not an oversight.
+       *
+       * §10's `comment.delete_others` exists because a thread is a conversation
+       * between people, and removing somebody else's contribution to one is a
+       * distinct power. A page is not a conversation: it is a document its
+       * writers hold jointly, and an image inside it is part of the document
+       * rather than a contribution attributed to whoever pasted it. Anybody who
+       * may rewrite the paragraph may remove the screenshot in it.
+       */
+      const refusal = checkSpaceWrite(resolved.actor, context);
+      if (refusal === 'archived') return { ok: false, problem: 'archived' } as const;
+      if (refusal !== null) return { ok: false, problem: 'not_found' } as const;
+
+      await tx
+        .update(attachment)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(attachment.id, found.id));
+
+      /**
+       * **No event**, and the omission is deliberate.
+       *
+       * `attachment.removed` is item-shaped — it carries a `projectId` and a
+       * `workItemId`, and its audit row and its feed line are both about an
+       * item. A page image has neither. What records the change is the
+       * *revision*: the body that referenced the image is the body that no
+       * longer does, and §20.6 already decided that what changed inside a page
+       * is the revision list, "which is append-only, complete and attributed".
+       * An audit row here would be the row-per-save §20.6 refuses, arriving
+       * through the file panel instead of through the editor.
+       */
+      return { ok: true } as const;
+    }
+
+    if (found.projectId === null || found.workItemId === null) {
+      // Neither parent resolved. 0032's CHECK makes this unreachable; treating
+      // it as "no such file" beats trusting a row that contradicts the schema.
+      return { ok: false, problem: 'not_found' } as const;
+    }
+
     const project = await loadProject(tx, found.projectId);
     if (!project) return { ok: false, problem: 'not_found' } as const;
     if (!can(resolved.actor, 'project.view', projectResource(project))) {
@@ -394,7 +467,6 @@ export async function deleteAttachment(
     }
     if (isArchived(project)) return { ok: false, problem: 'archived' } as const;
 
-    const byUploader = found.uploadedByMemberId === resolved.memberId;
     // Retracting your own file needs the right to contribute at all; removing
     // somebody else's is §10's Lead power, and a Guest never has it.
     assertCan(
@@ -441,6 +513,7 @@ export async function signAttachmentDownload(
         id: attachment.id,
         workspaceId: attachment.workspaceId,
         projectId: attachment.projectId,
+        wikiPageId: attachment.wikiPageId,
         filename: attachment.filename,
         contentType: attachment.contentType,
         status: attachment.status,
@@ -452,6 +525,28 @@ export async function signAttachmentDownload(
     const found = rows[0];
     // A pending row has no bytes behind it yet, so it is not a file to serve.
     if (!found || found.status !== 'ready') return null;
+
+    /**
+     * §20.9's two parents again, on the read side.
+     *
+     * Reading a file is reading the thing it is inside — the project for an
+     * item's file, the space for a page's. Neither branch checks archiving: an
+     * archived project is read-only, not invisible, and so is the documentation
+     * it froze.
+     */
+    if (found.wikiPageId !== null) {
+      const context = await resolvePageSpace(tx, found.wikiPageId);
+      if (!context || !canReadSpace(resolved.actor, context)) return null;
+
+      return objectStore().signDownload({
+        key: storageKey({ workspaceId: found.workspaceId, attachmentId: found.id }),
+        filename: found.filename,
+        contentType: found.contentType,
+        disposition: input.disposition,
+      });
+    }
+
+    if (found.projectId === null) return null;
 
     const project = await loadProject(tx, found.projectId);
     if (!project) return null;

@@ -7,6 +7,7 @@ import type { CommentEntry, CommentThreadView } from '@/server/services/comments
 import { AttachmentList } from './attachment-list';
 import { CommentComposer, type ComposerContext } from './comment-composer';
 import { DeleteComment } from './comment-delete';
+import { hasKhmer } from '@/lib/search';
 
 /**
  * One work item's conversation (§7.7 — slice 8).
@@ -40,12 +41,30 @@ import { DeleteComment } from './comment-delete';
  * both sides of the accent pair, so it stays legible when the theme flips. */
 const MENTION = 'rounded-sm bg-accent-subtle px-1 font-medium text-accent';
 
+/**
+ * §20.10, and §13's oldest open gap, closed.
+ *
+ * The gap has been recorded since slice 8: "a Khmer comment in an English
+ * workspace inherits `lang=\"en\"` and clips its diacritics, and the same is true
+ * today of item titles, descriptions and project names." §20.10 asks for all
+ * four to be fixed **together**, in this slice, "because fixing it in one place
+ * and not the others is how one gap becomes four".
+ *
+ * `hasKhmer` is the detector and it is the *same* one `searchRoute` uses — one
+ * implementation, so text that searches as Khmer also renders as Khmer.
+ * `undefined` rather than `\"en\"` when there is no Khmer in it, because the
+ * page's own `lang` is already right for that case and restating it would
+ * override a correct value with a guessed one.
+ */
 function Body({ body, mentioned }: { body: string; mentioned: Record<string, string> }) {
   return (
     // `pre-wrap`, because a comment is typed prose: the paragraph breaks
     // somebody put in are part of what they wrote. `break-words` so a pasted
     // URL cannot push the panel wider than the page on a 390px screen (§15-6).
-    <p className="whitespace-pre-wrap break-words text-sm text-text">
+    <p
+      lang={hasKhmer(body) ? 'km' : undefined}
+      className="whitespace-pre-wrap break-words text-sm text-text"
+    >
       {splitMentions(body).map((segment, index) =>
         segment.kind === 'text' ? (
           // The index is a sound key here: segments are derived from one

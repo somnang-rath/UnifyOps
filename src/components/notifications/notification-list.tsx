@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/feedback';
 import { useToast } from '@/components/ui/toast';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/lib/cn';
+import { hasKhmer } from '@/lib/search';
 
 /**
  * The inbox (§7.8).
@@ -145,21 +146,43 @@ export function NotificationList({
 
       <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
         {groupAdjacent(optimistic).map((group) => (
-          <li key={`${group.workItemId}-${group.entries[0]?.id}`}>
+          <li key={`${group.subjectId}-${group.entries[0]?.id}`}>
             <div className="flex flex-col gap-1 px-3 py-3 sm:px-4">
               <Link
-                href={itemHref(workspaceSlug, group)}
+                href={subjectHref(workspaceSlug, group)}
                 className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm"
               >
                 <span className="font-medium text-text-muted tabular-nums">
-                  {group.projectKey}-{group.itemNumber}
+                  {group.subject.kind === 'work_item'
+                    ? `${group.subject.projectKey}-${group.subject.itemNumber}`
+                    : t('subject.page')}
                 </span>
                 {/*
                   Clamped rather than sliced: §13 requires grapheme-aware
                   truncation, and CSS line-clamp is the one truncation that is
                   correct in every script by construction.
+
+                  `lang` follows the content rather than the page (§20.10):
+                  a Khmer page title in an English workspace clips its diacritics
+                  at a Latin line-height, which is the gap §13 has carried open
+                  since slice 8 and which slice 18 closes everywhere at once.
                 */}
-                <span className="line-clamp-2 text-text">{group.itemTitle}</span>
+                <span
+                  lang={
+                    hasKhmer(
+                      group.subject.kind === 'work_item'
+                        ? group.subject.itemTitle
+                        : group.subject.pageTitle,
+                    )
+                      ? 'km'
+                      : undefined
+                  }
+                  className="line-clamp-2 text-text"
+                >
+                  {group.subject.kind === 'work_item'
+                    ? group.subject.itemTitle
+                    : group.subject.pageTitle}
+                </span>
               </Link>
 
               <ul className="space-y-1">
@@ -218,21 +241,24 @@ export function NotificationList({
 }
 
 type Group = {
-  workItemId: string;
-  itemNumber: number;
-  itemTitle: string;
-  projectKey: string;
-  projectSlug: string;
+  /** The subject's id — what adjacency is keyed on (§20.6). */
+  subjectId: string;
+  subject: InboxEntry['subject'];
   commentId: string | null;
   entries: InboxEntry[];
 };
 
 /**
- * Consecutive entries about the same item become one block.
+ * Consecutive entries about the same subject become one block.
  *
  * Adjacent only — see the note at the top. The block links to the newest
  * comment among its entries, because that is the one the person has not read
  * and §7.8 wants the click to land on the comment rather than the item.
+ *
+ * **Keyed on the subject's id since slice 18**, not on a work item id: §20.6's
+ * union made "the same thing" a question with two answers, and grouping on a
+ * field only one branch has would have collapsed every page notification in a
+ * run into one block (both `undefined`, both equal).
  */
 function groupAdjacent(entries: InboxEntry[]): Group[] {
   const groups: Group[] = [];
@@ -240,18 +266,15 @@ function groupAdjacent(entries: InboxEntry[]): Group[] {
   for (const entry of entries) {
     const last = groups.at(-1);
 
-    if (last && last.workItemId === entry.workItemId) {
+    if (last && last.subjectId === entry.subject.id) {
       last.entries.push(entry);
       last.commentId ??= entry.commentId;
       continue;
     }
 
     groups.push({
-      workItemId: entry.workItemId,
-      itemNumber: entry.itemNumber,
-      itemTitle: entry.itemTitle,
-      projectKey: entry.projectKey,
-      projectSlug: entry.projectSlug,
+      subjectId: entry.subject.id,
+      subject: entry.subject,
       commentId: entry.commentId,
       entries: [entry],
     });
@@ -260,7 +283,20 @@ function groupAdjacent(entries: InboxEntry[]): Group[] {
   return groups;
 }
 
-function itemHref(workspaceSlug: string, group: Group): string {
-  const path = `/${workspaceSlug}/projects/${group.projectSlug}/${group.itemNumber}`;
-  return group.commentId ? `${path}#comment-${group.commentId}` : path;
+/**
+ * Where a block's click lands, per subject (§20.6).
+ *
+ * A `switch` on the union rather than an `if` on a nullable field, so a third
+ * subject — §19.3's chat message is the one §20.16-4 names — is a compile error
+ * here rather than a link that silently goes nowhere.
+ */
+function subjectHref(workspaceSlug: string, group: Group): string {
+  switch (group.subject.kind) {
+    case 'work_item': {
+      const path = `/${workspaceSlug}/projects/${group.subject.projectSlug}/${group.subject.itemNumber}`;
+      return group.commentId ? `${path}#comment-${group.commentId}` : path;
+    }
+    case 'wiki_page':
+      return `/${workspaceSlug}/wiki/${group.subject.spaceSlug}/${group.subject.pageSlug}`;
+  }
 }

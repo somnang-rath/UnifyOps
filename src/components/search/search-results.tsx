@@ -1,10 +1,16 @@
 import { useTranslations } from 'next-intl';
-import { CircleDot, FolderOpen, Hash, User } from 'lucide-react';
+import { BookText, CircleDot, FolderOpen, Hash, StickyNote, User } from 'lucide-react';
 import { EmptyState } from '@/components/ui/feedback';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/lib/cn';
+import { displayName } from '@/lib/seeded-name';
 import type { PersonHit } from '@/server/queries/search';
-import type { ReferenceHit, SearchItemHit } from '@/server/services/search';
+import type {
+  NoteSearchHit,
+  PageSearchHit,
+  ReferenceHit,
+  SearchItemHit,
+} from '@/server/services/search';
 import type { ProjectSummary } from '@/server/services/projects';
 
 /**
@@ -29,6 +35,8 @@ export function SearchResults({
   reference,
   items,
   itemTotal,
+  pages,
+  notes,
   projects,
   people,
 }: {
@@ -39,13 +47,20 @@ export function SearchResults({
   reference: ReferenceHit | null;
   items: SearchItemHit[];
   itemTotal: number;
+  pages: PageSearchHit[];
+  notes: NoteSearchHit[];
   projects: ProjectSummary[];
   people: PersonHit[];
 }) {
   const t = useTranslations();
 
   const nothing =
-    reference === null && items.length === 0 && projects.length === 0 && people.length === 0;
+    reference === null &&
+    items.length === 0 &&
+    pages.length === 0 &&
+    notes.length === 0 &&
+    projects.length === 0 &&
+    people.length === 0;
 
   if (!searched) {
     return <EmptyState title={t('search.hint', { min: 2 })} />;
@@ -124,6 +139,43 @@ export function SearchResults({
               {t('search.showingFirst', { shown: items.length, total: itemTotal })}
             </p>
           )}
+        </Section>
+      )}
+
+      {pages.length > 0 && (
+        <Section heading={t('search.sections.pages')}>
+          {pages.map((page) => (
+            <Row
+              key={page.id}
+              href={`/${workspaceSlug}/wiki/${page.spaceSlug}/${page.slug}`}
+              icon={<BookText size={16} strokeWidth={1.5} aria-hidden="true" />}
+              title={page.title}
+              // The space, not the preview: "Overview" is a title three spaces
+              // in a company share, and the space is what tells them apart.
+              // `displayName` because the seeded company space renders
+              // translated until somebody renames it (§13).
+              meta={displayName(
+                { name: page.spaceName, nameKey: page.spaceNameKey },
+                (key: string) => t(key),
+              )}
+            />
+          ))}
+        </Section>
+      )}
+
+      {notes.length > 0 && (
+        <Section heading={t('search.sections.notes')}>
+          {notes.map((note) => (
+            <Row
+              key={note.id}
+              // A note has no route of its own (§20.11), so the row links to the
+              // notes screen and the fragment names the row there.
+              href={`/${workspaceSlug}/notes#note-${note.id}`}
+              icon={<StickyNote size={16} strokeWidth={1.5} aria-hidden="true" />}
+              title={note.title || t('notes.untitled')}
+              meta={note.preview}
+            />
+          ))}
         </Section>
       )}
 

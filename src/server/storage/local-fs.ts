@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { localAttachmentDir } from '@/env';
 
@@ -47,6 +47,18 @@ export async function writeLocalObject(key: string, bytes: Uint8Array): Promise<
 }
 
 /** Null when the bytes are not there — an upload that was never completed. */
+/**
+ * Remove one object (§20.9's sweeper).
+ *
+ * A missing file is success, not an error: the sweeper is at-least-once by
+ * design — it may run twice over the same row after a crash between the delete
+ * and the commit — and a second pass over bytes that are already gone is the
+ * ordinary case rather than a fault.
+ */
+export async function deleteLocalObject(key: string): Promise<void> {
+  await rm(pathFor(key), { force: true });
+}
+
 export async function readLocalObject(key: string): Promise<Buffer | null> {
   try {
     return await readFile(pathFor(key));

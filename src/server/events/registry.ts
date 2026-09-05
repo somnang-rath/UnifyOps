@@ -50,12 +50,42 @@ export type ActivitySpec<T extends EventType> = (event: EventOf<T>) => ActivityD
  */
 export type NotifySpec<T extends EventType> = (event: EventOf<T>) => NotifyDraft[];
 
+/**
+ * What a notification is *about* (§20.6, slice 18).
+ *
+ * **This is the one existing type slice 18 had to widen**, and §20.6 names it
+ * for exactly that reason: "nothing else in this section touches built code".
+ * `NotifyDraft` carried a bare `workItemId: string` because until slice 18
+ * every notification was about an item. A page mention has no item.
+ *
+ * A union rather than two nullable fields, so the compiler finds every
+ * construction site — which is the property the registry was built for, and
+ * which turned all thirty existing entries into the `work_item` branch
+ * mechanically. §20.16-4 asks that this "stays a union that can gain members —
+ * a chat message (§19.3) is the next one, and it should cost an entry rather
+ * than a refactor".
+ */
+export type NotifySubject =
+  | { kind: 'work_item'; id: string }
+  | { kind: 'wiki_page'; id: string };
+
+/** The item branch, which is thirty of the thirty-one call sites. */
+export const onWorkItem = (id: string): NotifySubject => ({ kind: 'work_item', id });
+
+/** The page branch — §20.6's mention in a page body. */
+export const onWikiPage = (id: string): NotifySubject => ({ kind: 'wiki_page', id });
+
 export type NotifyDraft = {
   kind: NotificationKind;
   /** Member ids, before the actor is removed. Duplicates are collapsed downstream. */
   recipientMemberIds: readonly string[];
-  workItemId: string;
-  /** The comment to deep-link to. §7.8: the click lands on the comment, not just the item. */
+  /** What this is about (§20.6). An item, or — since slice 18 — a wiki page. */
+  subject: NotifySubject;
+  /**
+   * The comment to deep-link to. §7.8: the click lands on the comment, not just
+   * the item. Always null for a page subject: a page has no comments in v1, and
+   * §20.16 leaves open whether it ever gets them.
+   */
   commentId: string | null;
   /** Ids and values for the renderer. Never a name and never a sentence (§13). */
   data: Record<string, unknown>;
@@ -631,7 +661,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'assignment',
         recipientMemberIds: e.assigneeIds,
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: null,
         data: { number: e.number },
       },
@@ -651,7 +681,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'item_activity',
         recipientMemberIds: e.assigneeIds,
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: null,
         data: { fields: e.fields },
       },
@@ -670,7 +700,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'item_activity',
         recipientMemberIds: e.assigneeIds,
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: null,
         data: { from: e.from, to: e.to, completed: e.completed },
       },
@@ -715,7 +745,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'assignment',
         recipientMemberIds: [...e.added, ...e.removed],
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: null,
         data: { added: e.added, removed: e.removed },
       },
@@ -776,7 +806,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'item_activity',
         recipientMemberIds: e.assigneeIds,
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: null,
         data: { blocked: e.blocked, reason: e.reason },
       },
@@ -797,7 +827,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'item_activity',
         recipientMemberIds: e.assigneeIds,
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: null,
         data: { fieldIds: e.fieldIds },
       },
@@ -850,14 +880,14 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'mention',
         recipientMemberIds: e.mentioned,
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: e.commentId,
         data: {},
       },
       {
         kind: 'comment',
         recipientMemberIds: othersAmong(e.assigneeIds, e.mentioned),
-        workItemId: e.workItemId,
+        subject: onWorkItem(e.workItemId),
         commentId: e.commentId,
         data: {},
       },
@@ -915,7 +945,7 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
             {
               kind: 'item_activity' as const,
               recipientMemberIds: e.assigneeIds,
-              workItemId: e.workItemId,
+              subject: onWorkItem(e.workItemId),
               commentId: null,
               data: { attachmentId: e.attachmentId, filename: e.filename },
             },
@@ -954,6 +984,156 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     // arrival and no departure is misleading; an inbox is not a history, and
     // "a file you were not looking at is gone" is not news anybody needs
     // interrupting for. It is audited, which is where the record belongs.
+    notify: noNotify,
+  },
+
+  /* ----------------------------------------------------------------------- */
+  /* The wiki (§20.6 — slice 18)                                             */
+  /* ----------------------------------------------------------------------- */
+
+  // A space is created twice in a workspace's life — once at signup, once per
+  // project — and renamed rarely. Audited because a space is the unit of access
+  // (§20.5): "which spaces exist and who may write in them" is a governance
+  // question, and it is answered from these rows.
+  'wiki_space.created': {
+    audit: {
+      subjectType: 'wiki_space',
+      subject: (e) => e.spaceId,
+      data: (e) => ({ kind: e.kind, projectId: e.projectId, name: e.name }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  'wiki_space.updated': {
+    audit: {
+      subjectType: 'wiki_space',
+      subject: (e) => e.spaceId,
+      data: (e) => ({ from: e.from, to: e.to }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
+  /**
+   * A page was written (§20.6).
+   *
+   * Audited — a page appearing in the company space is a change to the
+   * company's record, which is exactly what the log is for — and it notifies
+   * whoever the first revision named, on the **existing** `mention` kind.
+   *
+   * The subject is `onWikiPage`, which is the whole reason `NotifySubject`
+   * exists: this is the first notification in the product that is not about a
+   * work item.
+   */
+  'wiki_page.created': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      data: (e) => ({ spaceId: e.spaceId, title: e.title }),
+    },
+    activity: noActivity,
+    notify: (e) => [
+      {
+        kind: 'mention',
+        recipientMemberIds: e.mentioned,
+        subject: onWikiPage(e.pageId),
+        commentId: null,
+        data: {},
+      },
+    ],
+  },
+
+  /**
+   * A save, and the one wiki event that is deliberately **not** audited (§20.6).
+   *
+   * "A log with a row per save is a log nobody reads when it matters" — the call
+   * `work_item.moved` already made in slice 6. The revision list is the history
+   * a document deserves, and it is append-only, complete and attributed.
+   *
+   * `mentioned` is only what this revision *newly added*, computed by the
+   * service against the previous body, so fixing a typo on a page does not
+   * re-notify everybody it names.
+   */
+  'wiki_page.updated': {
+    audit: false,
+    activity: noActivity,
+    notify: (e) => [
+      {
+        kind: 'mention',
+        recipientMemberIds: e.mentioned,
+        subject: onWikiPage(e.pageId),
+        commentId: null,
+        data: { revisionNo: e.revisionNo },
+      },
+    ],
+  },
+
+  // Audited, and it carries both spaces: a cross-space move changes who may
+  // read the page (§20.5), which is the one page operation that is a
+  // permission change wearing the clothes of a drag.
+  'wiki_page.moved': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      data: (e) => ({
+        fromSpaceId: e.fromSpaceId,
+        toSpaceId: e.toSpaceId,
+        fromParentId: e.fromParentId,
+        toParentId: e.toParentId,
+      }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
+  // The pair that destroys and undoes it, joining `work_item.deleted`,
+  // `comment.deleted`, `attachment.removed`, `workflow_state.deleted` and
+  // `cycle.deleted`. The title is kept where `comment.deleted` withholds a
+  // body, and the distinction is slice 8's: a body is the content, a title is
+  // the identifier of the thing removed, and a log that cannot say which page
+  // went records nothing worth keeping.
+  'wiki_page.deleted': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      data: (e) => ({ spaceId: e.spaceId, title: e.title, reparented: e.reparented }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  'wiki_page.restored': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      data: (e) => ({ spaceId: e.spaceId, title: e.title }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
+  /**
+   * The two whose subject genuinely **is** a work item, and therefore the only
+   * wiki events that reach an item's feed (§20.6).
+   *
+   * "Somebody attached the architecture page to this task" belongs in that
+   * task's history, "and it is the line that makes the wiki get read". The page
+   * id goes in `data` rather than a title, for the reason every projector in
+   * this file stores ids: a page renamed next March reads correctly in a line
+   * written today (§13).
+   *
+   * Not notified. §7.8's general rule would tell every assignee, and a link is
+   * an editorial act on the *page* — the person who wanted it linked is the
+   * person who linked it. The feed line is where somebody scanning the item
+   * finds it.
+   */
+  'wiki_page.linked': {
+    audit: false,
+    activity: (e) => [onItem(e, { pageId: e.pageId })],
+    notify: noNotify,
+  },
+  'wiki_page.unlinked': {
+    audit: false,
+    activity: (e) => [onItem(e, { pageId: e.pageId })],
     notify: noNotify,
   },
 

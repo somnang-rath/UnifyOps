@@ -1,4 +1,5 @@
 import type { NotificationKind } from '@/lib/notification-kinds';
+import type { NotificationRow } from '@/server/queries/notifications';
 
 /**
  * One inbox row as it crosses to the client.
@@ -28,12 +29,18 @@ export type InboxEntry = {
   readAt: string | null;
   /** Null when the account is gone, not merely when the person has left (§7.12). */
   actorName: string | null;
-  workItemId: string;
+  /**
+   * What the row is about (§20.6), carried across as the same discriminated
+   * union the query built.
+   *
+   * Flattening it back into nullable fields at this boundary would put the
+   * branch in the component, where a page notification could render an item's
+   * number by mistake. The union crosses the wire intact, so the list has to ask
+   * which kind it is before it can build a link — which is what stops slice 18's
+   * new subject from silently rendering as a broken item link.
+   */
+  subject: NotificationRow['subject'];
   commentId: string | null;
-  itemNumber: number;
-  itemTitle: string;
-  projectKey: string;
-  projectSlug: string;
 };
 
 export function toEntry(row: {
@@ -43,15 +50,16 @@ export function toEntry(row: {
   occurredAt: Date;
   readAt: Date | null;
   actorName: string | null;
-  workItemId: string;
+  subject: NotificationRow['subject'];
   commentId: string | null;
-  itemNumber: number;
-  itemTitle: string;
-  projectKey: string;
-  projectSlug: string;
 }): InboxEntry {
   return {
-    ...row,
+    id: row.id,
+    kind: row.kind,
+    eventType: row.eventType,
+    actorName: row.actorName,
+    subject: row.subject,
+    commentId: row.commentId,
     occurredAt: row.occurredAt.toISOString(),
     readAt: row.readAt ? row.readAt.toISOString() : null,
   };

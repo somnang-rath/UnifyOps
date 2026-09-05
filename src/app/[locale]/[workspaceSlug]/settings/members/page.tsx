@@ -74,6 +74,10 @@ export default async function MembersPage({
           // badge and §7.4's capacity arithmetic answer "is this person away"
           // the same way — one function, `isAway`, in `src/lib/availability.ts`.
           away: isAway(m, today),
+          // §20.5: the offboarding dialog says how many private notes go with
+          // them, before the click. A number, never a list.
+          noteCount: m.noteCount,
+          pageCount: m.pageCount,
         }))}
         invitations={invitations.map((i) => ({
           id: i.id,

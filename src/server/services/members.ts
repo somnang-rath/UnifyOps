@@ -14,6 +14,7 @@ import type { WorkspaceRole } from '@/server/authz/roles';
 import { user as userTable, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { reassignOpenWorkInTx } from './work-items';
+import { deleteNotesOf } from './notes';
 import type { ActorContext } from '@/server/db/tenant';
 
 /**
@@ -34,6 +35,10 @@ export type Member = {
   imageUrl: string | null;
   role: WorkspaceRole;
   joinedAt: Date;
+  /** How many private notes this person has — a number only (§20.5). */
+  noteCount: number;
+  /** Pages they have written, which survive them (§20.5). */
+  pageCount: number;
 } & Availability;
 
 export async function listMembers(context: ActorContext): Promise<Member[]> {
@@ -54,6 +59,48 @@ export async function listMembers(context: ActorContext): Promise<Member[]> {
         // the one screen a manager opens most.
         unavailableUntil: workspaceMember.unavailableUntil,
         unavailableReason: workspaceMember.unavailableReason,
+        /**
+         * How many private notes this person has (§20.5, slice 17).
+         *
+         * A **count and never a body**, and the distinction is the whole reason
+         * this is allowed to exist at all. §20.5 requires the offboarding dialog
+         * to say "their notes will be deleted" with a number, "because that is a
+         * fact somebody may want to act on first, and discovering it afterwards
+         * is discovering it too late". A number is what a person needs to decide
+         * whether to ask a colleague to promote something before they go; it
+         * says nothing about what any of them contain.
+         *
+         * A correlated subquery rather than a join, because a join to an
+         * aggregate would turn this list into a grouped query for one column
+         * that most rows report as zero — and it rides the transaction the
+         * member list already opened, which is the rule slices 8 through 14 each
+         * learned the hard way.
+         */
+        noteCount: sql<number>`(
+          select count(*)::int from note
+          where note.owner_member_id = ${workspaceMember.id}
+            and note.deleted_at is null
+        )`,
+
+        /**
+         * How many wiki pages this person has written (§20.5, slice 18).
+         *
+         * The other half of the asymmetry the dialog has to state: notes are
+         * destroyed and **pages survive, attributed**. §7.12's promise is about
+         * the company's record, and a page is the company's record — which is
+         * why `wiki_page_revision_author_fk` is `restrict` where `note_owner_fk`
+         * cascades, and why the offboarding dialog says both before the click
+         * rather than one of them afterwards.
+         *
+         * Counted over distinct *pages* rather than revisions: "they wrote 40
+         * revisions" is a fact about their typing, and "they wrote 6 pages" is
+         * the fact somebody is deciding about.
+         */
+        pageCount: sql<number>`(
+          select count(distinct wiki_page_revision.page_id)::int
+          from wiki_page_revision
+          where wiki_page_revision.author_member_id = ${workspaceMember.id}
+        )`,
       })
       .from(workspaceMember)
       .innerJoin(userTable, eq(userTable.id, workspaceMember.userId))
@@ -156,6 +203,15 @@ export async function changeMemberRole(
  * items, and a failure leaves neither half applied. It happens before the
  * membership is soft-deleted only because reading their open work is easier
  * while they are still a member; nothing depends on the order beyond that.
+ *
+ * **Slice 17 adds the asymmetric half of the same moment** (§20.5). Their work
+ * is reassigned and their comments and activity stay attributed, because those
+ * are the company's record; their **notes are destroyed**, because those are
+ * not. "Handing a departing member's private thinking to their manager on the
+ * day they leave is the opposite of what the word *private* promised them." It
+ * runs in this transaction for the same reason the reassignment does: there is
+ * no window in which somebody has been offboarded and their notes are still
+ * readable through a view-as session.
  */
 export async function removeMember(
   resolved: ResolvedActor,
@@ -214,6 +270,13 @@ export async function removeMember(
         items: moved,
       });
     }
+
+    // §20.5's asymmetry. No event is emitted for it and none should be: a
+    // record of what somebody privately wrote is exactly what §20.6 refuses to
+    // keep, and an audit line saying "12 notes destroyed" would be that record
+    // in miniature. The dialog said the number before the click, which is where
+    // that fact belongs.
+    await deleteNotesOf(tx, uow, memberId);
 
     await tx
       .update(workspaceMember)

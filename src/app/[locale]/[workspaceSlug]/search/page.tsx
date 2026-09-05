@@ -125,6 +125,8 @@ export default async function SearchPage({
         reference={results.reference}
         items={results.items}
         itemTotal={results.itemTotal}
+        pages={results.pages}
+        notes={results.notes}
         projects={results.projects}
         people={results.people}
       />

@@ -29,6 +29,7 @@ import {
   type WorkflowStateRow,
 } from './workflow-states';
 import { DEFAULT_TEAM } from './workspaces';
+import { ensureProjectSpace } from './wiki';
 
 /**
  * Projects (§14, slice 4) — the unit work items live in.
@@ -351,6 +352,25 @@ export async function createProject(
       });
 
       await seedDefaultStates(tx, { workspaceId: resolved.workspace.id, projectId });
+
+      /**
+       * §20.2's per-project space, created with the project.
+       *
+       * It takes the project's own name and carries **no** `nameKey`, unlike the
+       * company space and unlike the seeded workflow states beside it: the name
+       * it is derived from is already the company's own word, so there is
+       * nothing to translate and nothing to fall back to.
+       *
+       * Created eagerly rather than on first use, because §20.5 makes the space
+       * the unit of access and a space that appears the moment somebody writes
+       * in it is a permission boundary that appears then too. A project's
+       * documentation being reachable and empty is the state §20.11 asks for.
+       */
+      await ensureProjectSpace(tx, uow, {
+        workspaceId: resolved.workspace.id,
+        projectId,
+        name,
+      });
 
       uow.emit({
         type: 'project.created',

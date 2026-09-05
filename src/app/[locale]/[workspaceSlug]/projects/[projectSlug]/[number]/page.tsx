@@ -5,6 +5,7 @@ import { ActivityFeed } from '@/components/work-item/activity-feed';
 import { AttachmentPanel } from '@/components/work-item/attachment-panel';
 import { CommentThread } from '@/components/work-item/comment-thread';
 import { CustomFieldValues } from '@/components/work-item/custom-field-values';
+import { RelatedPages } from '@/components/work-item/related-pages';
 import { ItemCycleSelect } from '@/components/cycle/item-cycle-select';
 import { RegisterCurrentItem } from '@/components/search/current-item';
 import { StatePill } from '@/components/ui/state-pill';
@@ -21,6 +22,7 @@ import { valueToStrings } from '@/lib/custom-fields';
 import { displayName } from '@/lib/seeded-name';
 import { isOverdue } from '@/lib/workspace-date';
 import { Link } from '@/i18n/navigation';
+import { hasKhmer } from '@/lib/search';
 
 /**
  * One work item, at `/{workspace}/projects/{project}/{number}` — the URL behind
@@ -166,8 +168,10 @@ export default async function WorkItemPage({
       />
 
       <nav aria-label={t('nav.projects')} className="text-xs text-text-muted">
+        {/* §20.10: a project's name is user content and follows its own script. */}
         <Link
           href={`/${workspaceSlug}/projects/${projectSlug}`}
+          lang={hasKhmer(project.name) ? 'km' : undefined}
           className="transition-colors duration-120 hover:text-text"
         >
           {project.name}
@@ -187,7 +191,19 @@ export default async function WorkItemPage({
           {item.archived && <Badge>{t('projects.archived')}</Badge>}
         </div>
 
-        <h1 className="font-display text-xl font-semibold tracking-tight">{item.title}</h1>
+        {/*
+          §20.10, and the largest type on the screen: an item title is user
+          content in either script, and Khmer stacks diacritics vertically and
+          clips at Latin line-heights. §13's oldest gap, closed here alongside
+          comment bodies, descriptions and project names — together, because
+          fixing it in one place and not the others is how one gap becomes four.
+        */}
+        <h1
+          lang={hasKhmer(item.title) ? 'km' : undefined}
+          className="font-display text-xl font-semibold tracking-tight"
+        >
+          {item.title}
+        </h1>
       </header>
 
       {item.archived && <Alert tone="warning">{t('projects.archivedNotice')}</Alert>}
@@ -275,6 +291,18 @@ export default async function WorkItemPage({
         }))}
         canEdit={item.canEdit}
       />
+
+      {/*
+        §20.2's other half: "an item lists its pages". Above the files and the
+        conversation, because a linked page is context for the work rather than
+        part of the discussion about it — the same reasoning that puts custom
+        fields above both. It renders nothing when there is nothing, so it costs
+        no vertical space on the items nobody has linked a page to.
+
+        The rows rode in on the transaction `getWorkItem` already opened
+        (§20.12), not a sixth one.
+      */}
+      <RelatedPages pages={item.relatedPages} workspaceSlug={workspaceSlug} />
 
       {thread && (
         <AttachmentPanel

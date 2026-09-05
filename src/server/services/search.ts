@@ -5,7 +5,16 @@ import { inSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
 import { can } from '@/server/authz/policy';
 import { fetchWorkItemGroups, type WorkItemRow } from '@/server/queries/work-items';
-import { findItemByReference, findPeople, type PersonHit } from '@/server/queries/search';
+import {
+  findItemByReference,
+  findNotes,
+  findPages,
+  findPeople,
+  type PersonHit,
+} from '@/server/queries/search';
+import { documentText } from '@/lib/documents';
+import { noteTitle, notePreview } from '@/lib/notes';
+import { readableSpaceIds } from '@/server/services/wiki';
 import { listProjectsIn, type ProjectSummary } from '@/server/services/projects';
 import { todayIn } from '@/lib/workspace-date';
 import {
@@ -57,6 +66,44 @@ export type SearchItemHit = {
   archived: boolean;
 };
 
+/**
+ * One of this person's own notes, matched (§20.3.5).
+ *
+ * The title and the preview are derived here rather than in the browser,
+ * because `noteTitle` reads the first line *through the parser* and the palette
+ * should not ship a Markdown parse per keystroke to do it — the body is sent
+ * anyway for nothing else, so this row deliberately carries the two derived
+ * strings instead.
+ */
+export type NoteSearchHit = {
+  id: string;
+  title: string;
+  preview: string;
+};
+
+/**
+ * One wiki page, matched (§20.3.5, §20.8).
+ *
+ * The space's name comes with it — and its `nameKey`, because the seeded company
+ * space renders translated until somebody renames it (§13's awkward middle,
+ * `seeded-name.ts`). A row that carried only `name` would show a Khmer workspace
+ * the English word "Company" in the one place people are scanning quickly.
+ *
+ * The preview is derived here rather than in the browser, for `NoteSearchHit`'s
+ * reason: reading a body through the parser on every keystroke is a Markdown
+ * parse per result per key, and the palette is the one screen where that cost is
+ * visible.
+ */
+export type PageSearchHit = {
+  id: string;
+  title: string;
+  slug: string;
+  spaceSlug: string;
+  spaceName: string;
+  spaceNameKey: string | null;
+  preview: string;
+};
+
 /** §7.9's short-circuit, resolved. A destination, not a result. */
 export type ReferenceHit = {
   identifier: string;
@@ -75,6 +122,25 @@ export type SearchResults = {
   items: SearchItemHit[];
   /** Every match, not just the page — the section heading shows it (§9's counts query). */
   itemTotal: number;
+  /**
+   * §20.3.5's Notes section — this actor's own, and nobody else's.
+   *
+   * There is no `noteTotal` beside it, and the asymmetry with `itemTotal` is
+   * real rather than an omission: the item count comes free from §9's counts
+   * query, which the notes corpus does not use. A second `count(*)` over a
+   * trigram match, on a keystroke, to draw a number beside a section that
+   * already shows its rows is not worth the round trip.
+   */
+  notes: NoteSearchHit[];
+  /**
+   * §20.3.5's Pages section, bounded by the spaces this actor may read.
+   *
+   * No `pageTotal`, for the reason there is no `noteTotal`: the item count comes
+   * free from §9's counts query, and a second `count(*)` over a trigram match on
+   * a keystroke, to draw a number beside a section that already shows its rows,
+   * is not worth the round trip.
+   */
+  pages: PageSearchHit[];
   projects: ProjectSummary[];
   people: PersonHit[];
   /** Today in the workspace zone, so an overdue badge here agrees with every other screen. */
@@ -195,6 +261,8 @@ export async function searchWorkspace(
     reference: null,
     items: [],
     itemTotal: 0,
+    notes: [],
+    pages: [],
     projects: [],
     people: [],
     today,
@@ -223,7 +291,18 @@ export async function searchWorkspace(
 
     const byId = new Map(projects.map((project) => [project.id, project]));
 
-    const [referenceHit, groups, people] = await inSequence(
+    /**
+     * §20.8's anchor for the pages section, resolved before the query is built.
+     *
+     * "A page belongs to a space, spaces resolve from the projects
+     * `listProjectsIn` has already vetted plus the one company space" — so this
+     * is an enumerated set exactly as `projectIds` is, and §16's invariant is
+     * untouched. On the same transaction as everything else here, which is the
+     * trap slice 14 hit on a keystroke rather than on a navigation.
+     */
+    const spaceIds = await readableSpaceIds(tx, resolved);
+
+    const [referenceHit, groups, people, noteHits, pageHits] = await inSequence(
       // Asked as well as the text search rather than instead of it: §7.9
       // short-circuits *to* the item, and the palette still shows the sections
       // underneath, so somebody who typed `ENG-14` on the way to `ENG-142` is not
@@ -239,6 +318,17 @@ export async function searchWorkspace(
               { groupKeys: ['all'], today },
             ),
       () => findPeople(tx, text, limit),
+      // The fourth question, on the transaction the other three are already on.
+      // Its bound is the acting member's own id, carried into the predicate
+      // rather than applied to the rows that come back — a LIMIT before the
+      // owner check is a palette that tells somebody how many notes their
+      // colleagues have (§20.8).
+      () => findNotes(tx, { ownerMemberId: resolved.memberId, text, limit }),
+      // The fifth and last. Its bound is the readable space set, carried into
+      // the predicate for the same reason the owner is: a LIMIT applied before
+      // the bound is a palette that reports how much a company has written down
+      // in places this person cannot open.
+      () => findPages(tx, { spaceIds, text, limit }),
     );
 
     const group = groups[0];
@@ -301,9 +391,61 @@ export async function searchWorkspace(
         ];
       }),
       itemTotal: group?.total ?? 0,
+      /**
+       * No §10 pass over these and no filter after the query, because there is
+       * nothing to ask: a note has no project, no visibility and no role
+       * attached to it. The predicate that returned them is the predicate that
+       * protects them (§20.5).
+       */
+      notes: noteHits.map((hit) => ({
+        id: hit.id,
+        title: noteTitle(hit),
+        preview: notePreview(hit),
+      })),
+      /**
+       * §20.10's per-content `lang` needs the raw title, so it is passed
+       * through unchanged; the preview is flattened here because a search row is
+       * one line and a body is not.
+       */
+      pages: pageHits.map((hit) => ({
+        id: hit.id,
+        title: hit.title,
+        slug: hit.slug,
+        spaceSlug: hit.spaceSlug,
+        spaceName: hit.spaceName,
+        spaceNameKey: hit.spaceNameKey,
+        preview: previewOf(hit.body),
+      })),
       projects: matchProjects(projects, text, limit),
       people,
       today,
     };
   });
+}
+
+/**
+ * A page body reduced to one line of preview (§20.8).
+ *
+ * Read through the parser, so a page beginning `# Leave policy` previews as its
+ * prose rather than as its own syntax — the rule `notePreview` already follows.
+ *
+ * **Truncated by grapheme, never by `.slice`** (§13). A page body can be two
+ * hundred thousand graphemes and the palette shows one line of it, so the cut
+ * has to happen on the server — sending the whole body to clamp it in CSS would
+ * be the §2.5 cost this product does not pay. `[...].length` and a code-point
+ * slice would cut a Khmer syllable in half and leave a lone COENG on screen,
+ * which reads as a broken product rather than as a shortened line.
+ */
+const PAGE_PREVIEW_LENGTH = 200;
+
+function previewOf(body: string): string {
+  const flat = documentText(body).replace(/\s+/g, ' ').trim();
+  const graphemes = [
+    ...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(flat),
+  ].map((segment) => segment.segment);
+
+  if (graphemes.length <= PAGE_PREVIEW_LENGTH) return flat;
+  // The ellipsis is a character, not three dots: three dots wrap, and a wrapped
+  // ellipsis in a one-line row is what makes a list look broken.
+  return `${graphemes.slice(0, PAGE_PREVIEW_LENGTH).join('').trimEnd()}…`;
 }

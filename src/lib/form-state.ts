@@ -77,3 +77,57 @@ export type CommentFormState = {
 };
 
 export const COMMENT_IDLE: CommentFormState = {};
+
+/**
+ * A note composer's result (§20.3.1).
+ *
+ * `savedAt` is the comment composer's `postedAt` under a different name and for
+ * the identical reason: §20.3.1's `[X]` says a failed save keeps the text — "the
+ * text stays in the box and the retry button is the same button", a rule §7.7
+ * already stated and which "applies with more force to something nobody else has
+ * a copy of". So the box cannot clear itself on every submit; it clears when
+ * this number changes, which is the only way two successful saves in a row look
+ * different to a component.
+ *
+ * `noteId` is what the capture dialog needs to offer a pin without a second
+ * round trip, and what the composer needs to switch from creating to editing.
+ */
+export type NoteFormState = {
+  error?: string;
+  fields?: Record<string, string>;
+  savedAt?: number;
+  noteId?: string;
+};
+
+export const NOTE_IDLE: NoteFormState = {};
+
+/**
+ * A wiki page save (§20.3.3 — slice 18).
+ *
+ * **`current` is the whole reason this is not `FormState`.** §20.3.3 refuses a
+ * stale save rather than merging it, and "the writer is shown their text beside
+ * the version that landed while they were typing". Neither body is ever
+ * discarded, so the refusal has to carry the *other* one back — an error string
+ * saying "somebody else saved" would leave the person with two versions and only
+ * one of them on screen.
+ *
+ * The writer's own text is not in this state and does not need to be: the
+ * textarea is controlled and keeps it, which is §7.7's "never lose typed text"
+ * rule that the comment composer already follows. What the server has to supply
+ * is the half the browser cannot know.
+ *
+ * `savedAt` rather than a boolean, for `CommentFormState`'s reason: two
+ * successful saves in a row must look different, or the second one does not
+ * re-render.
+ */
+export type WikiPageFormState = {
+  error?: string;
+  /** Names, when the failure is a mention naming somebody who cannot read the space. */
+  names?: string[];
+  savedAt?: number;
+  revisionNo?: number;
+  /** The version that landed while this writer was typing (§20.3.3). */
+  current?: { title: string; body: string; revisionNo: number };
+};
+
+export const WIKI_PAGE_IDLE: WikiPageFormState = {};

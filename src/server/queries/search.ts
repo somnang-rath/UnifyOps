@@ -1,9 +1,17 @@
 import 'server-only';
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { TenantDb } from '@/server/db/client';
-import { project, user, workspaceMember, workItem } from '@/server/db/schema';
-import { toLikePattern } from '@/lib/search';
+import {
+  note,
+  project,
+  user,
+  wikiPage,
+  wikiSpace,
+  workspaceMember,
+  workItem,
+} from '@/server/db/schema';
+import { searchRoute, toLikePattern, toTsQuery } from '@/lib/search';
 
 /**
  * The two questions §7.9 asks that the §9 list query cannot (slice 14).
@@ -152,4 +160,182 @@ export async function findItemByReference(
     .limit(1);
 
   return rows[0] ?? null;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Notes (§20.8, slice 17)                                                   */
+/* ------------------------------------------------------------------------- */
+
+export type NoteHit = {
+  id: string;
+  title: string | null;
+  body: string;
+  updatedAt: Date;
+};
+
+/**
+ * §20.3.5's Notes section — the third corpus, on the same recipe as the first.
+ *
+ * **Not one query with work items, and not a new recipe either** (§20.8). A note
+ * is not a work item, so it cannot ride §9's builder: that builder emits a
+ * counts query and a `LATERAL` per-group page over `work_item`, and pretending a
+ * note is one would be the first place "what is overdue" got two answers. What
+ * it reuses is everything *above* the query — `searchRoute`, `hasKhmer`,
+ * `toTsQuery`, `toLikePattern`, `MIN_QUERY_LENGTH` and the two-index recipe from
+ * migration 0030, which is migration 0026's recipe applied to a second
+ * `search_text` column.
+ *
+ * **One routing rule, three corpora.** `src/lib/search.ts` stays the only place
+ * the Latin/Khmer decision is made: if each corpus detected script its own way,
+ * a mixed-script query would find items and miss notes, and the bug report would
+ * be a Khmer note nobody could find (§20.8).
+ *
+ * **The owner predicate is in the query, never a filter applied afterwards**
+ * (§20.8). "A `LIMIT` applied before the predicate is a palette that tells
+ * somebody how many notes their colleagues have" — and it would do it silently,
+ * by returning fewer rows than it found. This is the property
+ * `__tenancy__/notes.test.ts` asserts directly.
+ *
+ * **Ordering is recency**, as it is for items and for the same two reasons
+ * (§20.8): `ts_rank` normalises by document length, which is backwards for
+ * notes, where the useful one is often the long one — and it cannot rank the
+ * trigram route at all, so ranking by it would give the two languages different
+ * orderings of one corpus.
+ *
+ * **Anchored by construction**, so §16's invariant is untouched: a note is
+ * bounded by its owner before any text is compared, which is a tighter bound
+ * than the enumerated project set the item search leans on.
+ */
+export async function findNotes(
+  tx: TenantDb,
+  input: { ownerMemberId: string; text: string; limit: number },
+): Promise<NoteHit[]> {
+  const route = searchRoute(input.text);
+  const tsquery = route === 'fulltext' ? toTsQuery(input.text) : null;
+
+  // A purely-punctuation query reduces to no terms, and a `to_tsquery` of
+  // nothing matches nothing — returning early says so without asking Postgres.
+  if (route === 'fulltext' && tsquery === null) return [];
+
+  const matches =
+    route === 'fulltext'
+      ? // The index is on this exact expression (0030); written any other way
+        // the planner will not reach for it.
+        sql`to_tsvector('simple', ${note.searchText}) @@ to_tsquery('simple', ${tsquery})`
+      : // `LIKE` and not `ILIKE`: the column is generated `lower(...)` precisely
+        // so a `gin_trgm_ops` index can serve this.
+        sql`${note.searchText} like ${toLikePattern(input.text)}`;
+
+  return tx
+    .select({
+      id: note.id,
+      title: note.title,
+      body: note.body,
+      updatedAt: note.updatedAt,
+    })
+    .from(note)
+    .where(and(eq(note.ownerMemberId, input.ownerMemberId), isNull(note.deletedAt), matches))
+    .orderBy(desc(note.updatedAt), desc(note.id))
+    .limit(input.limit);
+}
+
+
+/* ------------------------------------------------------------------------- */
+/* Wiki pages (§20.8, slice 18)                                              */
+/* ------------------------------------------------------------------------- */
+
+export type PageHit = {
+  id: string;
+  title: string;
+  slug: string;
+  spaceSlug: string;
+  spaceName: string;
+  spaceNameKey: string | null;
+  body: string;
+  updatedAt: Date;
+};
+
+/**
+ * §20.3.5's Pages section — the **fourth** corpus, on the same recipe as the
+ * other three, and the last one §20 adds.
+ *
+ * Everything `findNotes` says above applies here unchanged, which is the point:
+ * "One routing rule, three corpora. If each corpus detected script its own way,
+ * a mixed-script query would find items and miss pages, and the bug report would
+ * be a Khmer page nobody could find" (§20.8). `src/lib/search.ts` stays the only
+ * place the Latin/Khmer decision is made, and migration 0032's two indexes are
+ * 0026's two indexes over a third generated `search_text` column.
+ *
+ * Two things are specific to a page and worth naming.
+ *
+ * **The bound is an enumerated set of space ids, and it arrives as an
+ * argument.** A note is bounded by its owner, which is one column in the
+ * predicate; a page is bounded by its *space*, which is §20.5's unit of access
+ * and a question only `space-access.ts` can answer. So the caller resolves the
+ * readable spaces first and hands them in — which is exactly what slice 14 did
+ * for items, where "an enumerated project set is the `project` anchor". §16's
+ * invariant is untouched: "the feature that most looked like it would have to
+ * weaken §9's rule is the one that leaned hardest on it."
+ *
+ * An empty set returns nothing rather than everything, which is the direction a
+ * missing bound has to fail in. A Guest with no visible project and no company
+ * space reaches exactly this branch.
+ *
+ * **A deleted page is not searchable, and that is a different rule from an
+ * archived item.** §17-17 makes archived items a toggle a person can turn off,
+ * because archiving is a state a company chose. A soft-deleted page is inside
+ * §4's 30-day recovery window and is not something anybody should find in a
+ * palette in the meantime — it is gone, recoverably, from the screen that
+ * recovers it. 0032's partial index carries the same predicate.
+ */
+export async function findPages(
+  tx: TenantDb,
+  input: { spaceIds: string[]; text: string; limit: number },
+): Promise<PageHit[]> {
+  if (input.spaceIds.length === 0) return [];
+
+  const route = searchRoute(input.text);
+  const tsquery = route === 'fulltext' ? toTsQuery(input.text) : null;
+
+  // A purely-punctuation query reduces to no terms, and a `to_tsquery` of
+  // nothing matches nothing — returning early says so without asking Postgres.
+  if (route === 'fulltext' && tsquery === null) return [];
+
+  const matches =
+    route === 'fulltext'
+      ? // The index is on this exact expression (0032); written any other way
+        // the planner will not reach for it.
+        sql`to_tsvector('simple', ${wikiPage.searchText}) @@ to_tsquery('simple', ${tsquery})`
+      : // `LIKE` and not `ILIKE`: the column is generated `lower(...)` precisely
+        // so a `gin_trgm_ops` index can serve this.
+        sql`${wikiPage.searchText} like ${toLikePattern(input.text)}`;
+
+  return tx
+    .select({
+      id: wikiPage.id,
+      title: wikiPage.title,
+      slug: wikiPage.slug,
+      spaceSlug: wikiSpace.slug,
+      spaceName: wikiSpace.name,
+      spaceNameKey: wikiSpace.nameKey,
+      body: wikiPage.body,
+      updatedAt: wikiPage.updatedAt,
+    })
+    .from(wikiPage)
+    .innerJoin(wikiSpace, eq(wikiSpace.id, wikiPage.spaceId))
+    .where(
+      and(
+        inArray(wikiPage.spaceId, input.spaceIds),
+        isNull(wikiPage.deletedAt),
+        isNull(wikiSpace.deletedAt),
+        matches,
+      ),
+    )
+    // Recency, for the two reasons §20.8 gives and `findNotes` repeats: `ts_rank`
+    // normalises by document length — "backwards for a wiki where the definitive
+    // page is often the long one" — and it cannot rank the trigram route at all,
+    // so ranking by it would give the two languages different orderings of one
+    // corpus.
+    .orderBy(desc(wikiPage.updatedAt), desc(wikiPage.id))
+    .limit(input.limit);
 }

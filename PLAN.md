@@ -1,7 +1,7 @@
 # UnifyOps — Plan · ផែនការ
 
-**Version 3 · Approved for build, 31 August 2026 · Slices 1–15 done**
-**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–១៥ រួចរាល់**
+**Version 3 · Approved for build, 31 August 2026 · Slices 1–18 done · §14 and §20 both complete**
+**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–១៧ រួចរាល់ · វិគីរបស់ §២០ (ដំណាក់កាល ១៨) កំណត់លក្ខណៈរួច តែមិនទាន់សាងសង់**
 
 ---
 
@@ -49,11 +49,17 @@ https://claude.ai/code/artifact/df48ef68-f940-4e47-9184-c1bbe14e3fa9
 > every §18 resolution recorded since — #5 and #6 (2026-09-03) and #10 (2026-09-04) — are in `PLAN.en.md`
 > and `PLAN.km.md` but not in the artifact. It is a third surface for the same content and has to be
 > republished by hand; until that happens, **the Markdown is the plan and the artifact is a stale copy.**
+> §20 — the wiki and notes, now built in full — is not in it either.
+> §២០ វិគី និងកំណត់ចំណាំ ក៏មិនមានក្នុងវាដែរ។
 > **យឺតជាង Markdown ចាប់ពីដំណាក់កាល ៣ ហើយឥឡូវយឺតច្រើន។** ជួរផ្ទៀងផ្ទាត់ក្នុង §៨ លទ្ធផល ២៩–៣១ ក្នុង §១៧
 > និងរាល់ការសម្រេចក្នុង §១៨ តាំងពីពេលនោះ — លេខ ៥ និង ៦ (០៣-០៩-២០២៦) និងលេខ ១០ (០៤-០៩-២០២៦) — មានក្នុង
 > `PLAN.en.md` និង `PLAN.km.md` តែមិនមានក្នុងឯកសារគេហទំព័រទេ។ **Markdown ជាផែនការពិត ឯកសារគេហទំព័រជាច្បាប់ចម្លងចាស់។**
 
 ---
 
-> **Build in progress. Slices 1–15 of 16 are done; §14 lists what follows.**
-> **កំពុងសាងសង់។ ដំណាក់កាល ១–១៥ ក្នុងចំណោម ១៦ រួចរាល់; §១៤ រាយអ្វីដែលបន្តបន្ទាប់។**
+> **Build in progress. §14's sixteen slices are done, and so are slices 17 and 18 — the whole of §20.
+> Work is still taken one at a time, on request. What remains is the gap list: Google OAuth, §4's full
+> create form, and a workspace-wide recovery screen.**
+> **កំពុងសាងសង់។ ដំណាក់កាលទាំង ១៦ របស់ §១៤ រួចរាល់ ហើយដំណាក់កាល ១៧ និង ១៨ ក៏រួចដែរ — ពោលគឺ §២០ ទាំងមូល។
+> ការងារនៅតែចាប់យកម្តងមួយ តាមការស្នើសុំ។ អ្វីដែលនៅសល់គឺបញ្ជីចន្លោះខ្វះ៖ Google OAuth ទម្រង់បង្កើតពេញលេញរបស់ §៤
+> និងអេក្រង់ស្ដារឡើងវិញសម្រាប់កន្លែងធ្វើការទាំងមូល។**

@@ -8,7 +8,9 @@
     "inbox": "Inbox",
     "projects": "Projects",
     "search": "Search",
-    "settings": "Settings"
+    "settings": "Settings",
+    "notes": "Notes",
+    "wiki": "Wiki"
   },
   "action": {
     "create": "Create",
@@ -243,7 +245,9 @@
       "description": "Their comments and history stay, attributed to them. Their open work has to go somewhere.",
       "question": "What happens to their open work?",
       "reassignTo": "Give it to {name}",
-      "leaveUnassigned": "Leave it unassigned — it will show up under Needs attention"
+      "leaveUnassigned": "Leave it unassigned — it will show up under Needs attention",
+      "notesDeleted": "This will permanently delete their {count, plural, one {# private note} other {# private notes}}. Notes are personal and are never handed on; ask them to turn anything the company needs into a work item first.",
+      "pagesKept": "Their {count, plural, one {# page} other {# pages}} stay in the wiki, attributed to them."
     }
   },
   "teams": {
@@ -961,7 +965,9 @@
       "items": "Work items",
       "projects": "Projects",
       "people": "People",
-      "actions": "Actions"
+      "actions": "Actions",
+      "notes": "Notes",
+      "pages": "Pages"
     },
     "actions": {
       "goMyWork": "Go to My Work",
@@ -973,8 +979,54 @@
       "assignToMe": "Assign this item to me",
       "switchLanguage": "Switch language",
       "toggleTheme": "Switch light and dark",
-      "assignedToMe": "Assigned to you."
+      "assignedToMe": "Assigned to you.",
+      "goNotes": "Go to Notes",
+      "newNote": "New note",
+      "goWiki": "Go to Wiki"
     }
+  },
+  "notes": {
+    "title": "Notes",
+    "subtitle": "Somewhere to think. Only you can read these.",
+    "privacy": "Private to you — and to anyone who can view the workspace as you.",
+    "placeholder": "Write a note. The first line becomes its title.",
+    "bodyLabel": "Note",
+    "save": "Save note",
+    "saveHint": "Ctrl or ⌘ + Enter to save",
+    "remaining": "{count} characters left",
+    "untitled": "Untitled note",
+    "empty": "No notes yet. Notes are private to you and never leave this screen — press ⌘K and choose “New note” to write one.",
+    "delete": "Delete",
+    "expand": "Open {title}",
+    "collapse": "Close {title}",
+    "became": "Became {identifier}",
+    "pinTo": "Pin this note to {identifier}",
+    "showingFirst": "Showing the {shown} most recent of {total}.",
+    "capture": {
+      "title": "New note"
+    },
+    "promote": {
+      "project": "Project",
+      "submit": "Turn into a work item",
+      "again": "Turn into another work item",
+      "done": "Created.",
+      "noProjects": "You cannot create work items in any project yet.",
+      "toPage": "Turn into a page",
+      "space": "Space"
+    },
+    "errors": {
+      "bodyRequired": "Write something first.",
+      "bodyTooLong": "That note is too long.",
+      "titleTooLong": "That title is too long.",
+      "notFound": "That note no longer exists.",
+      "unknownItem": "That work item could not be found.",
+      "unknownProject": "That project could not be found.",
+      "archived": "That project is archived and cannot take new work.",
+      "tooMany": "You have reached the maximum number of notes.",
+      "cannotCreate": "You cannot create work items in that project."
+    },
+    "edit": "Edit",
+    "becamePage": "Became the page “{title}”"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -1124,6 +1176,138 @@
       "not_found": "That person is no longer a member.",
       "self": "That is the screen you are already on.",
       "already_viewing": "Exit the current session first."
+    }
+  },
+  "wiki": {
+    "title": "Wiki",
+    "subtitle": "What the company has written down.",
+    "spaces": {
+      "company": "Company",
+      "pageCount": "{count, plural, =0 {No pages} one {# page} other {# pages}}",
+      "emptyTitle": "No spaces yet",
+      "emptyBody": "Every workspace gets a company space at sign-up and one space per project, so an empty list means something has gone wrong. Try again, and tell an admin if it stays empty."
+    },
+    "space": {
+      "empty": "Nothing written here yet.",
+      "create": "Write the first page",
+      "pick": "Choose a page from the list."
+    },
+    "sidebar": {
+      "label": "Pages in this space",
+      "empty": "No pages yet.",
+      "newPage": "New page"
+    },
+    "breadcrumb": {
+      "label": "Where this page sits"
+    },
+    "new": {
+      "title": "New page",
+      "parentLabel": "Inside",
+      "parentNone": "Top level",
+      "create": "Create page",
+      "creating": "Creating…"
+    },
+    "reader": {
+      "revision": "Revision {number}",
+      "history": "History",
+      "edit": "Edit",
+      "emptyBody": "This page has no content yet."
+    },
+    "editor": {
+      "titleLabel": "Title",
+      "bodyLabel": "Body",
+      "bodyHelp": "Markdown. Use @ to mention someone, and write ENG-142 to link a work item.",
+      "write": "Write",
+      "preview": "Preview",
+      "previewEmpty": "Nothing to preview yet.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved as revision {number}.",
+      "cancel": "Cancel",
+      "tooLong": "Too long — the limit is {max} characters."
+    },
+    "stale": {
+      "title": "Somebody else saved this page while you were writing",
+      "body": "Your text has not been saved and has not been lost. Revision {number} is what is on the page now; below is how yours differs from it.",
+      "summary": "{added} lines added, {removed} removed.",
+      "tableCaption": "Your version compared with the one that was saved",
+      "keepMine": "Keep mine and save again",
+      "takeTheirs": "Take theirs instead",
+      "op": {
+        "added": "Yours:",
+        "removed": "Theirs:"
+      }
+    },
+    "history": {
+      "title": "History",
+      "revision": "Revision {number}",
+      "someone": "Someone",
+      "restore": "Restore",
+      "confirmRestore": "Restore this version",
+      "restoring": "Restoring…",
+      "cancel": "Cancel",
+      "compare": "Compare",
+      "comparing": "Comparing revisions {from} and {to}."
+    },
+    "compare": {
+      "title": "Revision {from} compared with {to}",
+      "summary": "{added} lines added, {removed} removed.",
+      "renamed": "Renamed from",
+      "identical": "The text of these two revisions is the same.",
+      "tableCaption": "Revision {from} compared with revision {to}",
+      "lineFrom": "Line in the older revision",
+      "lineTo": "Line in the newer revision",
+      "content": "Content",
+      "op": {
+        "added": "Added:",
+        "removed": "Removed:"
+      }
+    },
+    "links": {
+      "title": "Linked work",
+      "empty": "No work items linked yet.",
+      "addLabel": "Link a work item",
+      "add": "Link",
+      "adding": "Linking…",
+      "remove": "Unlink {identifier}"
+    },
+    "related": {
+      "title": "Pages"
+    },
+    "promote": {
+      "space": "Space",
+      "submit": "Turn into a page",
+      "again": "Turn into another page",
+      "done": "Created.",
+      "noSpaces": "You cannot write in any space yet."
+    },
+    "errors": {
+      "titleRequired": "Give the page a title.",
+      "titleTooLong": "That title is too long.",
+      "bodyTooLong": "That page is too long.",
+      "tooDeep": "Pages can only be nested three levels deep.",
+      "notFound": "That page no longer exists.",
+      "archived": "That project is archived, so its pages are read-only.",
+      "forbidden": "You cannot write in this space.",
+      "slugTaken": "A page with that address already exists here.",
+      "intoDescendant": "A page cannot be moved inside one of its own sub-pages.",
+      "unknownItem": "No work item with that identifier — try something like ENG-142.",
+      "stale": "Somebody else saved this page while you were writing.",
+      "mentionNotVisible": "{names} cannot read this space, so they cannot be mentioned here."
+    },
+    "delete": {
+      "action": "Delete page",
+      "confirm": "Delete",
+      "cancel": "Keep it",
+      "deleting": "Deleting…",
+      "confirmHint": "You can restore it for 30 days.",
+      "withChildren": "{count, plural, one {# sub-page moves up a level} other {# sub-pages move up a level}}. You can restore this page for 30 days."
+    },
+    "deleted": {
+      "title": "Recently deleted",
+      "window": "Deleted pages can be restored for 30 days.",
+      "restore": "Restore",
+      "restoring": "Restoring…"
     }
   }
 }

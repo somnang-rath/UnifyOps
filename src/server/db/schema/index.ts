@@ -21,7 +21,14 @@
  * §4's "saved views" and §12's per-view table column widths. Slice 15 adds
  * `workspace_notification_default` and four columns on `workspace` — week
  * start, default language, logo key and accent — which is the whole of §6-1 and
- * §6-7 that was not already a column, and completes §6. The rest arrive in their own slices (§14) — each one adds
+ * §6-7 that was not already a column, and completes §6. Slice 17 adds `note` — the private half of §20's two nouns,
+ * and deliberately its own table rather than a wiki page with a visibility
+ * column, because a merged table makes every query carry an owner clause that
+ * one query will eventually forget (§20.1). Slice 18 adds the public half of §20 —
+ * `wiki_space`, `wiki_page`, `wiki_page_revision` and `wiki_page_link` — plus
+ * the two nullable columns and the CHECK that let `attachment` hold a page's
+ * images (§20.9), and the subject union on the two notification tables (§20.6).
+ * The rest arrive in their own slices (§14) — each one adds
  * `...tenantPolicies()` and gets FORCE RLS from the hardening step, or it does
  * not ship.
  */
@@ -41,3 +48,5 @@ export * from './notification';
 export * from './custom-field';
 export * from './cycle';
 export * from './saved-view';
+export * from './wiki';
+export * from './note';

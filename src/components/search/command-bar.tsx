@@ -15,7 +15,10 @@ import {
   FolderOpen,
   Hash,
   Languages,
+  NotebookPen,
   Search,
+  BookText,
+  StickyNote,
   SunMoon,
   User,
   UserPlus,
@@ -23,11 +26,13 @@ import {
 import { useTheme } from 'next-themes';
 import { CommandPalette, type PaletteSection } from '@/components/ui/command-palette';
 import { ShortcutHelp } from './shortcut-help';
+import { NoteCapture } from '@/components/notes/note-capture';
 import { useCurrentItem } from './current-item';
 import { assignToMeAction } from '@/app/[locale]/[workspaceSlug]/actions';
 import { usePathname, useRouter } from '@/i18n/navigation';
 import { locales, type Locale } from '@/i18n/routing';
 import { useToast } from '@/components/ui/toast';
+import { displayName } from '@/lib/seeded-name';
 import {
   actionMatches,
   availableActions,
@@ -92,12 +97,30 @@ type PalettePerson = {
   active: boolean;
 };
 
+type PaletteNote = {
+  id: string;
+  title: string;
+  preview: string;
+};
+
+type PalettePage = {
+  id: string;
+  title: string;
+  slug: string;
+  spaceSlug: string;
+  spaceName: string;
+  spaceNameKey: string | null;
+  preview: string;
+};
+
 type Results = {
   text: string;
   searched: boolean;
   reference: { identifier: string; title: string; projectSlug: string; number: number } | null;
   items: PaletteItem[];
   itemTotal: number;
+  pages: PalettePage[];
+  notes: PaletteNote[];
   projects: PaletteProject[];
   people: PalettePerson[];
 };
@@ -108,6 +131,8 @@ const EMPTY: Results = {
   reference: null,
   items: [],
   itemTotal: 0,
+  pages: [],
+  notes: [],
   projects: [],
   people: [],
 };
@@ -141,6 +166,8 @@ export function CommandBar({
 
   const [open, setOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  /** §20.3.1's capture, opened from the palette and never nested inside it. */
+  const [captureOpen, setCaptureOpen] = useState(false);
   const [value, setValue] = useState('');
   const [results, setResults] = useState<Results>(EMPTY);
   const [loading, setLoading] = useState(false);
@@ -263,8 +290,23 @@ export function CommandBar({
       const params = new URLSearchParams({ w: workspaceSlug, q: text });
       fetch(`/api/internal/search?${params.toString()}`, { signal: controller.signal })
         .then((response) => (response.ok ? response.json() : Promise.reject(new Error('failed'))))
-        .then((payload: Results) => {
-          setResults(payload);
+        .then((payload: Partial<Results>) => {
+          /**
+           * Merged over `EMPTY` rather than trusted whole.
+           *
+           * Every section reads `shown.<name>.length`, so **one absent key is a
+           * TypeError that takes the entire palette down** — not just its own
+           * section. Slice 18 shipped that exact bug for an afternoon: `pages`
+           * was added to `SEARCH_SECTIONS` and to the service and not to the
+           * route handler's payload, and the palette went blank while `/search`
+           * — which calls the service directly and never crosses this boundary —
+           * kept working. The failure named the *work items* section.
+           *
+           * It is also the honest shape for a deployed client: a browser holding
+           * yesterday's bundle talks to today's server across a rolling deploy,
+           * and a section it has never heard of should cost it nothing.
+           */
+          setResults({ ...EMPTY, ...payload });
           setFailed(false);
           setCold(false);
         })
@@ -300,6 +342,17 @@ export function CommandBar({
           return go(`/${workspaceSlug}/team`);
         case 'goProjects':
           return go(`/${workspaceSlug}/projects`);
+        case 'goNotes':
+          return go(`/${workspaceSlug}/notes`);
+        case 'goWiki':
+          return go(`/${workspaceSlug}/wiki`);
+        case 'newNote':
+          // Closed first, then opened: §12 says a dialog is never nested, and
+          // the native `<dialog>` top layer would stack two focus traps if it
+          // were.
+          close();
+          setCaptureOpen(true);
+          return;
         case 'goSearch':
           return go(`/${workspaceSlug}/search?q=${encodeURIComponent(normalizeQuery(value))}`);
         case 'newProject':
@@ -398,6 +451,55 @@ export function CommandBar({
               {t('search.seeAll', { count: shown.itemTotal })}
             </span>
           ) : undefined,
+      });
+    }
+
+    /**
+     * §20.3.5's Pages section, between work items and Notes — the reading order
+     * that section lists: "Work items · **Pages** · **Notes** · Projects ·
+     * People · Actions".
+     *
+     * A page *does* have a route of its own, unlike a note, so the row navigates
+     * to it rather than to a screen that expands it in place. The space's name is
+     * the hint, because "Overview" is a title three spaces in a company share and
+     * the space is what tells them apart.
+     */
+    if (shown.pages.length > 0) {
+      built.push({
+        id: 'pages',
+        heading: t('search.sections.pages'),
+        options: shown.pages.map((page) => ({
+          id: `page-${page.id}`,
+          icon: <BookText size={14} strokeWidth={1.5} />,
+          label: page.title,
+          hint: displayName(
+            { name: page.spaceName, nameKey: page.spaceNameKey },
+            (key: string) => t(key),
+          ),
+          onSelect: () => go(`/${workspaceSlug}/wiki/${page.spaceSlug}/${page.slug}`),
+        })),
+      });
+    }
+
+    /**
+     * §20.3.5's Notes section, between Pages and projects.
+     *
+     * Rows link to the notes screen with the note's id in the URL, which the
+     * screen expands in place — a note has no route of its own, because a route
+     * per note would make reading three of them three navigations (§20.11 lists
+     * one notes screen and no note screen).
+     */
+    if (shown.notes.length > 0) {
+      built.push({
+        id: 'notes',
+        heading: t('search.sections.notes'),
+        options: shown.notes.map((note) => ({
+          id: `note-${note.id}`,
+          icon: <StickyNote size={14} strokeWidth={1.5} />,
+          label: note.title || t('notes.untitled'),
+          hint: note.preview || undefined,
+          onSelect: () => go(`/${workspaceSlug}/notes#note-${note.id}`),
+        })),
       });
     }
 
@@ -509,6 +611,17 @@ export function CommandBar({
       />
 
       <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      <NoteCapture
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        workspaceSlug={workspaceSlug}
+        locale={locale}
+        // §20.3.1's `[!]`: the item on screen is offered as a pin. The store is
+        // slice 14's `current-item.tsx`, which the item page publishes to on
+        // mount — the same value `assignToMe` reads.
+        item={item === null ? null : { id: item.id, identifier: item.identifier }}
+      />
     </>
   );
 }
@@ -518,7 +631,10 @@ const ACTION_ICONS: Record<PaletteAction, React.ReactNode> = {
   goInbox: <ArrowRight size={14} strokeWidth={1.5} />,
   goTeam: <ArrowRight size={14} strokeWidth={1.5} />,
   goProjects: <ArrowRight size={14} strokeWidth={1.5} />,
+  goNotes: <ArrowRight size={14} strokeWidth={1.5} />,
+  goWiki: <ArrowRight size={14} strokeWidth={1.5} />,
   goSearch: <ArrowRight size={14} strokeWidth={1.5} />,
+  newNote: <NotebookPen size={14} strokeWidth={1.5} />,
   newProject: <FolderOpen size={14} strokeWidth={1.5} />,
   assignToMe: <UserPlus size={14} strokeWidth={1.5} />,
   switchLanguage: <Languages size={14} strokeWidth={1.5} />,

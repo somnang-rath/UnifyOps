@@ -74,6 +74,8 @@ const attempt: { [A in Action]: (a: Actor) => Denial | null } = {
   'work_item.edit': (a) => why(a, 'work_item.edit', visible),
   'comment.create': (a) => why(a, 'comment.create', visible),
   'comment.delete_others': (a) => why(a, 'comment.delete_others', visible),
+  'wiki.write_project_space': (a) => why(a, 'wiki.write_project_space', visible),
+  'wiki.write_company_space': (a) => why(a, 'wiki.write_company_space'),
 };
 
 type MatrixRow = {
@@ -181,6 +183,25 @@ const matrix: MatrixRow[] = [
     guest: false,
   },
   {
+    // §20.5's first new row. In the default scenario — no explicit project
+    // membership — a Member sees a workspace-visible project as a Viewer, which
+    // is below the Member+ this row asks for.
+    row: 'Write in a project space',
+    attempt: (a) => can(a, 'wiki.write_project_space', visible),
+    owner: true,
+    admin: true,
+    member: false,
+    guest: false,
+  },
+  {
+    row: 'Write in the company space',
+    attempt: (a) => can(a, 'wiki.write_company_space'),
+    owner: true,
+    admin: true,
+    member: false,
+    guest: false,
+  },
+  {
     row: 'View as a member (read-only)',
     attempt: (a) => can(a, 'workspace.view_as_member'),
     owner: true,
@@ -271,6 +292,46 @@ describe('"if Member+" — write access follows the project role, for Members an
       expect(can(a, 'comment.create', secret)).toBe(false);
     });
   }
+});
+
+describe('§20.5 — the two new rows, and where they part from the ones they resemble', () => {
+  it('lets a Member who is a project Member write in that project space', () => {
+    const a = actor('member', { [secret.id]: 'member' });
+    expect(can(a, 'wiki.write_project_space', secret)).toBe(true);
+  });
+
+  it('refuses a project Viewer, exactly as work_item.create does', () => {
+    const a = actor('member', { [secret.id]: 'viewer' });
+    expect(can(a, 'wiki.write_project_space', secret)).toBe(false);
+  });
+
+  /**
+   * The one cell that makes this a new row rather than an alias of
+   * `work_item.create`, and the one where §20.5's table and its prose disagree.
+   *
+   * The prose: "a company that hands a contractor a Guest seat on one project is
+   * happy for them to file bugs, and would be surprised to find them rewriting
+   * that project's documentation." The table's Guest column says "if Member+",
+   * which would make the two rows identical everywhere. `policy.ts` follows the
+   * prose and says why; this is the assertion that would fail if somebody
+   * reversed it, so the decision cannot be undone silently.
+   */
+  it('refuses a Guest who is a project Member, where work_item.create allows them', () => {
+    const a = actor('guest', { [secret.id]: 'member' });
+    expect(can(a, 'work_item.create', secret)).toBe(true);
+    expect(can(a, 'wiki.write_project_space', secret)).toBe(false);
+  });
+
+  it('refuses the company space to a Member however many projects they lead', () => {
+    const a = actor('member', { [secret.id]: 'lead' });
+    expect(can(a, 'wiki.write_company_space')).toBe(false);
+  });
+
+  it('refuses both to everybody while view-as is active', () => {
+    const a = { ...actor('owner'), readOnly: true };
+    expect(why(a, 'wiki.write_project_space', visible)).toBe('read_only');
+    expect(why(a, 'wiki.write_company_space')).toBe('read_only');
+  });
 });
 
 describe('"if Lead" — and the Guest column is a cap, not a shorthand', () => {

@@ -10,6 +10,7 @@ import { deriveSlug, slugify, slugProblem, type SlugProblem } from '@/lib/slug';
 import { horizonYears } from '@/lib/holidays';
 import { todayIn } from '@/lib/workspace-date';
 import { seedHolidaysInTx } from './holidays';
+import { ensureCompanySpace } from './wiki';
 
 /**
  * What a brand-new workspace is, before anybody opens Settings.
@@ -172,6 +173,25 @@ export async function createWorkspace(
         locale: DEFAULT_LOCALE,
         years: horizonYears(todayIn(DEFAULT_TIMEZONE)),
       });
+
+      /**
+       * §20.2's company space, seeded here beside the default team, the default
+       * workflow states and the holiday calendar.
+       *
+       * "One **company space** per workspace, seeded at signup." It carries a
+       * `name_key` rather than a literal, which is §13's awkward middle and the
+       * same call `DEFAULT_TEAM` above makes: it renders translated until
+       * somebody renames it, and the rename clears the key so their literal wins
+       * for good. That is the opposite of the holiday seeded four lines up — and
+       * correctly, because "Company" has an English default it is right to fall
+       * back to, where Khmer New Year does not.
+       *
+       * §6's governing rule is that "a company that never opens Settings must be
+       * completely fine", and the wiki's version of it is that a company that
+       * never opens `/wiki` still has a space waiting when they do. Empty, which
+       * §20.11 says "reads as empty, not as broken".
+       */
+      await ensureCompanySpace(tx, uow, workspaceId);
 
       uow.emit({ type: 'workspace.created', workspaceId, slug, name });
       uow.emit({

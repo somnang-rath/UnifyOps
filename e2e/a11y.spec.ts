@@ -75,6 +75,18 @@ test.describe('§11 — every control has an accessible name', () => {
   });
 
   test('every workspace screen, with real content in it', async ({ page }, testInfo) => {
+    /*
+     * A sweep, not a flow, so it gets a sweep's budget.
+     *
+     * This walks every workspace screen in the product and asserts something about
+     * each; slice 18 took it from twenty-two screens to twenty-six and it began
+     * timing out on whichever navigation happened to be crossing the 30s default —
+     * `/settings/labels` on one run, which has nothing to do with what was added.
+     * A per-screen assertion still fails fast and points at its own screen; what
+     * this raises is only the ceiling on the walk as a whole.
+     */
+    test.setTimeout(120_000);
+
     const locale = testInfo.project.name.startsWith('km') ? 'km' : 'en';
     const company = unique('A11y', testInfo);
     const slug = company.toLowerCase();
@@ -115,6 +127,11 @@ test.describe('§11 — every control has an accessible name', () => {
       ['item', `/${locale}/${slug}/projects/a11y-ops/1`],
       ['project settings', `/${locale}/${slug}/projects/a11y-ops/settings`],
       ['cycles', `/${locale}/${slug}/projects/a11y-ops/cycles`],
+      // §20's two nouns. Neither sweep had them: slice 17 added `/notes` without
+      // adding it here, and slice 18 found that out. A screen the sweep does not
+      // name is a screen the sweep says nothing about.
+      ['notes', `/${locale}/${slug}/notes`],
+      ['wiki', `/${locale}/${slug}/wiki`],
       ['search', `/${locale}/${slug}/search?q=depot`],
       ['inbox', `/${locale}/${slug}/inbox`],
       ['settings general', `/${locale}/${slug}/settings/general`],
@@ -129,6 +146,23 @@ test.describe('§11 — every control has an accessible name', () => {
     ];
 
     for (const [name, path] of screens) {
+      await page.goto(path);
+      await expectEveryControlNamed(page, name);
+    }
+    /*
+     * The wiki's own screens, reached rather than constructed: a space's slug is
+     * derived at signup, so hard-coding `/wiki/company` would be the sweep
+     * asserting an implementation detail of `deriveSlug`.
+     */
+    await page.goto(`/${locale}/${slug}/wiki`);
+    await page.locator('main').getByRole('link').first().click();
+    await expect(page).toHaveURL(new RegExp(`/${locale}/${slug}/wiki/[^/]+$`));
+    const spaceUrl = new URL(page.url()).pathname;
+
+    for (const [name, path] of [
+      ['wiki space', spaceUrl],
+      ['wiki new page', `${spaceUrl}/new`],
+    ] as [string, string][]) {
       await page.goto(path);
       await expectEveryControlNamed(page, name);
     }

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { attachmentStoreConfig } from '@/env';
+import { deleteLocalObject } from './local-fs';
 import { presign, type S3Credentials } from './sigv4';
 
 /**
@@ -62,6 +63,21 @@ export type ObjectStore = {
     contentType: string;
     disposition: 'inline' | 'attachment';
   }): string;
+  /**
+   * Remove one object (§20.9's sweeper — slice 18).
+   *
+   * **The one method on this port that is not a signature**, and the exception
+   * is deliberate. §8's rule is that no byte passes through the app server, and
+   * every other method here hands the browser a URL so that stays true. A delete
+   * moves no bytes: it is a control-plane call with nothing to stream, and the
+   * caller is the *worker* rather than a request, so there is no browser to hand
+   * anything to. Signing a delete URL for a background job to fetch would be an
+   * extra round trip and a short-lived destructive credential in a log.
+   *
+   * Idempotent by contract: deleting an object that is not there succeeds. The
+   * sweeper is at-least-once, so the second pass is the ordinary case.
+   */
+  deleteObject(key: string): Promise<void>;
 };
 
 /**
@@ -124,6 +140,32 @@ function r2Store(credentials: S3Credentials): ObjectStore {
           'response-content-type': input.contentType,
         },
       }),
+
+    /**
+     * A presigned DELETE, fetched by us rather than handed to anybody.
+     *
+     * The same `presign` the other two use — the SigV4 implementation
+     * `sigv4.test.ts` pins against AWS's own published worked example, which is
+     * what makes the absence of `@aws-sdk/*` a decision rather than a shortcut.
+     * A very short expiry, because the URL is used within milliseconds of being
+     * minted and never leaves this process.
+     *
+     * **404 is success.** R2 answers a delete of a missing key with 204, and a
+     * 404 from a proxy in front of it means the same thing to a sweeper: the
+     * bytes are not there, which is the state being aimed at.
+     */
+    deleteObject: async (key) => {
+      const url = presign(credentials, {
+        method: 'DELETE',
+        key,
+        expiresInSeconds: 60,
+      });
+
+      const response = await fetch(url, { method: 'DELETE' });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`object delete failed: ${response.status}`);
+      }
+    },
   };
 }
 
@@ -230,6 +272,13 @@ function localStore(): ObjectStore {
         type: input.contentType,
         disp: input.disposition,
       }),
+
+    // No URL and no route: the development driver's bytes are a file on this
+    // machine, so the sweeper unlinks it directly. The asymmetry with the upload
+    // and download paths is the same one slice 8 already accepted — bytes *do*
+    // pass through the app server here, and that is the one deliberate
+    // difference between the drivers.
+    deleteObject: (key) => deleteLocalObject(key),
   };
 }
 

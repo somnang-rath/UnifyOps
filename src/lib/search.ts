@@ -239,13 +239,21 @@ export function parseItemReference(text: string): ItemReference | null {
 /* ------------------------------------------------------------------------- */
 
 /**
- * §7.9: "Results in sections: Work items · Projects · People · Actions."
+ * §7.9: "Results in sections: Work items · Projects · People · Actions", and
+ * §20.3.5 adds two more — "Work items · **Pages** · **Notes** · Projects ·
+ * People · Actions".
  *
- * A frozen ordered list rather than four fields, so the palette renders one
+ * A frozen ordered list rather than a set of fields, so the palette renders one
  * block per member and `messages.test.ts` can assert a heading exists for each —
  * the rule slice 13 wrote down after the `due` grouping shipped with no label.
+ *
+ * `notes` arrives in slice 17 and `pages` in slice 18, in that order because
+ * §20.13 builds notes first. The order here is §20.3.5's reading order and not
+ * the order the sections were built in: §20.3.5 lists "Work items · **Pages** ·
+ * **Notes** · Projects · People · Actions", and a person's own note is closer to
+ * what they were just doing than a project is.
  */
-export const SEARCH_SECTIONS = ['items', 'projects', 'people', 'actions'] as const;
+export const SEARCH_SECTIONS = ['items', 'pages', 'notes', 'projects', 'people', 'actions'] as const;
 export type SearchSection = (typeof SEARCH_SECTIONS)[number];
 
 /**
@@ -278,7 +286,25 @@ export const PALETTE_ACTIONS = [
   'goInbox',
   'goTeam',
   'goProjects',
+  'goNotes',
+  'goWiki',
   'goSearch',
+  /**
+   * §20.3.1's capture, and the one action in this list that is not a navigation
+   * or a call to something that already exists.
+   *
+   * It is here rather than on a screen because the target is five seconds from
+   * anywhere — "`⌘K` → *New note* → type → `⌘Enter` saves and closes" — and a
+   * capture that requires first navigating to the notes screen is a capture
+   * nobody uses while they are in the middle of something else, which is the
+   * only time anybody needs one.
+   *
+   * Deliberately **not** contextual. `assignToMe` is offered only when an item
+   * is on screen because it cannot act otherwise; a note can be written from
+   * anywhere, and the pin an item's presence makes possible is an *addition* to
+   * the capture rather than a condition on it (§20.3.1's `[!]`).
+   */
+  'newNote',
   'newProject',
   'assignToMe',
   'switchLanguage',

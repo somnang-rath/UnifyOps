@@ -128,6 +128,32 @@ export default async function WorkspaceLayout({
               {t('nav.projects')}
             </Link>
 
+            {/* §20.3.1's notes. In the header for the same reason Search is:
+                `⌘K` reaches it faster, and a surface people can only reach with
+                a keystroke is a surface half of them never find. No permission
+                behind it — a notes screen shows one person their own rows, and
+                §10 has no row that could gate that (§20.5). */}
+            <Link
+              href={`/${resolved.workspace.slug}/notes`}
+              className="text-text-muted transition-colors duration-120 hover:text-text"
+            >
+              {t('nav.notes')}
+            </Link>
+
+            {/* §20's other noun. Beside Notes rather than under a project,
+                because the company space is not one project's — §20.1: "a page
+                is the company's record, a note is one person's thinking", and
+                the header is where the two nouns sit side by side. No permission
+                behind the link: `listSpaces` returns what this actor may read,
+                and a hidden link is not a permission (§6's rule for the settings
+                nav, and the reason every page re-asks §10 for itself). */}
+            <Link
+              href={`/${resolved.workspace.slug}/wiki`}
+              className="text-text-muted transition-colors duration-120 hover:text-text"
+            >
+              {t('nav.wiki')}
+            </Link>
+
             {/* §7.9's full results screen. The palette reaches it too, but a
                 search people can only start with a keystroke is a search half of
                 them never find. */}

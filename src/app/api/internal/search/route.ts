@@ -56,6 +56,21 @@ export async function GET(request: Request) {
     reference: results.reference,
     items: results.items,
     itemTotal: results.itemTotal,
+    // Already reduced to a title and a preview by the service, so no note body
+    // crosses the wire to draw a two-line row (§20.3.5).
+    notes: results.notes,
+    /**
+     * §20.3.5's Pages section (slice 18).
+     *
+     * **Adding a section to `SEARCH_SECTIONS` without adding it here is how the
+     * whole palette goes dark**, and it did: the client reads
+     * `shown.pages.length`, an absent key is `undefined`, and the TypeError
+     * takes every section with it — including the work items that had nothing to
+     * do with the change. The screen at `/search` kept working the whole time,
+     * because it calls the service directly and never crosses this boundary,
+     * which is exactly why the failure named the item section and not this line.
+     */
+    pages: results.pages,
     // Only what a palette row draws. `ProjectSummary` carries a team name and a
     // composed §10 role, and neither belongs in a payload sent on a keystroke.
     projects: results.projects.map((project) => ({

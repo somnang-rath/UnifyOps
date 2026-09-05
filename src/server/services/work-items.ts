@@ -17,7 +17,7 @@ import {
   workspaceMember,
 } from '@/server/db/schema';
 import { inSequence, mapInSequence } from '@/server/db/sequence';
-import { withActor } from '@/server/db/tenant';
+import { withActor, type UnitOfWork } from '@/server/db/tenant';
 import { isClosedGroup, type StateGroup } from '@/lib/state-groups';
 import { OPEN_STATE_GROUPS } from '@/lib/needs-attention';
 import { isPriority } from '@/lib/priorities';
@@ -52,6 +52,7 @@ import {
   type ProjectRow,
 } from './project-access';
 import { readLabelsByIds, type LabelRow } from './labels';
+import { relatedPagesFor } from './wiki';
 
 /**
  * Work items (§14, slice 5).
@@ -455,6 +456,18 @@ export async function getWorkItem(
        * planned into nothing.
        */
       cycleName: string | null;
+      /**
+       * The wiki pages linked to this item (§20.2, §20.12's `related-pages.tsx`).
+       *
+       * "A page links to work items and an item lists its pages — the thing that
+       * makes a wiki get read rather than written once." This is the half that
+       * does the making, and §20.12 is explicit that it rides the transaction
+       * this function already opens rather than opening a sixth.
+       *
+       * Filtered to the spaces this actor may read: an item somebody can see may
+       * be linked from a page in a project they cannot.
+       */
+      relatedPages: { pageId: string; title: string; slug: string; spaceSlug: string }[];
       canEdit: boolean;
       archived: boolean;
       today: string;
@@ -506,11 +519,15 @@ export async function getWorkItem(
     // `getCommentThread` and slice 9 hit with the unread count — and the item
     // page already opens more transactions than any other screen in the
     // product.
-    const [assignees, labels, customFields, customValues] = await inSequence(
+    const [assignees, labels, customFields, customValues, relatedPages] = await inSequence(
       () => readPeople(tx, found.item.assigneeIds),
       () => readLabelsByIds(tx, found.item.labelIds),
       () => fetchCustomFields(tx, found.item.projectId),
       () => fetchCustomValues(tx, found.item.id),
+      // The sixth question on this transaction, and slice 18's addition to it.
+      // §20.12 names this file's growing list by slice — 8, 9, 10, 13, 14 — and
+      // asks that the wiki join it rather than start a seventh transaction.
+      () => relatedPagesFor(tx, resolved, found.item.id),
     );
 
     return {
@@ -524,6 +541,7 @@ export async function getWorkItem(
       labels,
       customFields,
       customValues,
+      relatedPages,
       // An archived project is read-only for everyone including its owner (§4),
       // so the screen has to know both facts separately: may you edit, and is
       // anything editable at all.
@@ -596,6 +614,13 @@ export type CreateWorkItemInput = {
   labelIds?: readonly string[];
   dueDate?: string | null;
   parentId?: string | null;
+  /**
+   * §7.2's composer is one field, so nothing set this until slice 17 —
+   * promoting a note carries its body across (§20.3.4), which is the first
+   * caller that has anything to put here. Added with that caller rather than
+   * ahead of it: an input nothing passes is an input nothing tests.
+   */
+  description?: string | null;
 };
 
 /**
@@ -616,10 +641,34 @@ export async function createWorkItem(
   resolved: ResolvedActor,
   input: CreateWorkItemInput,
 ): Promise<Ok<{ workItemId: string; number: number }> | Failed> {
+  return withActor(resolved.context, (tx, uow) => createWorkItemIn(tx, uow, resolved, input));
+}
+
+/**
+ * The same creation, inside a transaction the caller already opened.
+ *
+ * Split out in slice 17 for the reason slice 14 split `listProjectsIn` out of
+ * `listProjects`: promoting a note (§20.3.4) has to read the note, create the
+ * item and record what the note became, and all three are one thing that either
+ * happened or did not. Opening a second `withActor` from inside the first would
+ * hold two pooled connections for one click and leave a window in which an item
+ * exists and the note it came from does not know it.
+ *
+ * The public function above is now a one-line wrapper, so there is still exactly
+ * one implementation of what creating an item means — and `work_item.created`
+ * is emitted onto the caller's unit of work, which is what makes a promotion's
+ * event flush with its own transaction.
+ */
+export async function createWorkItemIn(
+  tx: TenantDb,
+  uow: UnitOfWork,
+  resolved: ResolvedActor,
+  input: CreateWorkItemInput,
+): Promise<Ok<{ workItemId: string; number: number }> | Failed> {
   const title = input.title.trim().normalize('NFC');
   if (!title) return { ok: false, problem: 'title_required' };
 
-  return withActor(resolved.context, async (tx, uow) => {
+  {
     const target = await loadProject(tx, input.projectId);
     if (!target) return { ok: false, problem: 'not_found' } as const;
     if (isArchived(target)) return { ok: false, problem: 'archived' } as const;
@@ -674,6 +723,10 @@ export async function createWorkItem(
       projectId: input.projectId,
       number,
       title,
+      // Empty is stored as null, so "created with no description" and "the
+      // description was cleared" are one fact rather than two rows that render
+      // identically.
+      description: input.description?.trim() ? input.description.normalize('NFC') : null,
       stateId: state.id,
       priority: isPriority(input.priority) ? input.priority : 'none',
       parentId: input.parentId ?? null,
@@ -714,7 +767,7 @@ export async function createWorkItem(
     });
 
     return { ok: true, workItemId, number } as const;
-  });
+  }
 }
 
 /**

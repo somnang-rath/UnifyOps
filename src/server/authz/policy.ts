@@ -76,6 +76,18 @@ type ResourceMap = {
   'work_item.edit': ProjectResource;
   'comment.create': ProjectResource;
   'comment.delete_others': ProjectResource;
+  /**
+   * §20.5's two rows — the first genuinely new entries since this matrix was
+   * written, and the reason they are new is worth carrying here.
+   *
+   * Eleven slices in a row looked at §10 and found the row they needed already
+   * written. Reading a wiki space needed nothing either: a project space is
+   * `project.view` and the company space is the line §10 already draws at *See
+   * workspace-visible projects*. **Writing** is what needed rows, because no
+   * existing row is the right shape.
+   */
+  'wiki.write_project_space': ProjectResource;
+  'wiki.write_company_space': null;
 };
 
 export type Action = keyof ResourceMap;
@@ -186,6 +198,46 @@ const rules: { [A in Action]: Rule<A> } = {
     mutation: true,
     allow: (actor, project) => atLeastProjectRole(effectiveProjectRole(actor, project), 'member'),
   },
+
+  // | Write in a project space | Y | Y | if Member+ | - |
+  //
+  // The same people the *Create / edit work items* row names, and it was
+  // tempting to reuse it. §20.5 refuses: "the two questions come apart the
+  // moment anybody asks them: a company that hands a contractor a Guest seat on
+  // one project is happy for them to file bugs, and would be surprised to find
+  // them rewriting that project's documentation." So a Guest is capped out of
+  // this row where `work_item.create` lets them in — which is the one line that
+  // makes the two rows different rather than a duplicate of one.
+  //
+  // **§20.5's table and its prose disagree here, and this follows the prose.**
+  // The table's Guest column reads "if Member+", which is `work_item.create`'s
+  // own answer and would make this row identical to it in all four columns —
+  // a new §10 row that changes nothing, justified only by what it might become.
+  // The paragraph underneath names a specific harm in the present tense and the
+  // Guest seat is its whole example. §10's Guest column has been "a cap, not a
+  // shorthand" since slice 2 (`policy.test.ts` pins it for `project.settings`),
+  // so a capped Guest is also the reading consistent with the rest of the
+  // matrix. It is the conservative half of the disagreement as well: a Guest who
+  // cannot write documentation asks somebody, where a Guest who can rewrite it
+  // is the thing §20.5 says an owner would be surprised by. **Worth confirming
+  // against §20.5 before the wiki is handed to a pilot customer (§18-7)**, and
+  // it is one line either way.
+  'wiki.write_project_space': {
+    mutation: true,
+    allow: (actor, project) =>
+      actor.workspaceRole !== 'guest' &&
+      atLeastProjectRole(effectiveProjectRole(actor, project), 'member'),
+  },
+
+  // | Write in the company space | Y | Y | - | - |
+  //
+  // "The company space is worse. It holds the handbook and the policies, and the
+  // only existing row that fits is *Workspace settings, branding, teams* — which
+  // is right about who and wrong about what, because writing a page is not
+  // changing a setting, and an owner reading the matrix should be able to see
+  // the difference." Same answer as that row today, and a separate row so it can
+  // stop being the same answer without a migration of anybody's understanding.
+  'wiki.write_company_space': { mutation: true, allow: isAdminOrAbove },
 
   // | Delete others' comments | Y | Y | if Lead | - |
   'comment.delete_others': {

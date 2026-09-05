@@ -188,8 +188,13 @@ onboarding checklist · saved view sharing with teammates.
 ### Nice-to-have — Phase 2, designed for but not built
 
 Configurable workflow transitions & gates · notification rules engine · custom roles · realtime presence ·
-docs/wiki · time tracking · timeline/Gantt · automation rules · public API + webhooks · native mobile ·
+time tracking · timeline/Gantt · automation rules · public API + webhooks · native mobile ·
 SSO/SAML · AI assist · company group chat · MCP server · billing.
+
+> **Docs/wiki has left this list.** It is specified in full in **§20** — a wiki page and a personal note, as
+> two nouns rather than one feature — and lands as slices 17 and 18 after §14's sequence. It is out of the
+> nice-to-have list because the schema decisions it forces are cheap now and expensive once a company's
+> knowledge lives in another product.
 
 ### Behaviour worth stating precisely
 
@@ -623,6 +628,11 @@ User ──< WorkspaceMember >── Workspace (a company)
                                │     └── WorkItem ── sub-items (depth ≤ 3)
                                │            ├── CustomFieldValue
                                │            ├── Comment · Attachment · Activity
+                               ├── WikiSpace (one 'company' + one per Project) — §20
+                               │     └── WikiPage ── sub-pages (depth ≤ 3)
+                               │            ├── WikiPageRevision (append-only)
+                               │            └── WikiPageLink >── WorkItem
+                               ├── Note (owned by a WorkspaceMember) — §20
                                ├── Label · SavedView · Invitation · Notification · Holiday
 ```
 
@@ -689,6 +699,8 @@ workspace-wide scan — the query that otherwise takes production down at 3am.
 | Comment | ✅ | ✅ | if Member+ | if Member+ |
 | Delete others' comments | ✅ | ✅ | if Lead | — |
 | View as a member (read-only) | ✅ | ✅ | — | — |
+| Write in a project wiki space (§20) | ✅ | ✅ | if Member+ | if Member+ |
+| Write in the company wiki space (§20) | ✅ | ✅ | — | — |
 
 **Composition.** Owner and Admin are implicit project Leads everywhere. A workspace-visible project grants
 Members implicit Viewer. **Guests get nothing implicitly** — only projects they are explicitly added to. That
@@ -864,6 +876,15 @@ foundation flaw in month three is fatal.
 | 16 | Onboarding, empty/error states, a11y, responsive + **install** pass | First-run under 3 minutes with a real stranger; the app installs to a phone home screen |
 
 Slices **1, 2, 5, and 6** are where a wrong decision is expensive to reverse. Front-loaded on purpose.
+
+**Beyond §14's v1 sequence.** Slices 0–16 are v1 and are complete. Work after them is gap-closing and
+additions, still taken one at a time, on request. The first addition specified rather than merely listed is
+the wiki, which §20 defines:
+
+| # | Slice | Demonstrable outcome |
+| --- | --- | --- |
+| 17 | Document foundation + **notes** (§20) | Capture a note from `⌘K` in under five seconds, find it in both scripts, promote it into a work item — and nobody else in the workspace can see it |
+| 18 | **Wiki** — spaces, pages, revisions, links (§20) | A Khmer handbook page in the company space, linked from a work item, edited by a colleague, with a stale save refused rather than merged |
 
 ---
 
@@ -1335,6 +1356,569 @@ Open, and deliberately **not** added to §18 — none of it blocks the build:
   not, and that answer should come from watching a pilot (§18-7), not from a design document.
 - **MCP write scopes** — which actions are ever grantable to a token, and whether destructive ones are
   simply never on the list.
+
+---
+
+## 20. Wiki and notes
+
+A company that runs its work in one product writes things down in another. The handbook is in Google Docs,
+the meeting notes are in somebody's Telegram saved messages, and the decision that explains why a project is
+shaped the way it is exists only in a comment thread nobody can find. §4 listed **docs/wiki** as a Phase 2
+nice-to-have; this section takes it out of that list and specifies it, because the two nouns below are cheap
+while the schema is still ours to shape and expensive once a company's knowledge lives somewhere else.
+
+### 20.0 Status
+
+**Slices 17 and 18 are both built, and §20 is complete.** §14's sixteen slices are complete; this was
+post-§14 work and landed as **slices 17 and 18**, built one at a time, on request, exactly as the gap-closing
+work after §14 has been.
+
+**Slice 18 landed on 2026-09-05** — spaces, pages, revisions and links: `src/lib/wiki.ts`, the four tables
+with migrations `0031`/`0032`, `src/server/queries/wiki.ts` and `src/server/services/{wiki,space-access}.ts`,
+§20.5's **two new §10 rows** (the first genuinely new rows since the matrix was written), §20.6's eight
+events and the `NotifySubject` union that widened `NotifyDraft`, §20.8's Pages section on the same
+script-routed recipe, §20.9's shared `attachment` table **and the abandoned-upload sweeper slice 9 left
+unbuilt**, and §20.10's per-content `lang` closed for page bodies, comment bodies, item titles and
+descriptions together.
+
+Three things §20 assumed turned out not to be true of the code, and each is recorded where it bites rather
+than quietly worked around:
+
+- **§20.3.6's "recovery screen that already exists for items" does not exist.** §4 promises a 30-day window
+  and no slice built a surface for it. The restore list therefore lives at the foot of its own space
+  (`src/components/wiki/deleted-pages.tsx`), which is where somebody looking for a page they deleted goes;
+  a workspace-wide recovery screen should absorb it rather than reimplement it.
+- **§20.5's table and its prose disagree about Guests.** The table's Guest column for *Write in a project
+  space* reads "if Member+", which is `work_item.create`'s own answer and would make the row identical to it
+  in all four columns; the paragraph underneath names a specific harm in the present tense with the Guest
+  seat as its whole example. `policy.ts` follows the **prose** — a Guest is capped — because §10's Guest
+  column has been "a cap, not a shorthand" since slice 2 and because that is the conservative half of the
+  disagreement. It is one line either way and is worth confirming before a pilot (§18-7).
+- **A `#[page]` token is not a `wiki_page_link` row.** §20.7 defines the token and §20.2 the relation, and
+  they are different edges: a page-to-page reference resolves at render, where a page-to-work-item link is a
+  row with an author that an item's feed reads. Writing a page that names `ENG-142` creates the link;
+  removing the sentence does not remove it, because detaching stays an explicit act.
+
+**Slice 17 landed on 2026-09-04** — the document foundation and notes: `src/lib/documents.ts` and
+`doc-refs.ts` (the Markdown grammar, the allowlist and the three token formats), `src/lib/notes.ts`, the
+`note` table with migrations `0029`/`0030`, the notes screen, the `⌘K` capture, the Notes section in search
+and §20.5's asymmetric half of offboarding. What it did **not** touch is the whole of the wiki: no space, no
+page, no revision, no link table, and none of §20.5's two new §10 rows — those belong to slice 18 with the
+noun that needs them. `#[page]` tokens parse and render as an absence, because there are no pages to resolve
+them to yet.
+
+| | |
+| --- | --- |
+| **Scope** | Two nouns — a **wiki page** (the company's record) and a **note** (one person's thinking) |
+| **Depends on** | Nothing unbuilt, with **one exception**: the abandoned-upload sweeper (slice 9's unbuilt handler) is a prerequisite of slice 18, not a nice-to-have — see §20.9 |
+| **Adds to §10** | **Two rows.** The first genuinely new rows since the matrix was written — see §20.5 |
+| **Adds to §8's route handlers** | **None.** §8 reserves five exceptions; this widens two that already exist |
+| **Adds to §6** | **No settings row.** Spaces are managed in the wiki, and §6's governing rule is that a company that never opens Settings must be completely fine |
+| **New tables** | Five — `wiki_space`, `wiki_page`, `wiki_page_revision`, `wiki_page_link`, `note` — plus two nullable columns and a CHECK on `attachment`, and the same pair on `notification` for §20.6's subject union |
+| **Closes** | §13's open per-content language gap, for **all** user content rather than only pages (§20.10) |
+| **Refuses** | A WYSIWYG editor, per-page ACLs, per-locale page bodies, realtime co-editing, and a server-side draft table — each with its reason, at §20.7, §20.5, §20.10, §20.3.3 and §20.3.2 |
+
+### 20.1 The governing rule — two nouns, not one feature
+
+**A page is the company's record; a note is one person's thinking.** Everything in this section follows from
+refusing to merge them.
+
+They look like one table with a `visibility` column, and that shape is wrong in the way this plan has already
+refused twice. Merged, every query that touches either has to read *"the §10 project rule **or**
+`owner_member_id = me`"*, and the first query written that forgets the second half shows a colleague
+somebody's private notes — the exact failure §9 built RLS to make impossible, and the exact reason
+`saved_view` (slice 12) is not a shared table with a flag. RLS cannot help here, because both people are in
+one workspace, so the separation has to be structural: **two tables, two predicates, one editor.**
+
+The consequences are worth stating before the details, because they are what the shape buys:
+
+- **A note has no §10 row and can never acquire one** (§20.5). Nothing about a note is a question of role.
+- **A note emits no events** — no audit, no activity, no notification (§20.6). An Owner-visible, permanent,
+  append-only log of what somebody privately jotted down is surveillance, not governance.
+- **A note dies with the membership; a page survives it** (§20.5). §7.12 promises activity history is
+  "preserved and attributed" — that is the company's record. Handing a departing member's private thinking to
+  their manager on the day they leave is the opposite of what the word *private* promised them.
+- **Promotion is a copy, never a move.** A note becomes a page or a work item by being copied into it, and the
+  note stays where it was. A move would be the one operation that silently changes who can read something, and
+  it would do it from the one screen whose whole promise is that nobody else can.
+
+### 20.2 Feature scope
+
+**Must-have — the feature does not ship without these.**
+
+| Area | Features |
+| --- | --- |
+| **Spaces** | One **company space** per workspace, seeded at signup; one space per project, created with the project. No other kind |
+| **Pages** | Create, edit, rename, move, nest (≤ 3 deep within a space), reorder in the sidebar, soft-delete with §4's 30-day recovery window |
+| **Body** | Markdown in a `text` column, server-rendered through an allowlist · `@`-mentions · `ENG-142` autolink · `#[page]` cross-references · pasted images |
+| **History** | Every save is a revision · the full body per revision · side-by-side compare · restore-as-new-revision · who and when |
+| **Concurrency** | Optimistic on the revision number: a save based on a stale body is **refused and shown**, never merged and never silently overwritten |
+| **Links** | A page links to work items and an item lists its pages — the thing that makes a wiki get read rather than written once |
+| **Notes** | Personal, flat, optional title, optional pin to a work item, capture from `⌘K` in under five seconds, promote to page or work item |
+| **Search** | Pages and notes are two new sections in `⌘K` and `/search`, on the same script-routed recipe as items (§13) |
+| **Notifications** | A mention in a page body reaches the inbox and email under the **existing** `mention` kind — no sixth preference row |
+| **Bilingual** | Full EN/KH interface; page bodies carry a detected content language so a Khmer page in an English workspace renders correctly (§20.10) |
+| **Five states** | Every screen below specifies loading, empty, success, error and its edge case (§11) |
+| **Responsive** | Usable at 390px, including the sidebar tree and the editor (§15-6) |
+
+**Should-have — after the two slices land, not inside them.**
+
+Page templates · export a space to Markdown or PDF · a table of contents from headings · comments on a page ·
+"pages I changed" on My Work · pinning a page to a project's header · highlighting the matched phrase in
+search results.
+
+**Never in v1, each because of a specific cost.**
+
+Realtime co-editing (§20.3.3) · per-page permissions (§20.5) · per-locale bodies (§20.10) · a WYSIWYG editor
+(§20.7) · page subscriptions and "watch this space" — that is the Phase 2 notification rules engine wearing a
+different name, and §6-6 already defers it.
+
+### 20.3 User flows
+
+`[L]` loading · `[E]` empty · `[S]` success · `[X]` error · `[!]` edge case.
+
+#### 20.3.1 Capture a note *(target: under 5 seconds — §7.2's target, because it is the same promise)*
+
+`⌘K` → "New note" → type → `⌘Enter` saves and closes. No title field, no folder, no project, no confirmation
+step. The first line becomes the note's display title; there is no stored title unless somebody sets one,
+because a stored title that drifts from the first line is a second source of truth for one string.
+
+`[E]` no notes yet → one line saying that notes are private and never leave this screen, plus the same `⌘K`
+hint · `[X]` save fails → the text stays in the box and the retry button is the same button (§7.7's rule,
+which applies with more force to something nobody else has a copy of) · `[!]` a note captured while looking at
+an item → offered a one-click pin to that item, taken or not.
+
+#### 20.3.2 Write a wiki page
+
+Space sidebar → "New page" → title → body → save. Saving is explicit, and there is **no server-side draft
+table**: the in-progress body is kept in the browser against the page id and the member, restored on return,
+and cleared on a successful save. A server draft is a second body with its own permission question, its own
+row to sweep, and its own answer to "which one is the page" — for a feature whose entire job is to be the one
+place a thing is written down.
+
+`[L]` the reader skeletons the sidebar tree **and** the body block, because a tree that appears after the body
+is the layout shift §11 forbids · `[E]` a space with no pages → "Nothing written here yet" and the create
+action, never a tour · `[S]` saved → the reader, with a quiet confirmation and the new revision number ·
+`[X]` save fails → the body stays, nothing is lost, and the message says whether it was refused or dropped ·
+`[!]` a body over the cap → refused at the field with the count, in graphemes (§13), never code points.
+
+#### 20.3.3 Two people edit one page — the rule the board deliberately does **not** follow
+
+A save carries the revision it was based on. If the page has moved on, the save is **refused**, and the writer
+is shown their text beside the version that landed while they were typing. Their words are never discarded and
+never merged.
+
+This is the opposite of §7.5's drag, and the contrast is the point. A stale drag "lands correctly relative to
+present state — this is what stops boards feeling haunted" (§9), because a card's position is a small,
+recoverable fact and re-deriving it is what the human meant anyway. A document body is neither: last-write-wins
+on a paragraph somebody spent twenty minutes on destroys work with no trace, and a three-way merge of prose
+produces a sentence neither person wrote. So the thing that can be re-derived is re-derived, and the thing that
+cannot is refused out loud.
+
+Realtime co-editing is what would remove the refusal, and it is not v1: it is a CRDT, a presence channel and a
+second persistence path, and §5 already places realtime presence in Phase 2 with the seams built in v1.
+
+`[!]` the same person in two tabs → still refused, and the message says so plainly rather than blaming a
+colleague who does not exist.
+
+#### 20.3.4 Promote a note
+
+A note offers two actions: **to a work item** (opens §7.2's create with the body carried across, so it lands in
+a project, in a state, with an assignee) and **to a page** (choose a space they may write in; the note's body
+becomes the first revision). Both copy. The note keeps a quiet line recording what it became, which is the only
+trace either operation leaves, and it is on the private side, where it belongs.
+
+`[!]` promoting into a space they cannot write in → the space is not offered, and the picker says why rather
+than showing a disabled row nobody can explain (§7.11's rule about the disabled select).
+
+#### 20.3.5 Find a page
+
+`⌘K` → type → results in sections: Work items · **Pages** · **Notes** · Projects · People · Actions. `/search`
+shows the same corpus in the same sections. A Khmer query routes to trigram exactly as it does for items
+(§13), on the same two-index recipe, because a wiki whose Khmer pages are harder to find than its English ones
+is §13's degraded path arriving through the back door.
+
+`[E]` nothing found → the include-archived toggle items already offer · `[!]` a note matches → it appears
+**only for its owner**, and that predicate is asserted directly in tests, because RLS cannot assert it (§20.5).
+
+#### 20.3.6 Delete, and get it back
+
+Deleting a page is soft, with §4's 30-day window, on the recovery screen that already exists for items.
+**Children are reparented to the deleted page's parent, never deleted with it** — the rule `deleteCycle`
+follows and `work_item_state_fk` enforces: deleting a container must never decide the fate of what is inside it.
+
+`[!]` deleting a page other pages reference → allowed, and the references render as "a deleted page" rather
+than breaking, the same way an activity line naming a hard-deleted workflow state does (slice 7).
+
+### 20.4 Data model
+
+```
+Workspace
+  ├── WikiSpace (one 'company' + one per Project)
+  │      └── WikiPage ── sub-pages (depth ≤ 3)
+  │             ├── WikiPageRevision   (append-only)
+  │             ├── WikiPageLink >── WorkItem
+  │             └── Attachment          (the shared table — §20.9)
+  └── Note (owned by a WorkspaceMember, optionally pinned to a WorkItem)
+```
+
+Every table here is a tenant table and therefore carries the three things §9 requires and `invariants.test.ts`
+checks: `workspace_id`, `...tenantPolicies()` in the schema, and `FORCE ROW LEVEL SECURITY` in the paired
+hardening migration. `wiki_page_revision` writes its policies by hand instead, joining `audit_record` and
+`activity` as append-only: no `UPDATE` policy, no `DELETE` policy, and the matching privileges revoked from the
+app role. A revision that can be edited is not a history.
+
+| Table | The columns that carry a decision |
+| --- | --- |
+| `wiki_space` | `kind` (`company` \| `project`), `project_id` nullable and non-null exactly when `kind = 'project'` (a `num_nonnulls` CHECK — 0018's device), `name`, and `name_key` for the seeded company space so it renders translated until renamed (§13's awkward middle, `seeded-name.ts`) |
+| `wiki_page` | `space_id`, `parent_id`, `root_id`/`depth` maintained **in the database** and capped at 3, `position` integer per parent, `slug`, `title`, `body`, `revision_no`, `deleted_at` |
+| `wiki_page_revision` | `page_id`, `revision_no`, the **full body**, `author_member_id`, `created_at` |
+| `wiki_page_link` | `(page_id, work_item_id)`, unique, with the composite tenant keys on both sides |
+| `note` | `owner_member_id`, `title` nullable, `body`, `work_item_id` nullable, `deleted_at` |
+
+Six of those columns carry a decision that will look arbitrary later.
+
+**`root_id`, `depth` and the cap of 3 live in the database**, for the reason slice 5 put them there for work
+items, slice 10 put the value CHECK in 0018 and slice 11 the cycle period bounds in 0020: a row written by a
+seed script, a Markdown importer or a Phase 2 MCP tool has to be as correct as one the service wrote. Three
+levels rather than more, because a tree deeper than three is a tree nobody navigates — and the space is
+effectively the fourth level, which is what makes three enough.
+
+**Sidebar order is an integer `position` rewritten as a block, not a fractional index.** This is
+`workflow_state`'s call (slice 4), not the board's (slice 6), and for the same reason: fractional ranking exists
+because several people drag cards on one board at once, and a documentation sidebar reordered by one person is
+not that. `rank.ts` stays a work-item concern.
+
+**A revision holds the whole body, not a diff.** A diff chain that loses one link loses everything after it,
+and every read of an old version becomes a replay. A page body is kilobytes; a company writing a thousand pages
+and revising each fifty times is tens of megabytes, which is not a problem worth a reconstruction algorithm.
+Restore writes a **new** revision whose body is an old one — nothing is ever removed from the history, which is
+what makes the history worth having.
+
+**`revision_no` is the concurrency token, it lives on the page, and it is not derived.** A save takes the number
+it was based on and updates conditionally; a mismatch is the refusal at §20.3.3. Derived from the revision table
+it would be a second query inside the hot path of every save, and the answer could change between the two
+statements.
+
+**A note's `title` is nullable and the display title is derived** — the first line, truncated by grapheme (§13).
+Stored, it would be a copy of a string the body already holds, and the two would disagree the first time
+somebody edited the opening line.
+
+**`note.work_item_id` is a pin, not a parent**, and it is the one place in this schema where `ON DELETE SET
+NULL` is right: a note whose item was deleted is still the person's note, where a work item whose cycle was
+deleted is a planning question a human has to answer (slice 11's `ON DELETE RESTRICT`). The single-column key is
+what makes `SET NULL` safe here, which it was not there.
+
+### 20.5 Permissions — the first genuinely new §10 rows
+
+Eleven times in a row a slice has looked at §10 and found the row it needed already written — labels,
+attachments, notifications, custom fields, cycles, saved views, availability, search, the holiday calendar,
+settings, password reset. **This is the first work that needs new rows, and it needs exactly two.**
+
+| Action | Owner | Admin | Member | Guest |
+| --- | :-: | :-: | :-: | :-: |
+| Write in a project space | ✅ | ✅ | if Member+ | if Member+ |
+| Write in the company space | ✅ | ✅ | — | — |
+
+**Reading follows the space's container and needs no row at all.** A project space is readable by whoever can
+see the project — `project.view`, already written, already composed by `effectiveProjectRole`, already the thing
+a Guest is safely bounded by. The company space is readable by every workspace member and not by Guests, which
+is the line §10 already draws at *See workspace-visible projects*.
+
+**Writing needed rows because no existing row is the right shape.** A project space's writers are the project's
+Members and above — the same people the *Create / edit work items* row already names, and it was tempting to
+reuse it. It is refused because the two questions come apart the moment anybody asks them: a company that hands
+a contractor a Guest seat on one project is happy for them to file bugs, and would be surprised to find them
+rewriting that project's documentation. The company space is worse. It holds the handbook and the policies, and
+the only existing row that fits is *Workspace settings, branding, teams* — which is right about who and wrong
+about what, because writing a page is not changing a setting, and an owner reading the matrix should be able to
+see the difference.
+
+**Per-page permissions are refused.** §6-2 already defers per-field permissions to Phase 2 for the same reason:
+a per-object ACL is a second permission system that has to be joined into every list query, shown in every UI,
+and explained to the non-technical owner of §2.3 — the person §7.13's view-as exists to protect. The unit of
+access is the **space**, which is a noun somebody can hold in their head.
+
+**A note has no row, and that is the twelfth time.** What stops one person reaching another's note is not a
+role; it is `owner_member_id` in every predicate, underneath the RLS that has already scoped the row to the
+workspace. RLS cannot help — both people are in one company — so `notes.test.ts` asserts the owner predicate
+directly, exactly as `saved-views.test.ts` does, because a test that only checked the rows returned would still
+pass with the predicate removed.
+
+**Offboarding (§7.12) has a new question, and the answer is asymmetric.** Pages are the company's record and
+survive, attributed, exactly as activity does. Notes are destroyed with the membership. The offboarding dialog
+says both in as many words before the click, because "their notes will be deleted" is a fact somebody may want
+to act on first, and discovering it afterwards is discovering it too late.
+
+**View-as reads and never writes**, which needs no new mechanism: `withActor` sets `unifyops.read_only`, every
+tenant table's `INSERT`/`UPDATE`/`DELETE` policy already carries `and not tenancy.is_read_only()`, and the new
+tables get theirs from `tenantPolicies()`. One consequence has to be stated rather than discovered: **an Owner in
+a view-as session can read the target member's notes.** That is what view-as is for, and it is already audited —
+but it means the word *private* in the notes UI must be honest. It says private to you and to anyone who can view
+as you, and §7.13's banner is on screen for the whole of such a session.
+
+### 20.6 Events, and the one type this widens
+
+Eight new events, on the same registry whose three fields have been exhaustive over the event union since
+slice 9.
+
+| Event | audit | activity | notify |
+| --- | --- | --- | --- |
+| `wiki_space.created` · `.updated` | ✅ | — | — |
+| `wiki_page.created` | ✅ | — | mentions in the first revision |
+| `wiki_page.updated` | — | — | mentions **newly added** by this revision |
+| `wiki_page.moved` | ✅ | — | — |
+| `wiki_page.deleted` · `.restored` | ✅ | — | — |
+| `wiki_page.linked` · `.unlinked` | — | on the **work item** | — |
+
+**No wiki event projects into an item's activity feed except the two about a link**, and that exception is the
+rule working rather than bending. Activity is per work item (§9 hangs it under `WorkItem`), and a page is not a
+work item — its history is its revision list, which is a better surface for a document than a feed of lines.
+`wiki_page.linked` is the one whose subject genuinely *is* the item: "somebody attached the architecture page to
+this task" belongs in that task's history, and it is the line that makes the wiki get read.
+
+**`wiki_page.updated` is not audited, and the omission is deliberate.** A log with a row per save is a log
+nobody reads when it matters — the call `work_item.moved` already made in slice 6. What an owner needs six
+months later is that a page was created, moved, deleted or restored; what changed inside it is the revision
+list, which is append-only, complete and attributed.
+
+**Mentions ride the existing `mention` kind, not a sixth.** §6-6's five kinds are a closed set people reason
+about, and somebody who switched mentions off meant mentions, wherever their name was written. A `wiki_mention`
+row in the preference grid would be a toggle nobody wants and a second place to forget.
+
+**One existing type has to widen, and it is worth naming, because nothing else in this section touches built
+code.** `NotifyDraft` carries `workItemId: string` and `commentId: string | null` — it is item-shaped, because
+until now every notification was about an item. A page mention has no item. The field becomes a subject union
+(`{ kind: 'work_item', id } | { kind: 'wiki_page', id }`), the notification row stores two nullable columns under
+a CHECK that exactly one is set, and the inbox row and the email's deep link read the subject rather than
+assuming it. Every existing entry is mechanically the `work_item` branch, and the compiler finds all thirty of
+them — which is the property the registry was built for.
+
+**Notes emit nothing at all**, which is `saved_view`'s call from slice 12 taken further and for a stronger
+reason. There, the argument was that naming a filter is furniture. Here it is that a permanent, Owner-visible
+record of what somebody privately wrote is a thing nobody asked us to keep, and §20.1 promised we would not.
+
+### 20.7 The body format, and what is refused
+
+**Markdown, in a `text` column, rendered on the server through an allowlist.** Slice 8 deferred the editor
+question for `work_item.description` and answered it with plain text; a handbook forces it again, because a
+policy document needs headings, lists, tables and links, and a wall of unstructured text is not a document.
+
+Markdown rather than a document tree, for four reasons that are all about the next five years:
+
+- **It is text.** Revisions compare as text, search indexes it as text, and slice 14's `search_text` recipe
+  works on it unchanged. A ProseMirror or Lexical document is JSON whose schema belongs to the editor, so
+  changing editors becomes a migration over every revision ever written.
+- **It survives the editor.** A company that exports its wiki gets files a human can read. A stored document
+  tree exports to whatever we wrote an exporter for.
+- **It is script-neutral**, which a toolbar is not: a WYSIWYG editor is thirty new strings, thirty tooltips and
+  an icon set, in two languages, for a §12 component inventory that deliberately contains no editor.
+- **It has no dependency.** The same bargain `sigv4.ts` makes against `@aws-sdk` and the burndown makes against
+  a charting library.
+
+**Raw HTML in a body is refused, not sanitised.** The renderer walks the Markdown AST and emits components from
+an allowlist; anything not on it renders as the text it was. This is the refusal `src/lib/attachments.ts` already
+makes for SVG and HTML uploads — documents that can carry script, and the one place anybody opens one is a
+browser — and it is stronger here, because a page body is served from the app's own origin on every render
+rather than from a storage host on a click.
+
+**Three token formats live in a body and all three store ids.** `@[<uuid>]` is slice 8's mention token, unchanged
+and parsed by the same `src/lib/mentions.ts`. `#[<uuid>]` is a page cross-reference. `ENG-142` in running text
+autolinks through the parser slice 14 already wrote (`parseItemReference`). All three resolve to a name at
+render, for the reason `activity.data` and comment mentions already do: somebody who renames a page or changes
+their display name should read correctly in a document written last March, and a name frozen into a row is the
+one string a Khmer workspace could never fix (§13).
+
+**The parser and renderer live in `src/lib`**, because both sides run them: the editor previews as you type, the
+server renders the same body on read. One implementation, so the preview cannot promise a heading the reader
+will not show.
+
+**The body is capped and the cap counts graphemes.** `[...text].length`, never `.length` — slice 10's rule, and
+the arithmetic that silently gives a Khmer workspace a third of the field an English one gets when it is
+forgotten.
+
+### 20.8 Search
+
+Two new sections — `pages` and `notes` — in `SEARCH_SECTIONS`, which means two new message keys that
+`messages.test.ts` already requires by the rule slice 13 wrote and slice 14 extended.
+
+**Not one query, and not a new recipe either.** Pages and notes are not work items, so they cannot ride §9's
+builder — that builder emits a counts query and a `LATERAL` per-group page over `work_item`, and pretending a
+page is one would be the first place "what is overdue" got two answers. What they reuse is everything *above*
+the query: `searchRoute`, `hasKhmer`, `toTsQuery`, `toLikePattern`, `MIN_QUERY_LENGTH`, and the two-index recipe
+from migration 0025 — a generated `search_text` column, `gin (to_tsvector('simple', …))` for the Latin route and
+`gin (search_text gin_trgm_ops)` for the Khmer one.
+
+**One routing rule, three corpora.** If each corpus detected script its own way, a mixed-script query would find
+items and miss pages, and the bug report would be a Khmer page nobody could find. `src/lib/search.ts` stays the
+only place that decision is made.
+
+**Ordering is recency**, as it is for items and for the same two reasons: `ts_rank` normalises by document
+length, which is backwards for a wiki where the definitive page is often the long one, and it cannot rank the
+trigram route at all — so ranking by it would give the two languages different orderings of one corpus.
+
+**The notes corpus carries the owner predicate into the query**, never into a filter applied afterwards. A
+`LIMIT` applied before the predicate is a palette that tells somebody how many notes their colleagues have.
+
+**Both new sections are anchored by construction**, so §16's invariant is untouched: a page belongs to a space,
+spaces resolve from the projects `listProjectsIn` has already vetted plus the one company space, and a note is
+bounded by its owner. This is the answer slice 14 gave — the feature that looks like it must weaken §9's rule
+leans hardest on it.
+
+### 20.9 Attachments, images, and the sweeper that stops being optional
+
+A page needs images, and a screenshot pasted into a page is the same operation as a screenshot pasted into a
+comment: the same signed ticket, the same direct PUT, the same rule that **no byte passes through the app
+server**, the same 25 MiB cap, the same allowlist refusing SVG and HTML, the same soft delete, the same download
+route.
+
+**So it is the same table**, with `work_item_id` made nullable, a nullable `wiki_page_id` beside it, and a CHECK
+that exactly one is set — `num_nonnulls`, the device migration 0018 already uses for custom field values.
+
+This is the opposite of the call slice 15 made for the workspace logo, and the difference is the whole argument.
+A logo is **one row per workspace with a different lifecycle** — no ticket queue, no sweep, no per-item
+permissions, no thread — and making it an attachment "would have loosened a NOT NULL on the busiest table in the
+schema to save one column on the quietest". Page images are **many rows with an identical lifecycle**: the same
+noun with a different parent. Loosening the NOT NULL is the cost, and the CHECK is what pays it back — the
+constraint that replaces it is stricter than the one it removes, because it also refuses a row belonging to both.
+
+**Slice 9's unbuilt sweeper stops being optional here.** An abandoned upload already occupies storage
+indefinitely; a page is drafted for longer than a comment, with more images, and abandoned more often. The
+handler and its cron line — the worker and the schedule both already exist — are part of slice 18's definition
+of done, not a gap it is allowed to widen.
+
+### 20.10 Bilingual, and the §13 gap this closes
+
+**A page has one body, in one language, and the product does not translate it.** A per-locale body column would
+double every page and guarantee that one half goes stale; a company that wants both writes two pages and links
+them, which is honest about the fact that a human has to keep them in step. There is no translation UI. §19.4's
+Phase 2 assistant is where inline EN↔KH translation belongs — as an *action on* a body, never as a second column
+pretending to be one.
+
+**This is the work that finally closes §13's open per-content language gap**, and it closes it for everything
+rather than for pages. The gap is recorded from slice 8: a Khmer comment in an English workspace inherits
+`lang="en"` and clips its diacritics, and the same is true today of item titles, descriptions and project names.
+A whole page of it is unignorable. `hasKhmer` in `src/lib/search.ts` is already the script detector, so the fix
+is one derived value and a `lang` attribute on the rendered subtree — applied to page bodies, comment bodies,
+item titles and descriptions in the same slice, because fixing it in one place and not the others is how one gap
+becomes four.
+
+The rest of §13 applies unchanged, and is listed so that none of it is assumed: `en.json`/`km.json` parity for
+every string this adds · Latin digits pinned in revision numbers and dates · the Khmer face after the Latin one
+in the body stack · `:lang(km)` line-height on rendered page content, which matters more here than anywhere else
+because a page is the longest continuous Khmer text in the product · truncation by grapheme in the sidebar tree,
+the search results and the derived note titles.
+
+### 20.11 Screens, and the five states for each
+
+| Route | Screen | `[L]` | `[E]` | `[X]` / `[!]` |
+| --- | --- | --- | --- | --- |
+| `/{slug}/wiki` | Space list | Skeleton list | "No spaces yet" — impossible after signup, so it reads as a fault, not as an invitation | Boundary keeps the shell |
+| `/{slug}/wiki/{space}` | Space home + tree | Tree **and** body skeleton | "Nothing written here yet" + create | — |
+| `/{slug}/wiki/{space}/{page}` | Reader | Same | An empty page reads as empty, not as broken | `[!]` a deleted page → slice 16's 404, which names four causes |
+| `…/{page}/edit` | Editor + preview | — | — | `[X]` stale revision → §20.3.3's compare · `[!]` body over the cap |
+| `…/{page}/history` | Revisions + compare | Skeleton rows | Never empty — a page has at least one revision | `[!]` restore asks once, then writes a new revision |
+| `/{slug}/notes` | Note list + composer | Skeleton | "Private to you" + the `⌘K` hint | `[X]` save fails → the text is retained |
+
+Every screen is a workspace screen, so it inherits the header, the bell, the skip link, the `[workspaceSlug]`
+error boundary and the print stylesheet slice 13 wrote — a page prints as a page, in Khmer, with the light
+palette forced (§17-26). The sidebar tree is a nested list of links with `aria-current`, not a custom widget:
+§11's baseline is the whole loop without a mouse, and a list of links has that for free where a `tree` role has
+to be given it by hand.
+
+### 20.12 What gets built — the module inventory
+
+Named against §8's directory layout, so nothing has to be invented later.
+
+| Where | Modules |
+| --- | --- |
+| `src/lib` | `documents.ts` (Markdown parse + allowlist render, run on both sides) · `doc-refs.ts` (`#[page]` tokens and `ENG-142` autolinking, built on the existing `mentions.ts` and `parseItemReference`) · `wiki.ts` (slug, depth cap, sidebar ordering, revision compare) · `notes.ts` (derived title, grapheme caps) |
+| `src/server/db/schema` | `wiki.ts` (space, page, revision, link) · `note.ts` · two columns and a CHECK on `attachment.ts` |
+| `drizzle` | `0029`/`0030` for slice 17 and `0031`/`0032` for slice 18 — the generated-then-hand-written pair every slice has added since 0003 |
+| `src/server/queries` | `wiki.ts` · `notes.ts` · additions to `search.ts` |
+| `src/server/services` | `wiki.ts` · `notes.ts` · one branch in `attachments.ts` for a page-owned ticket |
+| `src/server/authz` | Two actions in `policy.ts`, two rules in `rules`, two reasons in `why()` |
+| `src/server/events` | Eight event types, eight registry entries, and `NotifyDraft`'s subject union (§20.6) |
+| `src/server/jobs` | The abandoned-upload sweeper (§20.9) — one handler and one cron line |
+| `src/app/[locale]/[workspaceSlug]` | `wiki/`, `wiki/[spaceSlug]/`, `…/[pageSlug]/`, `…/edit/`, `…/history/`, `notes/` — with a `loading.tsx` per level, because the nearest ancestor's skeleton draws the wrong shape (slice 16) |
+| `src/app/api/internal` | **Nothing new.** `search` widens and `upload` widens; §8's five exceptions stay five |
+| `src/components/wiki` | `space-sidebar.tsx` · `page-reader.tsx` · `page-editor.tsx` · `revision-list.tsx` · `revision-compare.tsx` · `page-links.tsx` · `page-breadcrumb.tsx` |
+| `src/components/notes` | `note-list.tsx` · `note-composer.tsx` · `note-promote.tsx` · `note-pin.tsx` |
+| `src/components/search` | Two sections in the palette and in the results screen |
+| `src/components/work-item` | `related-pages.tsx` on the item page, loaded in the transaction `getWorkItem` already opens |
+| `src/i18n` | Keys in **both** catalogues, in the same commit, per §13 |
+
+**One trap is worth writing down before it is hit for a sixth time.** `getWorkItem` opens one `withActor`
+transaction and already carries assignees, labels, custom fields, the cycle name and the comment thread, because
+a second service call is a second transaction on every item-page render — the trap slice 8 hit with
+`getCommentThread`, slice 9 with the unread count, slice 10 with custom fields, slice 13 with §7.4's six lists
+and slice 14 with the palette's scope. `related-pages` rides that transaction. So does the space tree on
+`getProjectBySlug`.
+
+### 20.13 Build sequence
+
+| # | Slice | Demonstrable outcome |
+| --- | --- | --- |
+| 17 | **Document foundation + notes** | Capture a note from `⌘K` in under five seconds, find it in search in both scripts, turn it into a work item — and nobody else in the workspace can see it, proven by a test in the one place RLS cannot help |
+| 18 | **Wiki — spaces, pages, revisions, links** | Write a handbook page in Khmer in the company space, link it from a work item, have a colleague edit it, see both revisions and both authors, and have a stale save refused rather than merged |
+
+**17 before 18, for §14's own reason.** The riskiest parts of this feature are the renderer, the search route and
+the token formats — all of which notes exercise, and none of which needs a permission model, a tree, a revision
+table or a concurrency rule. Getting the body format wrong is the expensive-to-reverse decision here, in the way
+slice 5's list query was, and slice 17 is the cheap place to find that out.
+
+**Definition of done, on top of §15's per-slice gates.** Slice 17: a note is unreachable by anyone but its
+owner, asserted directly. Slice 18: a stale save is refused with both bodies on screen; a deleted page's children
+survive it; the abandoned-upload sweeper runs; and §13's per-content `lang` fix is applied to pages, comments,
+titles and descriptions together.
+
+### 20.14 Verification
+
+Everything in §15 applies. Five checks are specific to this work and would not otherwise be run:
+
+| # | Check | Pass condition |
+| --- | --- | --- |
+| 1 | Two browsers save one page from the same base revision | The second is refused and shown both bodies; neither person's text is lost |
+| 2 | A colleague searches for a phrase that appears only in somebody's note | Zero results, in the palette and in `/search` |
+| 3 | A page written entirely in Khmer, read in an English workspace | Diacritics render, the line-height is Khmer's, and search finds it by a two-grapheme substring |
+| 4 | 5,000 pages beside §15-7's 50,000 items in one workspace | Palette results under 300ms server time; a third corpus does not weaken the existing gate |
+| 5 | Offboard a member who has pages and notes | The pages remain and stay attributed, the notes are gone, and the dialog said both before the click |
+
+### 20.15 Risks
+
+| Risk | Mitigation |
+| --- | --- |
+| **A wiki nobody writes in** — the usual fate | The note is the on-ramp: capture costs five seconds and promotion is one action. The item↔page link is the other half, because a page reached from work is a page that gets read |
+| **A wiki nobody trusts to edit** | Full revisions, a restore that adds rather than removes, and a stale save refused rather than merged. The cost of a bad edit has to be visibly one click |
+| **The body format becomes a migration** | Markdown is text. Every alternative that is not text is a schema owned by an editor we do not control |
+| **A private note exposed by one forgotten predicate** | A separate table, the owner predicate in every query, a direct test rather than a row-count test, and no shared code path that could carry a note into a page query |
+| **Page search degrades the palette** | The same recipe and the same load gate as items, with the new corpus inside the §15-7 test rather than beside it |
+
+### 20.16 What this must not foreclose, and what is open
+
+Nothing here changes slices 0–16, and nothing here blocks them. Four properties must stay true:
+
+1. **The space is the unit of access.** Anything that later wants per-page rules adds a layer above a space,
+   never a column that every query has to remember.
+2. **The body stays text.** A richer editor is a renderer change, exactly as slice 8 promised for descriptions
+   and comments.
+3. **A note stays outside the event system.** Whatever else is added, nothing writes a durable, shared record of
+   a private note.
+4. **`NotifyDraft`'s subject stays a union that can gain members** — a chat message (§19.3) is the next one, and
+   it should cost an entry rather than a refactor.
+
+Open, and deliberately **not** added to §18, because none of it blocks the build:
+
+- **Whether pages get comments.** They are in the should-have list, and the honest question is whether a page
+  comment is a `comment` row with a page parent or a different noun with a different lifetime. Deciding that
+  before anyone has written a page is deciding it with no evidence.
+- **Export.** A space to Markdown files is easy and a space to PDF is the print stylesheet; what is undecided is
+  whether export is a §6 setting, a page action, or the thing a departing *company* is owed.
+- **Whether the company space is one space or several.** One is right for a 50-person company and probably wrong
+  for a 300-person one, and the migration from one to several is a `kind` value plus a parent — which is why
+  `wiki_space.kind` is an enum rather than a boolean.
+- **Whether a Phase 2 MCP tool may ever write a page** (§19.6, §19.7's open list). It is the most useful write
+  scope an assistant could have and the easiest one to regret, and the answer should come from a pilot (§18-7).
 
 ---
 
