@@ -1922,5 +1922,461 @@ Open, and deliberately **not** added to §18, because none of it blocks the buil
 
 ---
 
+## 21. Notes and wiki — the second pass
+
+§20 is built. Slices 17 and 18 shipped the document format, notes, spaces, pages, revisions, links, a refused
+stale save, a third and fourth search corpus and §13's per-content language fix. This section is what comes
+*after* that, and it exists because a full feature survey of one mature knowledge product (Notion 3.x,
+September 2026) was put beside what those two slices actually deliver.
+
+**Slice 19 is built (2026-09-05); slices 20, 21 and 22 are not.** The section is planned the way §20 was — as work taken one slice at a time, on
+request — and it is deliberately separable: no slice below depends on the one before it.
+
+### 21.0 What this section is, and what it is not
+
+A competitor's feature list is **evidence about what people expect, never a specification**. Half of any such
+list is another product's answer to a problem this one does not have, and copying it wholesale is how a
+product with §3's goals acquires §3's non-goals one row at a time. So every item in the survey is judged
+below against what is already built, and the judgement is one of four words: **built**, **build it**, **§19
+owns it**, or **refused** — the last always with the cost it would carry.
+
+Three sentences from that survey's *own* limitations table are the reason this section is shaped the way it
+is, and they are worth quoting before any feature is:
+
+- *"Relations, rollups and formulas take real time to master. Expect weeks, not hours, before a team is
+  fluent."* §3's first design principle is a product usable **without training**, in a market where §2.5 says
+  the person being onboarded may be doing it on a phone, in Khmer, between two other jobs.
+- *"With no imposed structure, undisciplined workspaces become sprawling and unfindable. Governance is on
+  you."* §2.3's owner is non-technical and has nobody to delegate governance to. A product that ships a blank
+  canvas and an obligation has shipped the obligation.
+- *"The failure mode of every company wiki is staleness."* This one is not a warning about their product; it
+  is true of every wiki including ours, and the answer to it is **four columns and one list** (§21.3).
+
+| | |
+| --- | --- |
+| **Scope** | The second pass over §20's two nouns — nothing new is invented, and no third noun is added |
+| **Depends on** | §20, which is built. One item depends on §4's saved-view **sharing** (a should-have) and says so |
+| **Adds to §10** | **No rows.** §20.5's two cover writing; verifying, owning and templating a page are all writing |
+| **Adds to §8's route handlers** | **None.** §8's five exceptions stay five |
+| **New tables** | Two — `wiki_page_ref` and `wiki_page_label`. Everything else is columns on `wiki_page`, `wiki_space` and `comment` |
+| **Refuses** | Blocks as a platform, databases inside pages, generic embeds, publish-to-web, synced blocks, inline comments, suggested edits, page analytics and realtime co-editing — each at §21.9 with what it would cost |
+
+### 21.1 The governing rule — take the answers to decay, refuse the freedom to build
+
+**Copy what a knowledge product knows about documents rotting; refuse what it knows about letting people
+build their own software.**
+
+Those are two different products sharing one interface. The first is ownership, verification, expiry,
+backlinks, history and export — every one of which is a small, bounded addition to what §20 already built,
+and every one of which is the difference between a wiki that is read in year two and a wiki that is
+archaeology. The second is blocks-as-a-platform, databases-inside-pages, formulas, rollups, embeds and
+publishing — a general-purpose application builder, which is a magnificent thing to own and precisely the
+thing §3 rules out when it says *usable without training* and §2.3 rules out when it says the owner is not
+technical.
+
+This is not a claim that the second product is worse. It is a claim that **UnifyOps already made the other
+choice, structurally, in slices 5, 10 and 12**: a work item is a typed row with typed custom fields, a query
+is one DSL with one builder, and a view is a name for a URL. A database-inside-a-page would be a *second*
+answer to "what is overdue", written in a different language, with a different permission model, joined into
+nothing. §9's whole argument against JSONB is the same argument at a smaller scale.
+
+So the rule for everything below: **a page may point at the company's data; it may never contain a second
+copy of it.**
+
+### 21.2 The inventory, judged
+
+| Area | What the survey names | UnifyOps today | Verdict |
+| --- | --- | --- | --- |
+| **Editing** | Markdown shortcuts — headings, lists, to-dos, quotes, code, tables, dividers | `documents.ts` parses all of it through an allowlist | **Built** (§20.7) |
+| | Slash menu to insert any block | Typing Markdown | **Build it** — §21.5, slice 20 |
+| | Formatting shortcuts (`⌘B`, `⌘I`, `⌘K`) | Nothing; the textarea is plain | **Build it** — §21.5 |
+| | Toggles, callouts, columns, tabs, equations | Not in the grammar | **Build it, partly** — callout and toggle are two grammar rules; columns and tabs are layout, and layout in a text body is where a document format stops being text (§21.5) |
+| | Drag a block to reorder · copy link to block · per-block colour | Impossible without block identity | **Refused** (§21.9) |
+| | Synced blocks | — | **Refused** (§21.9) |
+| **Pages** | Icon, cover, favourites, breadcrumb, table of contents | Breadcrumb built; the rest not | **Build it** — icon and TOC in slice 20; covers are §21.9's one omission on cost rather than principle |
+| | Nesting, move, reorder, soft delete with recovery | Built, capped at depth 3 | **Built** (§20.4) |
+| | Version history, compare, restore | Built, full body per revision | **Built** (§20.4) |
+| | Lock page | — | **Refused** — a lock is a per-page permission wearing a verb (§20.5) |
+| **Wiki** | **Owner property** | — | **Build it** — §21.3, slice 19 |
+| | **Verification badge, expiry, re-review** | — | **Build it** — §21.3, slice 19 |
+| | Tags | Labels exist, on work items only | **Build it** — §21.3, the same `label` vocabulary rather than a second one |
+| | **All-pages view** with owner, tags, status, last edited | — | **Build it** — §21.3 |
+| **Links** | `@` person, `@` page, autolink | Built — three token formats | **Built** (§20.7) |
+| | **Backlinks, automatic and bidirectional** | Page→item only, and authored | **Build it** — §21.4, slice 20 |
+| | Hover preview of a link target | — | **Build it** — §21.4, cheap once the ref table exists |
+| **Databases** | Table / board / list / calendar / gallery / timeline / chart over rows | Four view types over work items, plus saved views | **Built, elsewhere** — §5, §9, slice 12 |
+| | A database *inside* a page; linked views | — | **Refused as data, deferred as a pointer** — §21.9 and the should-have below |
+| | Relations, rollups, formulas, AI properties | Custom fields — typed, indexed, filterable | **Refused** — §6-2 and §9 already decided this shape |
+| **Media** | Images, files, PDFs | Built — the shared `attachment` table | **Built** (§20.9) |
+| | Generic embeds — Figma, YouTube, Drive, … | — | **Refused** (§21.9) |
+| **Collaboration** | Real-time cursors and co-editing | Refused; a stale save is refused instead | **Stands** (§20.3.3) — the cheap half is §21.10 |
+| | **Comments on a page** | Comments on work items only | **Build it** — §21.6, slice 21 |
+| | Inline comments anchored to a phrase · suggested edits | — | **Refused** (§21.9) |
+| | Page analytics — who viewed, how often | — | **Refused** (§21.9) |
+| | Guests, teamspaces, permission levels | §10 plus §20.5's two rows | **Built** |
+| **AI** | Writing help, enterprise search, agents, meeting notes | — | **§19 owns all of it** — and §21.3 is the largest single thing this plan can do to make §19.4 work (§21.11) |
+| **Search** | Full text inside content, filters, quick find | Built — four corpora, script-routed | **Built** (§20.8) |
+| | Highlight the matched phrase | — | **Build it** — a should-have already listed in §20.2 |
+| **Portability** | Export Markdown / PDF / HTML | — | **Build it** — §21.8, slice 22. Bodies are already Markdown |
+| | Import from Markdown, CSV, Confluence, Docs | — | **Build the first two** — §21.8 |
+| | Publish a page to the public web | — | **Refused** (§21.9) |
+| | Web clipper | — | **Refused** — a browser extension is a second shipped artefact with its own release cycle |
+| **Templates** | Page templates · repeating templates | — | **Build the first** — §21.7, slice 22. The second is a schedule per object, which this plan has refused three times |
+
+**One should-have with a named dependency.** A page that can *point at* a saved view — a read-only list of
+work items, resolved per reader — is the honest version of "a database inside a page", because the query runs
+**as the reader** and can therefore never show somebody rows they may not see. It is refused today for one
+reason that has nothing to do with pages: saved views are personal (slice 12), so a token naming one would
+resolve to nothing for everybody but its owner. **It becomes cheap the day §4's saved-view sharing is built,
+and not before.** The token shape is settled now so that no stored body needs rewriting later:
+`#[view:<uuid>]`, a namespaced branch of the existing `#[uuid]` page token in `doc-refs.ts`, so a bare
+`#[uuid]` stays a page in every body already written.
+
+### 21.3 Ownership, verification and expiry — the one feature that decides whether the wiki survives
+
+**This is the flagship of the whole section, and it is four columns, one list, and one section on an email
+that already goes out.**
+
+§20.15 named the risk as "a wiki nobody writes in" and answered it with the note as an on-ramp. That was the
+right answer to the *first* year. The second year's risk is the opposite and worse: **a wiki everybody writes
+in and nobody can trust**, where the onboarding page describes a process that changed in March and the new
+hire follows it anyway. Staleness does not announce itself — a wrong page and a right page look identical,
+which is exactly why the answer cannot be a convention and has to be data.
+
+**Four columns on `wiki_page`.**
+
+| Column | What it carries |
+| --- | --- |
+| `owner_member_id` | Nullable. The person answerable for the page being true — not its author, and not necessarily its last editor |
+| `verified_at` | Nullable `timestamptz`. When somebody last asserted the page is accurate |
+| `verified_by_member_id` | Nullable. Who asserted it. Both are set and cleared together, under a CHECK, because half of this pair is not a fact |
+| `verification_expires_at` | Nullable. When the assertion lapses. Null means *no review cycle*, which is right for most pages and must stay the default |
+
+**Verified is a derived state, not a stored one — the rule slice 11 wrote for a cycle.** `verified` /
+`expiring` / `expired` / `never verified` are computed from `verified_at`, `verification_expires_at` and **the
+workspace's today** (§17-13), in one place in `src/lib/wiki.ts`, exactly as `cycleStatus` is. A stored status
+needs a job to flip it, a repair after the job was down, and a missed repair is a page that reads as verified
+forever. There is no such job and there must not be one.
+
+**Editing a verified page clears the verification.** This is the only automatic transition, and without it the
+whole feature is decoration: a badge that survives the edit that invalidated it is worse than no badge,
+because it is a false claim carrying the product's authority. The writer sees it happen and can re-verify in
+the same visit if the edit was a typo fix.
+
+**Expiry is chosen from a closed set, never typed.** Never · 90 days · 180 days · 365 days. A date picker
+invites a company to build a review calendar in a field, and §6's rule is that a company which never opens a
+setting must be completely fine. The set maps to messages in code and **never reaches the database** (§13's
+closed-enum rule); what is stored is the resolved date.
+
+**The space carries a default, and that is the one new `wiki_space` column.** A company space of policies
+wants 180 days; a project space of scratch notes wants Never, which is the default default. One column,
+applied at page creation and overridable per page, so a policy space does not depend on somebody remembering
+on every page.
+
+> **Built as: resolved at verification, not copied at creation** (slice 19, 2026-09-05). A page that has
+> never been verified has no assertion for an expiry to attach to — migration 0034 refuses an expiry with a
+> null `verified_at`, because that is a lapse date for a claim nobody made. So the space's default is what
+> the verify control offers *first*, resolved when somebody verifies. A value copied onto the page at
+> creation would have gone stale the moment the space default changed, which is the opposite of what this
+> paragraph asks for. **One line either way, and worth confirming before the pilot (§18-7)** — like §20.5's
+> Guest reading.
+
+**The All-pages view is one query over one space**, and it is where the feature becomes usable rather than
+merely present: title, owner, verification state, expiry, last edited, last editor — sortable, and filterable
+to *unverified*, *expiring within 30 days*, *owned by me*, *owned by nobody*. It is **not** §9's builder: that
+builder emits a counts query and a `LATERAL` per-group page over `work_item`, and §20.8 already established
+that a page is not a work item and must not pretend to be one. It is a small dedicated query in
+`queries/wiki.ts`, anchored by the space exactly as every other page query is.
+
+**Nobody is notified page by page, and that is deliberate.** An inbox row per expiring page is a stream that
+teaches people to ignore the bell — §7.8's own warning, applied to documentation. Instead:
+
+- The **evening digest** (slice 9) gains one section: *pages you own that expire within the next seven working
+  days*. It rides the existing `digest` kind, so it inherits the preference row, the working-evening rule and
+  the read-as-that-member scope. **No sixth notification kind** — §6-6's five stay five, the thirteenth time
+  this plan has looked for a new row and found the one it needed already written.
+- The **space** shows a standing count of what is expired or expiring, which is a list somebody chooses to
+  look at rather than a message that arrives.
+
+**Tags are `label`, not a second vocabulary.** Slice 5 made labels workspace vocabulary managed under
+`workspace.settings`, with `LABEL_COLORS` and `LabelChip` already built and already bilingual. A second
+tagging system for pages would be a second settings screen, a second colour set and a second thing to explain
+to §2.3's owner. What it costs instead is one join table, `wiki_page_label`, mirroring `work_item_label`.
+
+**Three events, all audit-only.** `wiki_page.owner_changed` · `.verified` · `.unverified`. Audited, because
+"who said this was accurate, and when" is the exact question an audit log exists to answer six months later.
+None projects into an item's feed — §20.6 settled that a page is not a work item — and none notifies, because
+the digest reads the page rows rather than an outbox.
+
+**No §10 row.** Owning, verifying and un-verifying a page are all *writing* in that space, which §20.5's two
+rows already govern. Assigning somebody else as owner is the same act: a claim on the company's record, made
+by somebody the matrix already trusts with that record.
+
+`[L]` the All-pages table skeletons its rows · `[E]` a space where nothing is verified reads as "nothing here
+has been reviewed yet", which is a true and actionable sentence rather than a fault · `[S]` verifying is one
+click and the badge appears with its date · `[X]` verifying a page somebody has edited underneath you →
+refused with §20.3.3's own message, because verifying a body you did not read is the failure being prevented ·
+`[!]` the owner leaves the company → §7.12's offboarding dialog counts the pages they own, and the removal
+nulls the column rather than deleting anything, so those pages appear under *owned by nobody* the next morning.
+
+### 21.4 Backlinks, and the two kinds of edge
+
+**Automatic bidirectional linking is the cheapest thing in this section and the one that most changes how a
+wiki feels.** It is the difference between a folder tree and a body of knowledge: you write a page about
+deployment, and the page about onboarding — written by somebody else, six months earlier — starts listing it
+without anybody maintaining an index.
+
+`wiki_page_ref (from_page_id, to_page_id, workspace_id)`, unique on the pair, composite tenant keys on both
+sides. It is **derived and rebuilt on every save** from the `#[uuid]` tokens in the body — the same diff
+`saveWikiPage` already performs for mentions, in the same transaction, against the body the conditional update
+has just proved was current.
+
+**Two kinds of edge, and §20.0 already found the distinction the hard way.** `wiki_page_link` is
+**authored**: somebody attached a page to a work item, it has an author, it emits an event, it appears in the
+item's activity feed, and removing the sentence that mentioned the item does **not** remove it. `wiki_page_ref`
+is **derived**: it is a projection of the body, it emits nothing, and it disappears when the sentence does.
+Merging them would mean either an edit silently detaching a link somebody made on purpose, or a reference
+outliving the paragraph that made it — and both were argued once already, at §20.0's third finding.
+
+**A deleted page's references render as "a deleted page"** and are not repaired, which is slice 7's rule for an
+activity line naming a hard-deleted workflow state and §20.3.6's rule for pages, unchanged.
+
+Two things fall out for free once the table exists, and both belong to this slice rather than a later one:
+**"What links here"** at the foot of the reader, and a **hover preview** on a page token — the title and the
+first line of the body, resolved from a row the page has already loaded.
+
+### 21.5 The editor, and exactly what block identity would cost
+
+**The body stays text** (§20.16-2). This section is what can be built on top of that promise, and what cannot.
+
+**What can.** A `/` menu that *inserts Markdown* — heading, list, to-do, quote, code, table, divider, callout,
+toggle — which is the felt experience of a block menu with none of the storage consequences: what it writes is
+the same text a person could have typed, and what it costs is a keyboard-navigable popover this product
+already knows how to build (`command-palette.tsx`'s contract, third use). Formatting shortcuts that wrap the
+selection. A live preview beside the textarea, running the same `documents.ts` both sides already run.
+Headings that carry anchors, and a table of contents derived from them.
+
+**Anchors are slugified heading text with a dedupe suffix, and the failure is named.** Renaming a heading
+breaks a link to it. That is the bargain every Markdown document on earth makes; it is visible and it is
+recoverable, where the alternative is an id embedded in the body, which is where a text format stops being
+one. Khmer headings route through `slugify`, whose romanisation is documented as an approximation (slice 3) —
+an anchor is not a title and does not have to be beautiful.
+
+**What cannot, and why it is one reason rather than five.** Drag-a-block-to-reorder, copy-link-to-block,
+per-block colour, synced blocks and inline comments anchored to a phrase are **all the same feature**: stable
+identity for a range of text. Storing that means the body is no longer the thing a human can read, export and
+diff — it is a document tree wearing a `text` column, and §20.7's four arguments (revisions compare as text,
+search indexes it as text, export is files a human can read, no dependency) all fail at once. The block model
+is a coherent and good design; it is simply not the one this product chose, and taking half of it is taking
+neither.
+
+**Columns and tabs are refused for a smaller reason**: they are layout, and layout in a body is precisely what
+does not survive export — the survey's own limitations table says so, *"Markdown export loses some layout
+features (columns, toggles nest awkwardly, synced blocks flatten)"*. A page that prints and exports honestly is
+worth more than a page that arranges itself.
+
+**No autosave**, and that is a §21.16 decision as much as an editor one: an editor that saves every few seconds
+writes a revision history nobody can read, and turning that back into a readable one requires compaction — a
+background job editing an append-only table. The browser-side draft §20.3.2 already specifies is what protects
+the typing; the save is the moment a revision exists.
+
+### 21.6 Comments on pages — answering §20.16's first open question
+
+**Yes, and they are `comment` rows with a subject union.** §20.16 left it open on the grounds that deciding
+before anybody had written a page would be deciding with no evidence. Two slices later there is evidence, and
+it is that §20.6 already built the shape: `NotifySubject` is a union precisely so that a notification can be
+about something that is not a work item, and §20.16-4 asked that it stay one.
+
+So `comment` widens the way `attachment` did in §20.9: `project_id` and `work_item_id` become nullable, a
+nullable `wiki_page_id` joins them, and a `num_nonnulls` CHECK requires exactly one subject. Loosening two NOT
+NULLs on the second-busiest table in the schema is the cost, and the CHECK is what pays it back — the
+constraint that replaces them refuses more than they did, because it also refuses a row belonging to both.
+
+What comes free is the reason to do it at all: mentions (`mentions.ts`, unchanged), notification under the
+existing `mention` kind through the union that already exists, soft delete with a tombstone (slice 8's rule —
+a thread that closes silently over a removed comment reads as though the exchange never happened), attachments
+in a comment, and §10's `comment.create` and `comment.delete_others`, which need **no new row** — the
+fourteenth time.
+
+**One thing is genuinely new and has to be decided rather than inherited: who may comment on a page.** A
+work-item comment is bounded by the project; a page comment is bounded by the space, whose *read* rule is the
+container's (§20.5). So: **anyone who can read the space may comment in it**, which for a project space
+includes a Guest who can see the project — deliberately, because the whole value of a comment on documentation
+comes from the person who found it wrong, and that is disproportionately the newest person in the room.
+Writing the page stays capped at §20.5's two rows.
+
+**Inline comments anchored to a phrase are refused**, and it is §21.5's reason rather than a new one: an anchor
+is block identity. A page comment quotes the sentence it is about, which is what a person does anyway.
+
+**Suggested edits are refused**, and it is §20.3.3's reason: accepting a suggestion is a merge, and a
+three-way merge of prose produces a sentence neither person wrote.
+
+### 21.7 Templates
+
+**A template is an ordinary page with a flag** — `is_template`, living in the space it belongs to and hidden
+from the tree. Creating a page offers the space's templates; choosing one copies its body into the first
+revision. That is the whole feature, and it is deliberately not a type: a template that cannot be read, edited
+and searched like a page is a second document format with a second set of screens.
+
+Meeting notes, an incident report, a decision record, a runbook — the value is not that a template saves
+typing, it is that **a company's fourth incident report has the same headings as its first**, which is what
+makes the tenth one findable and comparable.
+
+**Repeating templates are refused, for the third time in this plan.** "Create a fresh standup page every
+Monday" is a schedule per object — created on definition, updated on edit, repaired after any of that happened
+while the worker was down — and a missed repair is a page that silently never appears again. Slice 9 refused
+that shape for the digest and made it one hourly tick; slice 11 refused it for cycle status and derived the
+status instead. If it is ever built it is a tick that asks every workspace whether it is Monday *there*, and it
+is not built now because nobody has asked for it.
+
+### 21.8 Export and import — the pilot's strongest argument
+
+**Bodies are Markdown, so export is nearly free, and it is worth more than its cost suggests.** §18-7's pilot
+customer will ask, in some form, what happens to their handbook if they leave — and *"a folder of Markdown
+files and their images, which you can open in any editor"* is a better answer than any feature in this section.
+A product that is easy to leave is easier to adopt.
+
+- **A space exports to a zip**: one `.md` per page in its tree structure, a small YAML front-matter block
+  carrying title, owner, verification state and last edited, plus the attachments the bodies reference with
+  their links rewritten to relative paths. Tokens resolve to text on the way out — `@[uuid]` becomes the
+  person's name, `#[uuid]` becomes a relative link — because an id nothing can resolve is not portability.
+- **A page exports to PDF** through the print stylesheet slice 13 already wrote, which is why §17-26's three
+  rules were written the way they were: the Khmer face is re-stated, the light palette is forced, and wide
+  content stacks rather than scrolling off the sheet.
+- **Import takes Markdown and a zip of it**, which is also the interoperability path *from* the survey's own
+  product, since it exports Markdown. A `.docx` or Confluence importer is a bespoke parser and a permanent
+  support obligation, and it is refused until a real customer's real files are on the table.
+
+**Whether export is a §6 settings row, a page action, or a departing company's right is left open** — §20.16
+already left it open and this section does not close it, because the answer changes if data residency (§18-6)
+ever does.
+
+### 21.9 What is refused, and what each refusal would cost
+
+| Refused | What it would cost |
+| --- | --- |
+| **Blocks as a platform** — block ids, drag-reorder, copy-link-to-block, per-block colour | Stable identity for every range of text, which turns the body into a document tree wearing a `text` column and fails all four of §20.7's arguments at once (§21.5) |
+| **Synced blocks** | The same identity problem, plus a second permission question: a block visible in two spaces has two read rules, and the survey's own answer is a locked placeholder — a per-object ACL by another name (§20.5). The substitute is one page linked from both places, which is also easier to explain |
+| **Databases inside pages** — relations, rollups, formulas | A second query language, a second permission model and a second answer to "what is overdue", beside the DSL, the builder and the typed custom fields §9 and slice 10 already built. The honest version is a page *pointing at* a saved view, and it waits on saved-view sharing (§21.2) |
+| **Generic embeds** — Figma, Drive, YouTube, … | A third-party iframe on the app's own origin, which is the boundary `attachments.ts` refuses SVG and HTML to protect, plus an unbounded payload on a §2.5 phone where data costs money. A link with a title is the honest version, and it already works |
+| **Publish a page to the public web** | Anonymous read against a schema whose every policy is false when `tenancy.workspace_id()` is NULL — so it is a second auth boundary, a second cache story and an SEO surface, in a product whose whole tenancy argument is that there is exactly one way in. It is the single most likely place to leak a workspace |
+| **Inline comments · suggested edits** | Block identity (§21.5) and a merge algorithm (§20.3.3) respectively |
+| **Page analytics** — who read this, how often | A per-person read log is surveillance of reading, which is the line §20.1 drew for notes and the one §7.13's view-as is audited to keep. The question analytics is usually asked to answer — *is this page still true* — is answered by §21.3 without recording anybody |
+| **Realtime co-editing** | §20.3.3 stands unchanged: a CRDT, a presence channel and a second persistence path. The cheap half of the value is §21.10 |
+| **Page cover images** | Not a refusal on principle — an omission on cost. Covers are bytes, a sweep and a crop UI, for decoration, in a market where §2.5 says the page is loading on mobile data. A page **icon** is one emoji column and is in slice 20 |
+| **AI writing, AI search, agents, meeting notes** | Not refused — **§19 owns them**, and none of it is v1. §21.11 records the one obligation this section owes §19 |
+
+### 21.10 Presence without a socket — the cheap half of co-editing
+
+**A stale save refused after twenty minutes of typing is a bad experience prevented; a collision avoided before
+the typing starts is a better one.** The whole difference is knowing, on the reader, that somebody else opened
+the editor two minutes ago.
+
+That needs no socket and no second process. It is `use-board-sync.ts`'s shape, third use: a heartbeat while the
+editor is visible, stopped when hidden, backed off to a cap, and **no timer at all under `saveData` or `2g`**
+(§17-24 — a forgotten background tab must not bill a mobile data plan). The reader and the editor both show
+"Dara has been editing this since 14:02", which is information, not a lock.
+
+**It is deliberately not a lock.** A lock needs a lease, an expiry, a steal path and an answer for the laptop
+that closed at 17:30 on a Friday, and it converts a rare refusal into a routine obstruction. §20.3.3's refusal
+remains the correctness mechanism; this is only the warning that makes it rare.
+
+### 21.11 What this section owes §19
+
+The survey's most defensible claim about where knowledge products are going is not about agents. It is one line
+about structure: *"a well-structured wiki is now an AI input, not just a human one. Pages with clear headings,
+owner properties, verification status and tags retrieve dramatically better than a wall of unlabelled text."*
+
+That is worth recording, because it means **§21.3 is not only a governance feature**. §19.4's assistant, when
+it is built, will answer questions from this corpus, and every property §21.3 adds is a retrieval filter it
+would otherwise not have: *the verified handbook page, owned by HR, reviewed within the last 90 days* is a far
+better answer than the most textually similar paragraph in the workspace. §19.1's rule — an assistant is an
+actor, never a bypass — already means it reads as a member, through the same space rules; §21.3 is what lets it
+say **how much to trust what it found**, which is the failure the survey names honestly about its own product:
+*"treat AI output as a first draft, not a source of truth — especially in a wiki other people will trust."*
+
+No §19 work is brought forward. The obligation is only that §21.3's columns exist and mean what they say.
+
+### 21.12 Data model deltas
+
+| Table | Change |
+| --- | --- |
+| `wiki_page` | `owner_member_id` · `verified_at` · `verified_by_member_id` · `verification_expires_at` (CHECK: the two `verified_*` columns are both set or both null) · `icon` · `is_template` |
+| `wiki_space` | `default_verification_days` — nullable, meaning *no review cycle*, which is the default |
+| `wiki_page_ref` | **New.** `(from_page_id, to_page_id, workspace_id)`, unique, composite tenant keys both sides, derived from the body on every save |
+| `wiki_page_label` | **New.** The mirror of `work_item_label`, so tags are the workspace's one label vocabulary |
+| `comment` | `project_id` and `work_item_id` become nullable, `wiki_page_id` added, `num_nonnulls` CHECK requires exactly one subject |
+| `notification` | Nothing. §20.6's subject union already covers a page |
+
+Both new tables are tenant tables and carry §9's three things — `workspace_id`, `...tenantPolicies()`, and
+`FORCE ROW LEVEL SECURITY` in the paired hardening migration — which `invariants.test.ts` is the gate for,
+rather than a review checklist.
+
+### 21.13 Build sequence
+
+**Four slices, and they are not a queue.** Each is independently shippable and any may be skipped without
+stranding another. They are ordered by *what makes a wiki survive* before *what makes it pleasant*.
+
+| # | Slice | Demonstrable outcome |
+| --- | --- | --- |
+| 19 ✅ | **Ownership, verification and the All-pages view** — *built 2026-09-05* | Mark the leave policy verified for 180 days, see it turn amber a week before it lapses, receive it in Tuesday evening's digest, and find every unowned page in the company space in one filtered list |
+| 20 ✅ | **Backlinks, the reference graph and the editor pass** — *built 2026-09-05* | Write a page referencing two others and watch both list it without anybody maintaining an index; insert a table from the `/` menu; jump to a heading from a generated table of contents; hover a reference and read its first line |
+| 21 | **Comments on pages** | Ask a question on the onboarding page, mention its owner, have it reach their inbox under the preference they already set, and have them answer in the thread |
+| 22 | **Templates, export and import** | Create an incident report from a template, export the whole company space to a folder of Markdown a person can read, and import it back into an empty workspace |
+
+**Definition of done, on top of §15's per-slice gates.** Slice 19: editing a verified page clears its
+verification, and the digest section is asserted in the worker's own test rather than only through the UI.
+Slice 20: the ref table is *rebuilt* rather than appended to, so removing a sentence removes its edge while an
+authored `wiki_page_link` survives the same edit — asserted directly, because that distinction is the one
+§20.0 found the hard way. Slice 21: a Guest who can read a project space can comment in it and cannot write a
+page. Slice 22: a round trip — export a space, import it into an empty workspace, and the two trees match.
+
+### 21.14 Verification
+
+Everything in §15 applies, and §20.14's five checks still stand. Five more are specific to this section:
+
+| # | Check | Pass condition |
+| --- | --- | --- |
+| 1 | Verify a page, then edit one word of it | The badge is gone before the save returns, and the audit log holds both the verification and the un-verification |
+| 2 | A page owner with no due work at all, on the evening before their page expires | The digest arrives, on a working evening, in their language, naming the page |
+| 3 | Remove a sentence containing a page reference | The derived edge is gone; an authored item link on the same page is untouched |
+| 4 | Export a Khmer space and open the files in a plain text editor | Titles, bodies and image links are intact and readable, and tokens have resolved to names |
+| 5 | A Guest on one project | Can comment on that space's pages, cannot write one, and cannot see the company space at all |
+
+### 21.15 Risks
+
+| Risk | Mitigation |
+| --- | --- |
+| **Verification becomes a ritual** — everybody clicks the button without reading | Software cannot prevent it, and pretending otherwise is worse. What the product does is make the claim attributable (`verified_by`) and the lapse automatic, so the ritual at least leaves a record of who performed it |
+| **Expiry turns into noise and gets muted** | Null is the default, the set of intervals is closed and small, and the only push is one section of an email that already goes out. A company that never sets an expiry sees none of it |
+| **The `/` menu becomes a block editor by accretion** | The rule is one sentence and belongs in the code review: **a menu item may only insert text a person could have typed.** The day one of them cannot, block identity has arrived by the back door |
+| **The ref table drifts from the bodies** | It is rebuilt from the body inside the same transaction as the save, never appended to. It is a projection, so if it is ever wrong it can be regenerated from the bodies — a property worth keeping deliberately |
+| **`comment`'s nullable columns are forgotten in a predicate** | The CHECK is the floor and every query names its subject explicitly. This is the same trade §20.9 made for `attachment`, and it should be reviewed the same way |
+
+### 21.16 What must not be foreclosed, and what stays open
+
+§20.16's four properties stand unchanged, and this section adds one: **a derived edge stays derived.** Anything
+later that wants a reference to survive its sentence adds an authored row, exactly as `wiki_page_link` is,
+rather than teaching `wiki_page_ref` to remember.
+
+Open, and deliberately not added to §18, because none of it blocks anything:
+
+- **§20.5's Guest disagreement is still one line either way**, and it is now overdue: §21.6 gives a Guest the
+  ability to comment on a project space, which makes the write question sharper rather than softer. It should
+  be confirmed against §20.5 before the pilot (§18-7), as §20.0 already asked.
+- **Revision retention.** Every revision is kept forever, which is right while a save is a deliberate act and
+  becomes wrong the day anything autosaves. §21.5 refuses autosave partly for this reason. If retention is ever
+  wanted, the mechanism is compaction of consecutive same-author revisions inside a short window — a job, an
+  append-only table it would have to edit, and a promise it would break — so it should be decided before rather
+  than after.
+- **Whether the company space is one space or several** — still open from §20.16, and §21.3 makes it more
+  pressing rather than less: a 300-person company's *All pages* list is where one space stops being enough.
+- **Whether a page may point at a saved view**, which is §4's saved-view sharing wearing a different hat, and
+  should be decided with that feature rather than before it.
+- **A workspace-wide recovery screen** is still the gap §20.0 named. §21 does not build it, and slice 22's
+  export is not a substitute for it.
+
+---
+
 > **Approved for build, 31 August 2026.** Slices 1 and 2 — schema, RLS and `withActor`, then the §10 policy
 > module — are implemented. §14 lists what follows.

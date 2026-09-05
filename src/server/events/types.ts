@@ -697,6 +697,68 @@ export type DomainEvent =
       mentioned: readonly string[];
     }
   | {
+      /**
+       * Somebody became answerable for a page, or stopped being (§21.3 — slice
+       * 19).
+       *
+       * Both ids are nullable, and each null means something a reader has to be
+       * able to tell apart: `from` null is a page that had no owner, `to` null
+       * is a page that now has none. §7.12's offboarding produces the second in
+       * bulk — "the removal nulls the column rather than deleting anything, so
+       * those pages appear under *owned by nobody* the next morning" — and an
+       * owner asking why forty pages lost their owner overnight is asking a
+       * question only these rows can answer.
+       */
+      type: 'wiki_page.owner_changed';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      title: string;
+      fromMemberId: string | null;
+      toMemberId: string | null;
+    }
+  | {
+      /**
+       * Somebody asserted this page is accurate (§21.3).
+       *
+       * The expiry rides along because *what was claimed* is the whole content
+       * of the assertion: "verified, for the next 180 days" and "verified, with
+       * no review cycle" are different claims, and a log that recorded only the
+       * first half could not tell an owner which had been made.
+       */
+      type: 'wiki_page.verified';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      title: string;
+      revisionNo: number;
+      expiresAt: string | null;
+    }
+  | {
+      /**
+       * The assertion is gone (§21.3).
+       *
+       * `reason` is the one field in this trio that is not a fact about a row,
+       * and it is the field that makes the log readable: `edited` is the
+       * automatic transition every save performs on a verified page, and
+       * `cleared` is somebody deciding out loud that they no longer vouch for
+       * it. Six months later "who stopped vouching for this, and did they mean
+       * to" is exactly the question, and without this column both look like the
+       * same act.
+       *
+       * **Not notified, like the other two.** §21.3: the digest reads the page
+       * rows rather than an outbox, because "an inbox row per expiring page is a
+       * stream that teaches people to ignore the bell" — §7.8's own warning,
+       * applied to documentation.
+       */
+      type: 'wiki_page.unverified';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      title: string;
+      reason: 'edited' | 'cleared';
+    }
+  | {
       type: 'wiki_page.moved';
       workspaceId: string;
       pageId: string;

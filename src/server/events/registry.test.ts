@@ -475,6 +475,32 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     revisionNo: 4,
     mentioned: ['m3'],
   },
+  'wiki_page.owner_changed': {
+    type: 'wiki_page.owner_changed',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    title: 'Leave policy',
+    fromMemberId: null,
+    toMemberId: 'm2',
+  },
+  'wiki_page.verified': {
+    type: 'wiki_page.verified',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    title: 'Leave policy',
+    revisionNo: 4,
+    expiresAt: '2027-03-04',
+  },
+  'wiki_page.unverified': {
+    type: 'wiki_page.unverified',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    title: 'Leave policy',
+    reason: 'edited',
+  },
   'wiki_page.moved': {
     type: 'wiki_page.moved',
     workspaceId: 'w1',
@@ -587,6 +613,17 @@ describe('the event registry', () => {
         'wiki_page.moved',
         'wiki_page.deleted',
         'wiki_page.restored',
+        /**
+         * Slice 19's three (§21.3), and they are audited for a reason the rest
+         * of this list does not have: a verification changes **no body**, so it
+         * writes no revision, so the history a page carries for every other kind
+         * of change is structurally unable to record it. "Who said this was
+         * accurate, and when" would otherwise be the one thing that happened to
+         * a page that nothing remembers.
+         */
+        'wiki_page.owner_changed',
+        'wiki_page.verified',
+        'wiki_page.unverified',
         'invitation.accepted',
         'project.archived',
         'project.created',

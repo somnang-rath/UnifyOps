@@ -247,7 +247,8 @@
       "reassignTo": "Give it to {name}",
       "leaveUnassigned": "Leave it unassigned — it will show up under Needs attention",
       "notesDeleted": "This will permanently delete their {count, plural, one {# private note} other {# private notes}}. Notes are personal and are never handed on; ask them to turn anything the company needs into a work item first.",
-      "pagesKept": "Their {count, plural, one {# page} other {# pages}} stay in the wiki, attributed to them."
+      "pagesKept": "Their {count, plural, one {# page} other {# pages}} stay in the wiki, attributed to them.",
+      "pagesReleased": "They are answerable for {count, plural, one {# page} other {# pages}}. Removing them leaves those pages in place with no owner — hand them over first if somebody should keep them true."
     }
   },
   "teams": {
@@ -381,7 +382,8 @@
       "intro": "From {workspace}: {count} to look at before you start.",
       "overdue": "Already overdue",
       "dueSoon": "Due by the next working day",
-      "preferences": "One message per evening. You can turn this off in your notification settings."
+      "preferences": "One message per evening. You can turn this off in your notification settings.",
+      "pagesToReview": "Pages you own that need a review"
     }
   },
   "home": {
@@ -1211,12 +1213,14 @@
       "revision": "Revision {number}",
       "history": "History",
       "edit": "Edit",
-      "emptyBody": "This page has no content yet."
+      "emptyBody": "This page has no content yet.",
+      "contents": "On this page",
+      "backlinks": "{count, plural, one {# page links here} other {# pages link here}}"
     },
     "editor": {
       "titleLabel": "Title",
       "bodyLabel": "Body",
-      "bodyHelp": "Markdown. Use @ to mention someone, and write ENG-142 to link a work item.",
+      "bodyHelp": "Markdown. Type / for blocks, @ to mention someone, and ENG-142 to link a work item. ⌘B bold · ⌘I italic · ⌘K link.",
       "write": "Write",
       "preview": "Preview",
       "previewEmpty": "Nothing to preview yet.",
@@ -1224,7 +1228,20 @@
       "saving": "Saving…",
       "saved": "Saved as revision {number}.",
       "cancel": "Cancel",
-      "tooLong": "Too long — the limit is {max} characters."
+      "tooLong": "Too long — the limit is {max} characters.",
+      "insert": {
+        "listLabel": "Insert a block",
+        "heading": "Heading",
+        "bulletList": "Bulleted list",
+        "numberedList": "Numbered list",
+        "todo": "To-do",
+        "quote": "Quote",
+        "callout": "Callout",
+        "toggle": "Toggle",
+        "code": "Code block",
+        "table": "Table",
+        "divider": "Divider"
+      }
     },
     "stale": {
       "title": "Somebody else saved this page while you were writing",
@@ -1293,7 +1310,9 @@
       "intoDescendant": "A page cannot be moved inside one of its own sub-pages.",
       "unknownItem": "No work item with that identifier — try something like ENG-142.",
       "stale": "Somebody else saved this page while you were writing.",
-      "mentionNotVisible": "{names} cannot read this space, so they cannot be mentioned here."
+      "mentionNotVisible": "{names} cannot read this space, so they cannot be mentioned here.",
+      "invalidPeriod": "Pick one of the offered review periods.",
+      "unknownMember": "That person is no longer in this workspace."
     },
     "delete": {
       "action": "Delete page",
@@ -1308,6 +1327,71 @@
       "window": "Deleted pages can be restored for 30 days.",
       "restore": "Restore",
       "restoring": "Restoring…"
+    },
+    "verification": {
+      "never": "Not reviewed",
+      "verified": "Verified",
+      "expiring": "Review due",
+      "expired": "Out of review",
+      "verifiedOn": "Verified {date} by {name}",
+      "verifiedOnUnknown": "Verified {date}",
+      "expiresOn": "Review due {date}",
+      "expiredOn": "Review was due {date}",
+      "noCycle": "No review cycle",
+      "neverExplain": "Nobody has said this page is accurate yet.",
+      "verify": "Mark as accurate",
+      "reverify": "Confirm again",
+      "unverify": "Withdraw",
+      "cleared": "Editing this page cleared its review — confirm it again if the change was small.",
+      "period": "Review again in",
+      "periodNever": "Never",
+      "periodDays": "{count} days",
+      "spaceDefault": "Review cycle for new pages",
+      "spaceDefaultHint": "What the review control offers first in this space. Every page can still choose its own.",
+      "save": "Save"
+    },
+    "owner": {
+      "label": "Owner",
+      "none": "Nobody",
+      "claim": "Take this on",
+      "assign": "Owner",
+      "explain": "The person answerable for this page being true — not necessarily whoever wrote it.",
+      "released": "Nobody is answerable for this page."
+    },
+    "pages": {
+      "title": "All pages",
+      "subtitle": "Who is answerable for each page, and when it was last confirmed accurate.",
+      "link": "All pages",
+      "count": "{count, plural, one {# page} other {# pages}}",
+      "filterAll": "All",
+      "filterUnverified": "Never reviewed",
+      "filterExpiring": "Due within 30 days",
+      "filterMine": "Owned by me",
+      "filterUnowned": "Owned by nobody",
+      "columnTitle": "Page",
+      "columnOwner": "Owner",
+      "columnStatus": "Review",
+      "columnExpires": "Due",
+      "columnUpdated": "Last edited",
+      "columnEditor": "By",
+      "empty": "This space has no pages yet.",
+      "emptyFiltered": "No pages match that filter.",
+      "emptyUnverified": "Nothing here has been reviewed yet.",
+      "summary": "{expired, plural, =0 {} other {# out of review}}",
+      "needsReview": "{count, plural, one {# page needs a review} other {# pages need a review}}",
+      "allReviewed": "Everything here is in review."
+    },
+    "callout": {
+      "info": "Note",
+      "success": "Success",
+      "warning": "Warning",
+      "danger": "Caution"
+    },
+    "icon": {
+      "label": "Icon",
+      "help": "One emoji.",
+      "save": "Set",
+      "saving": "Saving…"
     }
   }
 }

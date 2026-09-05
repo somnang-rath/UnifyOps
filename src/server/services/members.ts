@@ -15,6 +15,8 @@ import { user as userTable, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { reassignOpenWorkInTx } from './work-items';
 import { deleteNotesOf } from './notes';
+import { releasePagesOf } from './wiki';
+import { ownedPageCountFor } from '@/server/queries/wiki';
 import type { ActorContext } from '@/server/db/tenant';
 
 /**
@@ -39,6 +41,18 @@ export type Member = {
   noteCount: number;
   /** Pages they have written, which survive them (§20.5). */
   pageCount: number;
+  /**
+   * Pages they are **answerable for**, which survive them *unowned* (§21.3).
+   *
+   * A different number from `pageCount` beside it, and the difference is the
+   * one §7.12's dialog has to state: pages they *wrote* stay attributed and need
+   * nobody's attention, and pages they *owned* become nobody's responsibility
+   * the moment they leave. §21.3: "the removal nulls the column rather than
+   * deleting anything, so those pages appear under *owned by nobody* the next
+   * morning" — and somebody deciding about an offboarding may well want to hand
+   * them over first, which is a thing they can only do beforehand.
+   */
+  ownedPageCount: number;
 } & Availability;
 
 export async function listMembers(context: ActorContext): Promise<Member[]> {
@@ -101,6 +115,15 @@ export async function listMembers(context: ActorContext): Promise<Member[]> {
           from wiki_page_revision
           where wiki_page_revision.author_member_id = ${workspaceMember.id}
         )`,
+
+        /**
+         * The third correlated subquery on this list, and the last (§21.3).
+         *
+         * Same shape and same reason as the two above: it rides the transaction
+         * the member list already opened rather than becoming a fourth round
+         * trip on the one screen a manager opens most.
+         */
+        ownedPageCount: ownedPageCountFor(workspaceMember.id),
       })
       .from(workspaceMember)
       .innerJoin(userTable, eq(userTable.id, workspaceMember.userId))
@@ -277,6 +300,23 @@ export async function removeMember(
     // in miniature. The dialog said the number before the click, which is where
     // that fact belongs.
     await deleteNotesOf(tx, uow, memberId);
+
+    /**
+     * The other half of §20.5's asymmetry, and §21.3's `[!]`.
+     *
+     * Notes are destroyed and pages are **released** — the ownership column is
+     * nulled, the page stays exactly where it was, and it appears under *owned
+     * by nobody* in the All-pages view the next morning. Unlike the note
+     * deletion above, this **is** audited, one row per page: an owner asking six
+     * months later why the leave policy has no owner needs an answer, and a page
+     * losing its owner is a change to the company's record where a private note
+     * being destroyed is not.
+     *
+     * Inside this transaction, for the reason the reassignment and the note
+     * deletion are: there must be no window in which somebody has been
+     * offboarded and still owns forty pages.
+     */
+    await releasePagesOf(tx, uow, resolved.workspace.id, memberId);
 
     await tx
       .update(workspaceMember)

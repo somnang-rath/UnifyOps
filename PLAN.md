@@ -1,7 +1,7 @@
 # UnifyOps — Plan · ផែនការ
 
-**Version 3 · Approved for build, 31 August 2026 · Slices 1–18 done · §14 and §20 both complete**
-**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–១៧ រួចរាល់ · វិគីរបស់ §២០ (ដំណាក់កាល ១៨) កំណត់លក្ខណៈរួច តែមិនទាន់សាងសង់**
+**Version 3 · Approved for build, 31 August 2026 · Slices 1–19 done · §14 and §20 complete · §21 specified, slice 19 built**
+**កំណែទី ៣ · អនុញ្ញាតឱ្យសាងសង់ ថ្ងៃទី ៣១ សីហា ២០២៦ · ដំណាក់កាល ១–១៨ រួចរាល់ · §១៤ និង §២០ រួចរាល់ទាំងពីរ · §២១ កំណត់លក្ខណៈរួច តែមិនទាន់សាងសង់**
 
 ---
 
@@ -60,6 +60,11 @@ https://claude.ai/code/artifact/df48ef68-f940-4e47-9184-c1bbe14e3fa9
 > **Build in progress. §14's sixteen slices are done, and so are slices 17 and 18 — the whole of §20.
 > Work is still taken one at a time, on request. What remains is the gap list: Google OAuth, §4's full
 > create form, and a workspace-wide recovery screen.**
+> **§21 — a second pass over notes and the wiki — is specified as four separable slices. **Slice 19
+> (ownership, verification and the All-pages view) is built**; backlinks, page comments, and templates
+> with export/import are not.**
 > **កំពុងសាងសង់។ ដំណាក់កាលទាំង ១៦ របស់ §១៤ រួចរាល់ ហើយដំណាក់កាល ១៧ និង ១៨ ក៏រួចដែរ — ពោលគឺ §២០ ទាំងមូល។
 > ការងារនៅតែចាប់យកម្តងមួយ តាមការស្នើសុំ។ អ្វីដែលនៅសល់គឺបញ្ជីចន្លោះខ្វះ៖ Google OAuth ទម្រង់បង្កើតពេញលេញរបស់ §៤
 > និងអេក្រង់ស្ដារឡើងវិញសម្រាប់កន្លែងធ្វើការទាំងមូល។**
+> **§២១ — ជុំទីពីរលើកំណត់ចំណាំ និងវិគី — កំណត់លក្ខណៈរួច តែមិនទាន់សាងសង់៖ ការកាន់កាប់
+> និងការផ្ទៀងផ្ទាត់ តំណត្រឡប់ មតិយោបល់លើទំព័រ គំរូ និងការនាំចេញ ជាបួនដំណាក់កាលដែលបំបែកបាន។**

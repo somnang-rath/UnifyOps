@@ -6,6 +6,7 @@ import {
   parseDocument,
   parseInlines,
   safeHref,
+  tableOfContents,
   type BlockNode,
   type InlineNode,
 } from './documents';
@@ -61,7 +62,12 @@ describe('documentLength', () => {
 describe('blocks', () => {
   it('parses headings, and closing hashes are punctuation', () => {
     expect(parseDocument('## Handbook ##')).toEqual([
-      { kind: 'heading', level: 2, content: [{ kind: 'text', text: 'Handbook' }] },
+      {
+        kind: 'heading',
+        level: 2,
+        anchor: 'handbook',
+        content: [{ kind: 'text', text: 'Handbook' }],
+      },
     ]);
   });
 
@@ -221,5 +227,124 @@ describe('depth', () => {
   it('flattens indentation past the cap rather than nesting forever', () => {
     const body = ['- a', '  - b', '    - c', '      - d'].join('\n');
     expect(() => parseDocument(body)).not.toThrow();
+  });
+});
+
+/* ------------------------------------------------------------------------- */
+/* Slice 20 — the grammar §21.5 adds                                         */
+/* ------------------------------------------------------------------------- */
+
+describe('callouts and toggles (§21.5)', () => {
+  it('reads a tagged blockquote as a callout, with its title', () => {
+    const blocks = parseDocument('> [!warning] Read this first\n> The API changed.');
+    expect(blocks).toHaveLength(1);
+    const callout = blocks[0] as Extract<BlockNode, { kind: 'callout' }>;
+    expect(callout.kind).toBe('callout');
+    expect(callout.tone).toBe('warning');
+    expect(callout.folded).toBe(false);
+    expect(callout.title).toEqual([{ kind: 'text', text: 'Read this first' }]);
+    expect(callout.children).toEqual([
+      { kind: 'paragraph', content: [{ kind: 'text', text: 'The API changed.' }] },
+    ]);
+  });
+
+  it('a trailing dash makes it a toggle, and the title survives', () => {
+    const callout = parseDocument('> [!info]- Details\n> Hidden until asked for.')[0];
+    expect(callout).toMatchObject({ kind: 'callout', tone: 'info', folded: true });
+  });
+
+  it('takes no title, and does not invent one', () => {
+    // The renderer names the tone from the catalogue when it has to. The parser
+    // must not, or a Khmer body would carry an English word (§13).
+    expect(parseDocument('> [!danger]\n> Do not.')[0]).toMatchObject({ title: null });
+  });
+
+  /**
+   * The grammar's standing rule, applied to the newest member of it: everything
+   * not on the list renders as the text it was. An unknown tone is not an error
+   * and not a silently-dropped line — it is the quote somebody typed.
+   */
+  it('leaves an unrecognised tag as an ordinary quote', () => {
+    const block = parseDocument('> [!tip] Try this')[0] as Extract<BlockNode, { kind: 'quote' }>;
+    expect(block.kind).toBe('quote');
+    expect(block.children).toEqual([
+      { kind: 'paragraph', content: [{ kind: 'text', text: '[!tip] Try this' }] },
+    ]);
+  });
+
+  it('is case-insensitive about the tone, because people type [!NOTE]', () => {
+    expect(parseDocument('> [!Warning] x')[0]).toMatchObject({ tone: 'warning' });
+  });
+
+  it('only reads the tag on the first line', () => {
+    // Otherwise a quote of somebody else's document turns into a callout
+    // halfway down, which is the body reinterpreting text nobody marked up.
+    const block = parseDocument('> Ordinary.\n> [!danger] not a tag here')[0];
+    expect(block).toMatchObject({ kind: 'quote' });
+  });
+});
+
+describe('to-dos (§21.5)', () => {
+  it('reads `- [ ]` and `- [x]`, and keeps the text', () => {
+    const list = parseDocument('- [ ] open\n- [x] done')[0] as Extract<
+      BlockNode,
+      { kind: 'list' }
+    >;
+    expect(list.items.map((item) => item.checked)).toEqual([false, true]);
+    expect(list.items[0]?.content).toEqual([{ kind: 'text', text: 'open' }]);
+  });
+
+  it('distinguishes an unticked box from a bullet that is not a to-do', () => {
+    // `false` and `null` are different facts, and the renderer draws them
+    // differently: one is an empty checkbox, the other has no checkbox at all.
+    const list = parseDocument('- [ ] a\n- b')[0] as Extract<BlockNode, { kind: 'list' }>;
+    expect(list.items.map((item) => item.checked)).toEqual([false, null]);
+  });
+
+  it('reads an ordered to-do too', () => {
+    const list = parseDocument('1. [x] shipped')[0] as Extract<BlockNode, { kind: 'list' }>;
+    expect(list.items[0]?.checked).toBe(true);
+  });
+});
+
+describe('heading anchors and the table of contents (§21.5)', () => {
+  it('gives every heading an anchor derived from its words', () => {
+    expect(tableOfContents('# Release process\n## Rollback')).toEqual([
+      { level: 1, text: 'Release process', anchor: 'release-process' },
+      { level: 2, text: 'Rollback', anchor: 'rollback' },
+    ]);
+  });
+
+  /**
+   * The one property the whole feature rests on: two headings with one id is a
+   * contents list whose second entry jumps to the first.
+   */
+  it('de-duplicates repeated headings with a suffix', () => {
+    expect(tableOfContents('## Notes\n## Notes\n## Notes').map((e) => e.anchor)).toEqual([
+      'notes',
+      'notes-2',
+      'notes-3',
+    ]);
+  });
+
+  it('falls back to a position when the words slugify to nothing', () => {
+    // Every heading has to be addressable even when its text is not romanisable
+    // — an anchor is not a title and does not have to be beautiful (§21.5).
+    const [entry] = tableOfContents('# 🎉');
+    expect(entry?.anchor).toMatch(/^section-\d+$/);
+  });
+
+  it('lists only the document own headings, not an aside structure', () => {
+    // A heading inside a callout is that aside's structure. It still carries an
+    // anchor, so a hand-written link to it resolves; it is simply not offered.
+    expect(tableOfContents('# Real\n> [!info] x\n> ## Inside')).toEqual([
+      { level: 1, text: 'Real', anchor: 'real' },
+    ]);
+  });
+
+  it('resolves a Khmer heading through slugify rather than dropping it', () => {
+    const [entry] = tableOfContents('# ភ្នំពេញ');
+    expect(entry?.text).toBe('ភ្នំពេញ');
+    expect(entry?.anchor.length).toBeGreaterThan(0);
   });
 });

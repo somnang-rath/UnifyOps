@@ -1,5 +1,6 @@
 import { documentLength, normalizeDocument } from './documents';
 import { slugify } from './slug';
+import { addDays, type CalendarDate } from './workspace-date';
 
 /**
  * A wiki page and its space, as pure data (§20.4, §20.12 — slice 18).
@@ -456,4 +457,201 @@ export function diffSummary(lines: readonly DiffLine[]): { added: number; remove
 /** §13: never `.length`, and never `.slice()` on text a person will read. */
 export function graphemeLength(value: string): number {
   return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)].length;
+}
+
+/* ------------------------------------------------------------------------- */
+/* The page icon (§21.2 — slice 20)                                          */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * One emoji, or nothing.
+ *
+ * **The grapheme is the unit, and that is the whole of this function.** A flag
+ * is two code points, a skin-toned emoji three or four, and a profession emoji
+ * with a zero-width joiner in it more still — all of which a person sees as one
+ * character and types with one keystroke. `[...value].length` would refuse every
+ * one of them while accepting four Latin letters, which is §13's arithmetic
+ * pointed exactly the wrong way: the rule slice 10 wrote down when a length cap
+ * gave a Khmer workspace a third of the field an English one got.
+ *
+ * **Truncates rather than refuses**, unlike every other cap in the wiki. A title
+ * over its cap is a refusal because the writer's words are the point and
+ * silently cutting them loses meaning; an icon is decoration, and somebody who
+ * pastes "🎉🎉" meant the first one. Two graphemes is not a mistake worth a form
+ * error and a round trip.
+ *
+ * Empty and whitespace-only both become `null`, which is how the picker's clear
+ * button is expressed — there is no separate "remove" path, because *no icon* is
+ * a value rather than the absence of one.
+ *
+ * In `src/lib` because both sides run it: the picker previews what will be
+ * stored as somebody types, the service normalises the same input on submit.
+ * One implementation, so the preview cannot promise an icon the save will crop.
+ */
+export function normalizePageIcon(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+
+  const trimmed = value.trim().normalize('NFC');
+  if (trimmed.length === 0) return null;
+
+  const [first] = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(trimmed)];
+  const icon = first?.segment ?? '';
+
+  // 0036's floor, restated where the value is produced rather than only where it
+  // lands: a "grapheme" can in principle be an unbounded run of joined code
+  // points, and the CHECK would refuse it — as a constraint violation on
+  // somebody's save rather than as a quiet crop.
+  return icon.length > 0 && icon.length <= 16 && !/\s/.test(icon) ? icon : null;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Ownership and verification (§21.3 — slice 19)                             */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * How long a verification lasts, chosen from a closed set (§21.3).
+ *
+ * "Never · 90 days · 180 days · 365 days. A date picker invites a company to
+ * build a review calendar in a field, and §6's rule is that a company which
+ * never opens a setting must be completely fine."
+ *
+ * **The set maps to messages in code and never reaches the database** — §13's
+ * closed-enum rule, the same one `STATE_GROUPS`, `CYCLE_STATUSES` and
+ * `DUE_WINDOWS` follow. What is stored is the *resolved date*, which is why
+ * `verificationExpiry` below is the only place the number becomes one.
+ *
+ * `null` is *Never*, and it is a member of the set rather than the absence of a
+ * choice — a page with no review cycle is the right answer for most pages, and
+ * §21.3 requires it to stay the default.
+ */
+export const VERIFICATION_DAYS = [90, 180, 365] as const;
+export type VerificationDays = (typeof VERIFICATION_DAYS)[number];
+
+export function isVerificationDays(value: unknown): value is VerificationDays {
+  return VERIFICATION_DAYS.includes(value as VerificationDays);
+}
+
+/**
+ * How much warning a page gets before its verification lapses, in **working**
+ * days (§21.3).
+ *
+ * Working rather than calendar, for the reason staleness is (§9): the number is
+ * lead time to *act*, and nobody rewrites a policy on Sunday. Seven of them is
+ * §21.13's "turn amber a week before it lapses" in the unit the product already
+ * measures every other deadline in.
+ *
+ * The resolution happens in SQL — `working_days_ahead` in migration 0034, the
+ * fifth member of §9's working-day family and built on `is_working_day` exactly
+ * as `stale_before` is. **This constant is the `N`; the resolved date is a
+ * fetch option**, which is the split slice 9 made for the digest's horizon and
+ * slice 13 made for staleness, and for the same reason: "seven working days"
+ * means the same thing next Tuesday and the date it resolves to does not.
+ */
+export const VERIFICATION_WARNING_DAYS = 7;
+
+/**
+ * How far ahead the All-pages view's *expiring* filter looks, in calendar days
+ * (§21.3: "filterable to … *expiring within 30 days*").
+ *
+ * Calendar rather than working, and the contrast with the constant above is
+ * deliberate: the badge is a warning aimed at the one person who has to act, so
+ * it counts the days they could act on; this is a **filter somebody types into a
+ * list** to plan a month's review work, and a month is a calendar month in every
+ * head that has ever planned one.
+ */
+export const VERIFICATION_HORIZON_DAYS = 30;
+
+/**
+ * Where a page's verification stands (§21.3). Identifiers, never labels (§13).
+ *
+ *   `never`    — nobody has ever asserted this page is accurate. The state
+ *                every page starts in, and not a fault: §21.3's `[E]` reads it
+ *                as "nothing here has been reviewed yet".
+ *   `verified` — asserted, and either has no review cycle or is comfortably
+ *                inside one.
+ *   `expiring` — asserted, with a review cycle that lapses within
+ *                `VERIFICATION_WARNING_DAYS` working days. The amber one.
+ *   `expired`  — the assertion has lapsed. The page is not *wrong*; nobody has
+ *                said it is right recently enough, which is the honest claim
+ *                and the only one the data supports.
+ */
+export const VERIFICATION_STATUSES = ['never', 'verified', 'expiring', 'expired'] as const;
+export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
+
+/**
+ * The three columns every verification question reads.
+ *
+ * A structural type rather than the row type, so the page header can ask about
+ * a verification the editor has not saved yet — the same reason `CyclePeriod`
+ * is structural.
+ */
+export type PageVerification = {
+  verifiedAt: Date | null;
+  verificationExpiresAt: CalendarDate | null;
+};
+
+/**
+ * **Derived from two columns and today, exactly as `cycleStatus` is** (§21.3).
+ *
+ * "A stored status needs a job to flip it, a repair after the job was down, and
+ * a missed repair is a page that reads as verified forever. There is no such job
+ * and there must not be one." That is slice 11's argument for a cycle and slice
+ * 13's for availability, and it is stronger here than in either: a cycle that
+ * reads as active a day late is a cosmetic error, and a page that reads as
+ * verified for a year after it lapsed is the product vouching for a document
+ * nobody has read.
+ *
+ * `today` is the **workspace's** (§17-13), never the viewer's device — the same
+ * rule that decides what "overdue" means, applied to the same kind of shared
+ * claim. Two people in two timezones must not disagree about whether the leave
+ * policy is current.
+ *
+ * `warnFrom` is the resolved working-day horizon described on
+ * `VERIFICATION_WARNING_DAYS`, and it is **optional**: with no horizon in hand a
+ * page still reads as verified or expired correctly, and only the amber middle
+ * collapses into `verified`. That matters because this function runs on both
+ * sides, and a client that has not been handed a horizon should degrade to a
+ * true statement rather than to a guess.
+ */
+export function verificationStatus(
+  page: PageVerification,
+  input: { today: CalendarDate; warnFrom?: CalendarDate | null },
+): VerificationStatus {
+  if (page.verifiedAt === null) return 'never';
+  // No review cycle: verified is a standing fact until somebody edits the page,
+  // which is the transition `saveWikiPage` performs rather than this function.
+  if (page.verificationExpiresAt === null) return 'verified';
+
+  // String comparison is date comparison for `YYYY-MM-DD`, which is the whole
+  // reason every date in this product crosses a boundary in that shape.
+  if (page.verificationExpiresAt < input.today) return 'expired';
+
+  const warnFrom = input.warnFrom ?? null;
+  if (warnFrom !== null && page.verificationExpiresAt <= warnFrom) return 'expiring';
+
+  return 'verified';
+}
+
+/** Whether a status is one somebody is being asked to do something about. */
+export function needsReview(status: VerificationStatus): boolean {
+  return status === 'expiring' || status === 'expired';
+}
+
+/**
+ * The date a verification made today would lapse on, or null for *Never*.
+ *
+ * **The one place the closed set becomes a stored value** (§21.3: "what is
+ * stored is the resolved date"). Storing the *number* instead would make every
+ * reader compute the date from a `verified_at` it also had to fetch, and the
+ * first screen to forget the arithmetic would draw a badge that never expires.
+ *
+ * Calendar days, not working ones: a review cycle is "revisit this in six
+ * months", which is a phrase about the calendar. The working-day arithmetic is
+ * on the *warning*, which is about somebody's week.
+ */
+export function verificationExpiry(
+  from: CalendarDate,
+  days: VerificationDays | null,
+): CalendarDate | null {
+  return days === null ? null : addDays(from, days);
 }

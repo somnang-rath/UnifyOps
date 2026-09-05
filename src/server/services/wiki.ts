@@ -1,15 +1,18 @@
 import 'server-only';
 
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import type { ResolvedActor } from '@/server/auth/context';
-import { can } from '@/server/authz/policy';
+import { can, type Actor } from '@/server/authz/policy';
 import type { TenantDb } from '@/server/db/client';
 import {
+  label,
   project,
   user,
   wikiPage,
+  wikiPageLabel,
   wikiPageLink,
+  wikiPageRef,
   wikiPageRevision,
   wikiSpace,
   workItem,
@@ -17,22 +20,29 @@ import {
 } from '@/server/db/schema';
 import { withActor, type UnitOfWork } from '@/server/db/tenant';
 import {
+  fetchBacklinks,
   fetchDeletedPages,
+  fetchExpiringOwnedPages,
   fetchItemPages,
   fetchPage,
   fetchPageBySlug,
+  fetchPageLabelIds,
   fetchPageLinks,
   fetchPageRefs,
   fetchRevisionPair,
   fetchRevisions,
   fetchSpaces,
+  fetchSpacePages,
   fetchSpaceTree,
   fetchSubtree,
+  fetchVerificationCounts,
+  type Backlink,
   type LinkedItem,
   type PageDetail,
   type PageRef,
   type PageSummary,
   type RevisionRow,
+  type SpacePageRow,
 } from '@/server/queries/wiki';
 import { normalizeDocument } from '@/lib/documents';
 import { parsePageIds } from '@/lib/doc-refs';
@@ -41,12 +51,21 @@ import { parseItemReference } from '@/lib/search';
 import { deriveSlug } from '@/lib/slug';
 import {
   checkMove,
+  isVerificationDays,
+  normalizePageIcon,
   normalizePageTitle,
   pageSlug,
   reorderPositions,
   validatePage,
+  verificationExpiry,
+  verificationStatus,
+  VERIFICATION_HORIZON_DAYS,
+  VERIFICATION_WARNING_DAYS,
   type PageProblem,
+  type VerificationDays,
+  type VerificationStatus,
 } from '@/lib/wiki';
+import { addDays, todayIn, type CalendarDate } from '@/lib/workspace-date';
 import { isArchived, loadProject, projectResource } from './project-access';
 import {
   canReadSpace,
@@ -102,7 +121,11 @@ export type WikiFailure =
   /** §20.3.3, and the one refusal this feature exists to make well. */
   | 'stale'
   /** A mention naming somebody who cannot read the space (§7.7's rule, applied to a page). */
-  | 'mention_not_visible';
+  | 'mention_not_visible'
+  /** A verification period that is not one of `VERIFICATION_DAYS` (§21.3). */
+  | 'invalid_period'
+  /** An owner id naming nobody in this workspace (§21.3). */
+  | 'unknown_member';
 
 export type SpaceView = {
   id: string;
@@ -126,7 +149,53 @@ export type PageView = {
   mentioned: Record<string, string>;
   /** `#[uuid]` → title, same rule. */
   pages: PageRef[];
+  /**
+   * **What links here** (§21.4) — the pages whose bodies reference this one,
+   * bounded to the spaces this reader can actually see.
+   *
+   * Rides `getPage`'s own transaction, which is §20.12's rule and the trap five
+   * earlier slices each learned separately — slice 8 with `getCommentThread`,
+   * slice 9 with the unread count, slice 10 with the custom fields, slice 13
+   * with §7.4's six lists and slice 14 on a keystroke.
+   */
+  backlinks: Backlink[];
   canWrite: boolean;
+  /** §21.3's badge, derived here so the screen cannot derive it differently. */
+  verification: VerificationView;
+  /** The label ids on this page — `LabelChip` resolves name and colour (§21.3). */
+  labelIds: string[];
+  /**
+   * The people the owner picker may offer, and **empty when this actor cannot
+   * write** (§21.3).
+   *
+   * `getCommentThread`'s call from slice 8, taken for the same reason: the list
+   * is only ever rendered inside a control somebody with write access sees, so
+   * fetching it for a reader is a query whose result is discarded on every page
+   * view in the company space — which is the most-read screen in the wiki.
+   */
+  members: { id: string; name: string }[];
+};
+
+/**
+ * Everything a verification badge needs, resolved once (§21.3 — slice 19).
+ *
+ * The **status is computed on the server** and handed down, rather than the
+ * component computing it from the columns. Both would be calling the same pure
+ * function, so this is not about correctness of the arithmetic — it is about
+ * `warnFrom`, which only the server can resolve because only the database knows
+ * the company's working days and holidays. A client computing its own amber
+ * threshold would be the second implementation §9's working-day rule exists to
+ * prevent.
+ */
+export type VerificationView = {
+  status: VerificationStatus;
+  verifiedAt: Date | null;
+  verifiedByName: string | null;
+  expiresAt: CalendarDate | null;
+  ownerMemberId: string | null;
+  ownerName: string | null;
+  /** The period the verify control should offer first — the space's default. */
+  defaultDays: VerificationDays | null;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -373,9 +442,50 @@ export async function getPage(
       links,
       mentioned: await hydrateMentions(tx, [page.body]),
       pages: await fetchPageRefs(tx, parsePageIds(page.body)),
+      /**
+       * §21.4's "what links here", scoped to the spaces this reader may see —
+       * which is the whole of the permission story for a backlink, and why it is
+       * resolved here rather than inside the query (§20.5).
+       *
+       * A backlink is the one place a page in a space somebody cannot read would
+       * otherwise announce its own title on a page they can.
+       */
+      backlinks: await fetchBacklinks(tx, {
+        pageId: page.id,
+        spaceIds: await readableSpaceIds(tx, resolved),
+      }),
       canWrite,
+      // Both ride the transaction `getPage` already opened — the rule §20.12
+      // states and five earlier slices each learned separately.
+      verification: await verificationViewFor(tx, resolved, page, space.id),
+      labelIds: await fetchPageLabelIds(tx, page.id),
+      members: canWrite ? await assignableMembers(tx) : [],
     };
   });
+}
+
+/**
+ * The people who may be made answerable for a page (§21.3).
+ *
+ * **Live memberships only**, which is the opposite filter from
+ * `hydrateMentions` beside it and deliberately so: that one resolves a name
+ * somebody *wrote* in the past and must still render for a colleague who has
+ * left (§7.12 keeps writing attributed), while this one is a picker of people
+ * who can be given a responsibility — and offering somebody who has been
+ * offboarded is offering a choice `setPageOwner` will refuse.
+ *
+ * Not filtered to those who can *write* in the space. §21.3 makes ownership a
+ * claim about accuracy rather than a grant of access, and a Guest contractor
+ * who wrote the integration notes is a legitimate answer to "who knows whether
+ * this is still true". `canWriteSpace` still governs who may *set* it.
+ */
+async function assignableMembers(tx: TenantDb): Promise<{ id: string; name: string }[]> {
+  return tx
+    .select({ id: workspaceMember.id, name: user.name })
+    .from(workspaceMember)
+    .innerJoin(user, eq(user.id, workspaceMember.userId))
+    .where(isNull(workspaceMember.deletedAt))
+    .orderBy(user.name);
 }
 
 /** The space home: the tree, with no page selected (§20.11). */
@@ -509,6 +619,13 @@ export async function createPageIn(
 
     await syncOutboundLinks(tx, uow, resolved, { pageId, body, previousBody: '' });
 
+    // A page created *with* a body — §21.7's templates in slice 22, and an
+    // importer in §21.8 — references pages from its first revision. Leaving this
+    // to the first save would mean a page whose backlinks appear only once
+    // somebody edits it, which is the shape of bug nobody reports because it
+    // looks like the feature simply has not noticed yet.
+    await syncPageRefs(tx, { workspaceId: resolved.workspace.id, pageId, body });
+
     return { ok: true, pageId, slug, spaceSlug: context.space.slug } as const;
   }
 }
@@ -540,7 +657,7 @@ export async function saveWikiPage(
   resolved: ResolvedActor,
   input: { pageId: string; title: string; body: string; baseRevision: number },
 ): Promise<
-  | Ok<{ revisionNo: number; slug: string }>
+  | Ok<{ revisionNo: number; slug: string; unverified: boolean }>
   | (Failed & { current?: { title: string; body: string; revisionNo: number } })
 > {
   const title = normalizePageTitle(input.title);
@@ -575,7 +692,33 @@ export async function saveWikiPage(
      */
     const updated = await tx
       .update(wikiPage)
-      .set({ title, body, slug, revisionNo, updatedAt: new Date() })
+      .set({
+        title,
+        body,
+        slug,
+        revisionNo,
+        updatedAt: new Date(),
+
+        /**
+         * **Editing a verified page clears its verification** (§21.3), and this
+         * is the only automatic transition in the feature.
+         *
+         * "Without it the whole feature is decoration: a badge that survives the
+         * edit that invalidated it is worse than no badge, because it is a false
+         * claim carrying the product's authority." The writer sees it happen and
+         * can re-verify in the same visit if the edit was a typo fix — which is
+         * why this is a clear rather than a prompt.
+         *
+         * All three columns go together, because the CHECK in 0034 requires the
+         * pair and an expiry with no verification is a lapse date for an
+         * assertion nobody made. Set unconditionally rather than behind an `if`:
+         * this is one statement and the write is already happening, so a branch
+         * would only add a way for the two paths to differ.
+         */
+        verifiedAt: null,
+        verifiedByMemberId: null,
+        verificationExpiresAt: null,
+      })
       .where(and(eq(wikiPage.id, page.id), eq(wikiPage.revisionNo, input.baseRevision)))
       .returning({ revisionNo: wikiPage.revisionNo });
 
@@ -616,14 +759,118 @@ export async function saveWikiPage(
       mentioned: mentioned.filter((id) => !before.has(id)),
     });
 
+    /**
+     * The un-verification is audited only when there was one to lose (§21.3).
+     *
+     * §21.14's first check asks that "the audit log holds both the verification
+     * and the un-verification", and the qualifier matters: emitting this on
+     * every save of every never-verified page would put a row in the log for the
+     * overwhelming majority of edits — which is `wiki_page.updated`'s own reason
+     * for not being audited at all, reintroduced through the side door.
+     */
+    if (page.verifiedAt !== null) {
+      uow.emit({
+        type: 'wiki_page.unverified',
+        workspaceId: resolved.workspace.id,
+        spaceId: page.spaceId,
+        pageId: page.id,
+        title,
+        reason: 'edited',
+      });
+    }
+
     await syncOutboundLinks(tx, uow, resolved, {
       pageId: page.id,
       body,
       previousBody: page.body,
     });
 
-    return { ok: true, revisionNo, slug } as const;
+    await syncPageRefs(tx, {
+      workspaceId: resolved.workspace.id,
+      pageId: page.id,
+      body,
+    });
+
+    return { ok: true, revisionNo, slug, unverified: page.verifiedAt !== null } as const;
   });
+}
+
+/**
+ * The page → page edges this body contains, **rebuilt** (§21.4 — slice 20).
+ *
+ * §21.13's definition of done for this slice is one sentence and it is this
+ * function: "the ref table is *rebuilt* rather than appended to, so removing a
+ * sentence removes its edge while an authored `wiki_page_link` survives the same
+ * edit — asserted directly, because that distinction is the one §20.0 found the
+ * hard way."
+ *
+ * So it sits directly beneath `syncOutboundLinks`, which does the *opposite*
+ * thing to the *other* kind of edge, and reading the two together is the fastest
+ * way to understand §21.4:
+ *
+ *  - `syncOutboundLinks` computes what a revision **added** and inserts those,
+ *    because `wiki_page_link` is **authored**: somebody connected a page to a
+ *    work item, it has an author, it emitted an event, and an edit to a
+ *    paragraph must not undo a connection somebody made on purpose.
+ *  - This one computes the body's **whole** set and makes the table equal it,
+ *    because `wiki_page_ref` is **derived**: it is a projection of the body, so
+ *    a reference that is no longer in the text is no longer a reference.
+ *
+ * **Delete-then-insert rather than a diff, and that is deliberate.** A diff
+ * would be two reads and two writes to save at most a handful of rows on a table
+ * whose whole content for one page is the tokens in one body; this is one delete
+ * and one insert, in the transaction the save is already in, and it cannot drift
+ * from the body because it never consults what was there before. §21.15 asks
+ * that the table stay regenerable from the bodies — a function that can only
+ * *set* the answer is what makes that true.
+ *
+ * **A target that does not exist writes nothing**, and the composite foreign key
+ * is what enforces it: `parsePageIds` returns whatever uuids somebody typed, and
+ * a hand-typed token naming no page would otherwise be an insert that fails and
+ * takes the save down with it. Filtering first, in the same transaction, means a
+ * body may reference a page that was hard-deleted and still save — it renders as
+ * §20.7's absence, which is what slice 17 chose for exactly this case.
+ *
+ * **No §10 check on the target, and that is not an omission.** A reference is
+ * text in a body: refusing to record one would not stop the writer typing it,
+ * and the *reader* is filtered — `fetchBacklinks` takes only spaces
+ * `readableSpaceIds` has already resolved, and `fetchPageRefs` resolves a title
+ * only for pages the reader may see. This is the opposite call from
+ * `syncOutboundLinks`, which does ask §10, and the difference is real: linking a
+ * work item writes a row into *that item's* panel, where it would tell somebody
+ * about an item they cannot see.
+ */
+async function syncPageRefs(
+  tx: TenantDb,
+  input: { workspaceId: string; pageId: string; body: string },
+): Promise<void> {
+  // A page does not link to itself: the token is legal text, and without this
+  // the page would appear in its own "what links here" — which reads as a bug in
+  // the feature rather than as a quirk of one body. 0036 is the second layer.
+  const referenced = parsePageIds(input.body).filter((id) => id !== input.pageId);
+
+  await tx.delete(wikiPageRef).where(eq(wikiPageRef.fromPageId, input.pageId));
+
+  if (referenced.length === 0) return;
+
+  // Which of them are real pages *in this workspace* — RLS has already scoped
+  // the rows, so this is the filter that turns a hand-typed uuid into nothing
+  // rather than into a foreign-key violation on the writer's save.
+  const targets = await tx
+    .select({ id: wikiPage.id })
+    .from(wikiPage)
+    .where(inArray(wikiPage.id, referenced));
+
+  if (targets.length === 0) return;
+
+  await tx.insert(wikiPageRef).values(
+    targets.map((target) => ({
+      id: uuidv7(),
+      workspaceId: input.workspaceId,
+      fromPageId: input.pageId,
+      toPageId: target.id,
+    })),
+  );
 }
 
 /**
@@ -1415,4 +1662,676 @@ function toSpaceView(
     pageCount,
     canWrite,
   };
+}
+
+/* ------------------------------------------------------------------------- */
+/* Ownership and verification (§21.3 — slice 19)                             */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The two dates every verification question is answered against.
+ *
+ * `today` is the **workspace's** (§17-13), and `warnFrom` is the working-day
+ * horizon `VERIFICATION_WARNING_DAYS` describes — resolved by
+ * `working_days_ahead` in migration 0034, which is the fifth member of §9's
+ * working-day family and the only thing that knows this company's calendar.
+ *
+ * **Asked once per screen, never once per row.** That is slice 13's rule for
+ * `stale_before` and it is the reason the function exists rather than a
+ * per-row `business_days_between`: the All-pages view draws five hundred rows
+ * and would otherwise run five hundred `generate_series` over the holiday table
+ * to colour five hundred badges. Resolved once, the comparison is an ordinary
+ * date predicate that `wiki_page_owner_idx` serves directly.
+ *
+ * It is also what keeps two rows of one page from straddling midnight and
+ * disagreeing about the same page, which is the property `fetchStaleBefore`
+ * exists for.
+ */
+export type VerificationClock = { today: CalendarDate; warnFrom: CalendarDate };
+
+export async function verificationClock(
+  tx: TenantDb,
+  resolved: ResolvedActor,
+): Promise<VerificationClock> {
+  const today = todayIn(resolved.workspace.timezone);
+
+  const rows = await tx.execute<{ warn_from: string | null }>(
+    sql`select working_days_ahead(
+          ${resolved.workspace.id}::uuid,
+          ${today}::date,
+          ${VERIFICATION_WARNING_DAYS}
+        )::text as warn_from`,
+  );
+
+  /**
+   * A company whose calendar yields no working day inside 400 days gets `today`
+   * as its own horizon, which collapses the amber band to nothing and leaves
+   * `verified` and `expired` reading correctly.
+   *
+   * 0028's `working_days BETWEEN 1 AND 127` makes that unreachable in practice —
+   * it is the bound that exists precisely because "a company that works no days
+   * at all is the one setting that bricks a workspace". This fallback is what
+   * stops the *warning* being the thing that discovers it.
+   */
+  return { today, warnFrom: rows.rows[0]?.warn_from ?? today };
+}
+
+/** The badge one page shows, assembled from the row and the clock. */
+async function verificationViewFor(
+  tx: TenantDb,
+  resolved: ResolvedActor,
+  page: PageDetail,
+  spaceId: string,
+): Promise<VerificationView> {
+  const clock = await verificationClock(tx, resolved);
+
+  const spaces = await tx
+    .select({ days: wikiSpace.defaultVerificationDays })
+    .from(wikiSpace)
+    .where(eq(wikiSpace.id, spaceId))
+    .limit(1);
+
+  const defaultDays = spaces[0]?.days ?? null;
+
+  return {
+    status: verificationStatus(page, clock),
+    verifiedAt: page.verifiedAt,
+    verifiedByName: page.verifiedByName,
+    expiresAt: page.verificationExpiresAt,
+    ownerMemberId: page.ownerMemberId,
+    ownerName: page.ownerName,
+    defaultDays: isVerificationDays(defaultDays) ? defaultDays : null,
+  };
+}
+
+/**
+ * The All-pages view (§21.3), and the screen where this feature stops being
+ * present and starts being usable.
+ *
+ * "Title, owner, verification state, expiry, last edited, last editor —
+ * sortable, and filterable to *unverified*, *expiring within 30 days*, *owned by
+ * me*, *owned by nobody*."
+ *
+ * **The status is derived here, once, for every row**, from the same clock and
+ * the same pure function the page header uses. Filtering happens over the
+ * derived value rather than in SQL, which is not a shortcut: `expiring` is
+ * defined by a working-day horizon and `expired` by the workspace's today, and a
+ * SQL predicate for either would be `verificationStatus` written a second time
+ * in a second language — the drift §21.3 forbids in the sentence that makes the
+ * status derived at all.
+ */
+export type SpacePageView = SpacePageRow & { status: VerificationStatus };
+
+export type PageFilter = 'all' | 'unverified' | 'expiring' | 'mine' | 'unowned';
+
+export async function listSpacePages(
+  resolved: ResolvedActor,
+  input: { spaceSlug: string; filter?: PageFilter },
+): Promise<{
+  space: SpaceView;
+  pages: SpacePageView[];
+  counts: { expired: number; expiring: number; unverified: number; unowned: number };
+  clock: VerificationClock;
+  labels: { id: string; name: string; color: string }[];
+  /** The space's standing review cycle, for the form at the foot of the list. */
+  defaultDays: VerificationDays | null;
+} | null> {
+  return withActor(resolved.context, async (tx) => {
+    const space = await loadSpaceBySlug(tx, input.spaceSlug);
+    if (!space) return null;
+
+    const context = await withProject(tx, space);
+    if (!context || !canReadSpace(resolved.actor, context)) return null;
+
+    const clock = await verificationClock(tx, resolved);
+    const rows = await fetchSpacePages(tx, space.id);
+
+    const defaults = await tx
+      .select({ days: wikiSpace.defaultVerificationDays })
+      .from(wikiSpace)
+      .where(eq(wikiSpace.id, space.id))
+      .limit(1);
+
+    const storedDefault = defaults[0]?.days ?? null;
+
+    const withStatus: SpacePageView[] = rows.map((row) => ({
+      ...row,
+      status: verificationStatus(row, clock),
+    }));
+
+    const filter = input.filter ?? 'all';
+    const pages = withStatus.filter((row) => {
+      switch (filter) {
+        case 'unverified':
+          return row.status === 'never';
+        // §21.3's filter is "expiring within 30 days", which is a **calendar**
+        // window and deliberately wider than the amber badge's working-day one —
+        // the badge warns the one person who has to act, and this is somebody
+        // planning a month of review work. `VERIFICATION_HORIZON_DAYS` carries
+        // the contrast.
+        case 'expiring':
+          return (
+            row.verificationExpiresAt !== null &&
+            row.verificationExpiresAt <= addDays(clock.today, VERIFICATION_HORIZON_DAYS)
+          );
+        case 'mine':
+          return row.ownerMemberId === resolved.memberId;
+        case 'unowned':
+          return row.ownerMemberId === null;
+        default:
+          return true;
+      }
+    });
+
+    /**
+     * The workspace's label vocabulary, so `LabelChip` can resolve a name and a
+     * colour for the ids each row carries. One query for the whole screen rather
+     * than a join per row — labels are workspace vocabulary (slice 5) and a
+     * company has a handful.
+     */
+    const labels = await tx
+      .select({ id: label.id, name: label.name, color: label.color })
+      .from(label)
+      .where(isNull(label.deletedAt))
+      .orderBy(label.name);
+
+    return {
+      space: toSpaceView(context, rows.length, canWriteSpace(resolved.actor, context)),
+      pages,
+      counts: await fetchVerificationCounts(tx, {
+        spaceId: space.id,
+        today: clock.today,
+        warnFrom: clock.warnFrom,
+      }),
+      clock,
+      labels,
+      /**
+       * Narrowed rather than cast. The column is an ordinary `integer` bounded
+       * only by 0034's `BETWEEN 1 AND 3650` — deliberately, so adding a fourth
+       * period is not a migration — so a value outside `VERIFICATION_DAYS` is
+       * possible and reads here as *no default*, which is the safe answer and
+       * the one a picker can represent.
+       */
+      defaultDays: isVerificationDays(storedDefault) ? storedDefault : null,
+    };
+  });
+}
+
+/**
+ * Claim a page, hand it to somebody, or leave it unowned (§21.3).
+ *
+ * **No §10 row, and none was needed** — §21.3: "Owning, verifying and
+ * un-verifying a page are all *writing* in that space, which §20.5's two rows
+ * already govern. Assigning somebody else as owner is the same act: a claim on
+ * the company's record, made by somebody the matrix already trusts with that
+ * record."
+ *
+ * `null` is an **intent**, not a missing value — the rule `moveWorkItem` wrote
+ * for a neighbour id in slice 6 and §7.12's `reassignTo` re-stated in slice 15.
+ * "Nobody owns this" is an answer somebody chooses, and it is the state the
+ * All-pages view has a filter for.
+ */
+export async function setPageOwner(
+  resolved: ResolvedActor,
+  input: { pageId: string; ownerMemberId: string | null },
+): Promise<Ok | Failed> {
+  return withActor(resolved.context, async (tx, uow) => {
+    const page = await fetchPage(tx, input.pageId);
+    if (!page) return { ok: false, problem: 'not_found' } as const;
+
+    const context = await resolveSpace(tx, page.spaceId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const refusal = checkSpaceWrite(resolved.actor, context);
+    if (refusal !== null) return { ok: false, problem: refusal } as const;
+
+    if (input.ownerMemberId !== null) {
+      const target = await tx
+        .select({ id: workspaceMember.id })
+        .from(workspaceMember)
+        .where(
+          and(eq(workspaceMember.id, input.ownerMemberId), isNull(workspaceMember.deletedAt)),
+        )
+        .limit(1);
+
+      // Checked rather than left to the foreign key, for `removeMember`'s
+      // reason: what a constraint gives is a 500 where a refusal belongs.
+      if (target.length === 0) return { ok: false, problem: 'unknown_member' } as const;
+    }
+
+    // Nothing changed — no write, no audit row. An owner reading the log should
+    // not find a "changed owner" line for a form somebody opened and saved.
+    if (page.ownerMemberId === input.ownerMemberId) return { ok: true } as const;
+
+    await tx
+      .update(wikiPage)
+      .set({ ownerMemberId: input.ownerMemberId, updatedAt: new Date() })
+      .where(eq(wikiPage.id, page.id));
+
+    uow.emit({
+      type: 'wiki_page.owner_changed',
+      workspaceId: resolved.workspace.id,
+      spaceId: page.spaceId,
+      pageId: page.id,
+      title: page.title,
+      fromMemberId: page.ownerMemberId,
+      toMemberId: input.ownerMemberId,
+    });
+
+    return { ok: true } as const;
+  });
+}
+
+/**
+ * Assert that a page is accurate (§21.3).
+ *
+ * **Conditional on the revision the verifier read**, exactly as a save is, and
+ * §21.3 asks for it in as many words: "`[X]` verifying a page somebody has
+ * edited underneath you → refused with §20.3.3's own message, because verifying
+ * a body you did not read is the failure being prevented."
+ *
+ * That is the sharpest instance of the rule in the product. A stale *save*
+ * refuses because merging prose destroys work; a stale *verification* refuses
+ * because it would otherwise attach somebody's name, permanently and in the
+ * audit log, to words they never saw. The mechanism is the same single
+ * statement — `where revision_no = $base`, with `returning` as the proof — and
+ * it is the same one because there is no second correct answer.
+ *
+ * **The period comes from the caller, defaulting to the space's** (§21.3: "One
+ * column, applied at page creation and overridable per page"). It is resolved
+ * *here*, at verification, rather than copied onto the page when the page was
+ * created — a copy taken at creation would be a snapshot that goes stale the
+ * moment somebody changes the space default, which is the opposite of "so a
+ * policy space does not depend on somebody remembering on every page". See the
+ * note in `PLAN.en.md` §21.3 if this ever needs revisiting: a page has no
+ * period column of its own, because it has no verification to attach one to
+ * until this function runs.
+ */
+export async function verifyPage(
+  resolved: ResolvedActor,
+  input: { pageId: string; baseRevision: number; days?: VerificationDays | null },
+): Promise<
+  | Ok<{ expiresAt: CalendarDate | null }>
+  | (Failed & { current?: { title: string; body: string; revisionNo: number } })
+> {
+  return withActor(resolved.context, async (tx, uow) => {
+    const page = await fetchPage(tx, input.pageId);
+    if (!page) return { ok: false, problem: 'not_found' } as const;
+
+    const context = await resolveSpace(tx, page.spaceId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const refusal = checkSpaceWrite(resolved.actor, context);
+    if (refusal !== null) return { ok: false, problem: refusal } as const;
+
+    /**
+     * `undefined` means *take the space's default*; an explicit `null` means
+     * *Never*. The distinction is `reassignTo`'s from §7.12 — "`undefined` is
+     * not a third answer, because a default here is a screen that silently
+     * picked for somebody" — pointed the other way: here the caller genuinely
+     * may decline to choose, and the space's standing preference is what a
+     * declined choice means.
+     */
+    let days: VerificationDays | null;
+    if (input.days === undefined) {
+      const spaces = await tx
+        .select({ days: wikiSpace.defaultVerificationDays })
+        .from(wikiSpace)
+        .where(eq(wikiSpace.id, page.spaceId))
+        .limit(1);
+
+      const stored = spaces[0]?.days ?? null;
+      days = isVerificationDays(stored) ? stored : null;
+    } else {
+      if (input.days !== null && !isVerificationDays(input.days)) {
+        return { ok: false, problem: 'invalid_period' } as const;
+      }
+      days = input.days;
+    }
+
+    const today = todayIn(resolved.workspace.timezone);
+    const expiresAt = verificationExpiry(today, days);
+
+    const updated = await tx
+      .update(wikiPage)
+      .set({
+        verifiedAt: new Date(),
+        verifiedByMemberId: resolved.memberId,
+        verificationExpiresAt: expiresAt,
+        // **`updated_at` is deliberately not touched.** A verification is not an
+        // edit: bumping it would reorder the All-pages view's "last edited"
+        // column on an act that changed no word, and it would make
+        // `wiki_page_live_idx`'s ordering report a review as a revision.
+      })
+      .where(and(eq(wikiPage.id, page.id), eq(wikiPage.revisionNo, input.baseRevision)))
+      .returning({ revisionNo: wikiPage.revisionNo });
+
+    if (updated.length === 0) {
+      const current = await fetchPage(tx, page.id);
+      return {
+        ok: false,
+        problem: 'stale',
+        current: current
+          ? { title: current.title, body: current.body, revisionNo: current.revisionNo }
+          : undefined,
+      } as const;
+    }
+
+    uow.emit({
+      type: 'wiki_page.verified',
+      workspaceId: resolved.workspace.id,
+      spaceId: page.spaceId,
+      pageId: page.id,
+      title: page.title,
+      revisionNo: page.revisionNo,
+      expiresAt,
+    });
+
+    return { ok: true, expiresAt } as const;
+  });
+}
+
+/**
+ * Withdraw an assertion (§21.3).
+ *
+ * Deliberately **not** conditional on a revision, where `verifyPage` is. Saying
+ * "I no longer vouch for this" is safe whatever the body has become — if
+ * somebody edited it underneath, that edit already cleared the verification and
+ * this is a no-op; if they did not, withdrawing is exactly what was meant. A
+ * refusal here would ask somebody to re-read a page in order to stop standing
+ * behind it, which is backwards.
+ */
+export async function unverifyPage(
+  resolved: ResolvedActor,
+  pageId: string,
+): Promise<Ok | Failed> {
+  return withActor(resolved.context, async (tx, uow) => {
+    const page = await fetchPage(tx, pageId);
+    if (!page) return { ok: false, problem: 'not_found' } as const;
+
+    const context = await resolveSpace(tx, page.spaceId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const refusal = checkSpaceWrite(resolved.actor, context);
+    if (refusal !== null) return { ok: false, problem: refusal } as const;
+
+    if (page.verifiedAt === null) return { ok: true } as const;
+
+    await tx
+      .update(wikiPage)
+      .set({ verifiedAt: null, verifiedByMemberId: null, verificationExpiresAt: null })
+      .where(eq(wikiPage.id, page.id));
+
+    uow.emit({
+      type: 'wiki_page.unverified',
+      workspaceId: resolved.workspace.id,
+      spaceId: page.spaceId,
+      pageId: page.id,
+      title: page.title,
+      reason: 'cleared',
+    });
+
+    return { ok: true } as const;
+  });
+}
+
+/**
+ * The space's standing review cycle (§21.3).
+ *
+ * `wiki_space.updated` is the event, reused rather than invented: it already
+ * means "something about this space changed" and already carries a from/to pair.
+ * A `wiki_space.verification_default_changed` would be a thirty-first event type
+ * for a fact the existing one describes — and §6-6's lesson about closed sets
+ * applies to the registry as much as to notification kinds.
+ */
+export async function setSpaceVerificationDefault(
+  resolved: ResolvedActor,
+  input: { spaceId: string; days: VerificationDays | null },
+): Promise<Ok | Failed> {
+  if (input.days !== null && !isVerificationDays(input.days)) {
+    return { ok: false, problem: 'invalid_period' };
+  }
+
+  return withActor(resolved.context, async (tx, uow) => {
+    const context = await resolveSpace(tx, input.spaceId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const refusal = checkSpaceWrite(resolved.actor, context);
+    if (refusal !== null) return { ok: false, problem: refusal } as const;
+
+    const before = await tx
+      .select({ days: wikiSpace.defaultVerificationDays })
+      .from(wikiSpace)
+      .where(eq(wikiSpace.id, input.spaceId))
+      .limit(1);
+
+    const from = before[0]?.days ?? null;
+    if (from === input.days) return { ok: true } as const;
+
+    await tx
+      .update(wikiSpace)
+      .set({ defaultVerificationDays: input.days, updatedAt: new Date() })
+      .where(eq(wikiSpace.id, input.spaceId));
+
+    uow.emit({
+      type: 'wiki_space.updated',
+      workspaceId: resolved.workspace.id,
+      spaceId: input.spaceId,
+      // The event's pair is `string`, and these are periods. Rendered rather
+      // than stored as numbers because the audit log is read as prose and
+      // "never" is the honest word for the absence — the same call
+      // `workspace.branding_changed` makes when it records *whether* there is a
+      // logo rather than its key.
+      from: from === null ? 'never' : `${from}d`,
+      to: input.days === null ? 'never' : `${input.days}d`,
+    });
+
+    return { ok: true } as const;
+  });
+}
+
+/**
+ * Apply the workspace's labels to a page (§21.3).
+ *
+ * **Tags are `label`, not a second vocabulary** — the whole justification is on
+ * `wiki_page_label` in the schema. Written as a replace rather than an
+ * add/remove pair, because the control is a set of checkboxes and a set is what
+ * it reports; the delete and the insert are one statement each over a known set,
+ * which is `reorderPages`' shape and for the same reason.
+ *
+ * No event. Tagging is filing, not a change to the company's record — the call
+ * `work_item.labelled` already made when it chose activity over notification,
+ * taken one step further because a page has no feed to project into (§20.6).
+ */
+export async function setPageLabels(
+  resolved: ResolvedActor,
+  input: { pageId: string; labelIds: string[] },
+): Promise<Ok | Failed> {
+  return withActor(resolved.context, async (tx) => {
+    const page = await fetchPage(tx, input.pageId);
+    if (!page) return { ok: false, problem: 'not_found' } as const;
+
+    const context = await resolveSpace(tx, page.spaceId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const refusal = checkSpaceWrite(resolved.actor, context);
+    if (refusal !== null) return { ok: false, problem: refusal } as const;
+
+    const wanted = [...new Set(input.labelIds)];
+
+    // Only labels that actually exist in this workspace. RLS has already scoped
+    // the table, so this is about a stale form naming a deleted label rather
+    // than about tenancy — and dropping it silently is right, for the reason
+    // `withKnownCustomFilters` drops a filter naming a deleted field.
+    const known =
+      wanted.length === 0
+        ? []
+        : (
+            await tx
+              .select({ id: label.id })
+              .from(label)
+              .where(and(inArray(label.id, wanted), isNull(label.deletedAt)))
+          ).map((row) => row.id);
+
+    await tx.delete(wikiPageLabel).where(eq(wikiPageLabel.pageId, page.id));
+
+    if (known.length > 0) {
+      await tx.insert(wikiPageLabel).values(
+        known.map((labelId) => ({
+          id: uuidv7(),
+          workspaceId: resolved.workspace.id,
+          pageId: page.id,
+          labelId,
+        })),
+      );
+    }
+
+    return { ok: true } as const;
+  });
+}
+
+/**
+ * Release every page a departing member owns (§21.3, §7.12).
+ *
+ * "`[!]` the owner leaves the company → §7.12's offboarding dialog counts the
+ * pages they own, and the removal **nulls the column rather than deleting
+ * anything**, so those pages appear under *owned by nobody* the next morning."
+ *
+ * That asymmetry with `deleteNotesOf` beside it is §20.5's, and it is the point:
+ * notes are one person's thinking and go with them; a page is the company's
+ * record and stays, unowned and findable, waiting for somebody to claim it.
+ *
+ * Called from inside `removeMember`'s own transaction, so there is no window in
+ * which somebody has been offboarded and still owns forty pages — the same
+ * property the reassignment and the note deletion already have.
+ *
+ * **One event per page, deliberately.** Forty rows in the audit log for one
+ * offboarding is the honest record: an owner asking six months later why the
+ * leave policy has no owner needs the answer, and a single summary row would
+ * name the member without naming the pages.
+ */
+export async function releasePagesOf(
+  tx: TenantDb,
+  uow: UnitOfWork,
+  workspaceId: string,
+  memberId: string,
+): Promise<number> {
+  const released = await tx
+    .update(wikiPage)
+    .set({ ownerMemberId: null })
+    .where(and(eq(wikiPage.ownerMemberId, memberId), isNull(wikiPage.deletedAt)))
+    .returning({ id: wikiPage.id, spaceId: wikiPage.spaceId, title: wikiPage.title });
+
+  for (const page of released) {
+    uow.emit({
+      type: 'wiki_page.owner_changed',
+      workspaceId,
+      spaceId: page.spaceId,
+      pageId: page.id,
+      title: page.title,
+      fromMemberId: memberId,
+      toMemberId: null,
+    });
+  }
+
+  return released.length;
+}
+
+/**
+ * The digest's section (§21.3), read as the member whose digest it is.
+ *
+ * Exported for `jobs/digest.ts`, which calls it inside the `withActor` it has
+ * already opened for that person — so the pages an email names are pages its
+ * recipient can actually open, which is the property slice 9 built the whole
+ * read-as-that-member arrangement for and which would otherwise have to be
+ * re-implemented here and eventually got wrong.
+ *
+ * **It takes an `Actor` and a member id rather than a `ResolvedActor`**, and the
+ * narrowing is deliberate: a `ResolvedActor` carries a `CurrentUser`, an unread
+ * count and a view-as state, none of which exist in a worker and none of which
+ * this function reads. Asking for the two things it uses lets the digest build
+ * exactly those, from the transaction it is already inside, rather than
+ * assembling a request-shaped object that would be mostly lies.
+ *
+ * The space filter is applied *after* the query for `fetchPageLinks`' reason: a
+ * page in a private project's space is one this person may own and no longer be
+ * able to read, and `canReadSpace` needs the project row loaded, which is not a
+ * SQL predicate.
+ */
+export async function expiringPagesFor(
+  tx: TenantDb,
+  input: { actor: Actor; memberId: string; horizon: CalendarDate },
+): Promise<{ title: string; spaceSlug: string; slug: string; expiresAt: CalendarDate }[]> {
+  const rows = await fetchExpiringOwnedPages(tx, {
+    memberId: input.memberId,
+    horizon: input.horizon,
+  });
+  if (rows.length === 0) return [];
+
+  const readable = new Map<string, boolean>();
+  const out: { title: string; spaceSlug: string; slug: string; expiresAt: CalendarDate }[] = [];
+
+  for (const row of rows) {
+    let allowed = readable.get(row.spaceId);
+    if (allowed === undefined) {
+      const context = await resolveSpace(tx, row.spaceId);
+      allowed = context !== null && canReadSpace(input.actor, context);
+      readable.set(row.spaceId, allowed);
+    }
+    if (!allowed) continue;
+
+    out.push({
+      title: row.title,
+      spaceSlug: row.spaceSlug,
+      slug: row.slug,
+      expiresAt: row.expiresAt,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Give a page an icon, or take it away (§21.2 — slice 20).
+ *
+ * **No event, and that is `saved_view`'s call from slice 12 rather than an
+ * oversight.** §8's registry is for things that happened to a company's *work*;
+ * an icon is furniture on a page, and an entry reading `audit: false, activity:
+ * false, notify: false` would be three decisions recorded as "no" for something
+ * nobody would ever read back. It is also why this does not touch
+ * `revision_no`: an icon is not the body, so changing one must not refuse a save
+ * somebody is composing in another tab, and must not clear §21.3's verification
+ * — a verified page whose icon changed is still a page somebody read and vouched
+ * for.
+ *
+ * **No §10 row — the fifteenth time that decision has gone the same way**, after
+ * labels, attachments, notifications, custom fields, cycles, saved views,
+ * availability, search, the holiday calendar, settings, password reset, notes,
+ * slice 19's verification and this slice's reference table. Setting an icon is
+ * *writing in that space*, which §20.5's two rows already govern.
+ *
+ * `null` is an **intent**: no icon is a value somebody chooses, not a field left
+ * blank — the rule `moveWorkItem` wrote for a neighbour id in slice 6, §7.12's
+ * `reassignTo` re-stated in slice 15 and `setPageOwner` re-stated in slice 19.
+ */
+export async function setPageIcon(
+  resolved: ResolvedActor,
+  input: { pageId: string; icon: string | null },
+): Promise<Ok | Failed> {
+  const icon = normalizePageIcon(input.icon);
+
+  return withActor(resolved.context, async (tx) => {
+    const page = await fetchPage(tx, input.pageId);
+    if (!page) return { ok: false, problem: 'not_found' } as const;
+
+    const context = await resolveSpace(tx, page.spaceId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const refusal = checkSpaceWrite(resolved.actor, context);
+    if (refusal !== null) return { ok: false, problem: refusal } as const;
+
+    await tx.update(wikiPage).set({ icon }).where(eq(wikiPage.id, page.id));
+
+    return { ok: true } as const;
+  });
 }

@@ -1068,6 +1068,68 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
     ],
   },
 
+  /**
+   * The three of §21.3, and all three are `audit` only.
+   *
+   * **Audited**, because "who said this was accurate, and when" is the exact
+   * question an audit log exists to answer six months later — and because the
+   * page's own revision list deliberately cannot answer it: a verification
+   * changes no body, so it writes no revision.
+   *
+   * **No activity**, because §20.6 settled that a page is not a work item and
+   * has no feed of its own.
+   *
+   * **No notification**, and that is the decision in this trio worth defending.
+   * §7.8's general rule would tell the owner every time their page changed
+   * state, and §21.3 refuses it in the same breath it asks for the feature:
+   * "an inbox row per expiring page is a stream that teaches people to ignore
+   * the bell". What replaces it is the evening digest reading the page rows
+   * directly — one message, on a working evening, in the section slice 19 adds
+   * to an email that was already going out. **No sixth notification kind**;
+   * §6-6's five stay five, the thirteenth time this plan has looked for a new
+   * row and found the one it needed already written.
+   */
+  'wiki_page.owner_changed': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      data: (e) => ({
+        spaceId: e.spaceId,
+        title: e.title,
+        from: e.fromMemberId,
+        to: e.toMemberId,
+      }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  'wiki_page.verified': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      // The revision number as well as the expiry: a verification is a claim
+      // about a *particular body*, and the number is what lets somebody reading
+      // this row a year later find the words that were actually vouched for.
+      data: (e) => ({
+        spaceId: e.spaceId,
+        title: e.title,
+        revisionNo: e.revisionNo,
+        expiresAt: e.expiresAt,
+      }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+  'wiki_page.unverified': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      data: (e) => ({ spaceId: e.spaceId, title: e.title, reason: e.reason }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
   // Audited, and it carries both spaces: a cross-space move changes who may
   // read the page (§20.5), which is the one page operation that is a
   // permission change wearing the clothes of a drag.

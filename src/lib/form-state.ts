@@ -126,6 +126,17 @@ export type WikiPageFormState = {
   names?: string[];
   savedAt?: number;
   revisionNo?: number;
+  /**
+   * Whether this save cleared the page's verification (§21.3 — slice 19).
+   *
+   * "Editing a verified page clears the verification. This is the only automatic
+   * transition, and without it the whole feature is decoration." An automatic
+   * transition nobody is told about is one people discover months later by
+   * noticing a badge they expected is missing — so the writer is told, on the
+   * screen where it happened, while they can still re-verify if the edit was a
+   * typo fix.
+   */
+  unverified?: boolean;
   /** The version that landed while this writer was typing (§20.3.3). */
   current?: { title: string; body: string; revisionNo: number };
 };

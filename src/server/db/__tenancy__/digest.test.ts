@@ -4,7 +4,15 @@ import { uuidv7 } from 'uuidv7';
 import { setTransport } from '@/server/email/mailer';
 import type { Mail } from '@/server/email/mailer';
 import { withActor } from '../tenant';
-import { workItem, workItemAssignee, workspace, workspaceHoliday } from '../schema';
+import {
+  project,
+  wikiPage,
+  wikiSpace,
+  workItem,
+  workItemAssignee,
+  workspace,
+  workspaceHoliday,
+} from '../schema';
 import type { SeededWorkspace, TenancyHarness } from './harness';
 import { seedWorkspace, startTenancyHarness } from './harness';
 
@@ -232,5 +240,185 @@ describe('the evening digest', () => {
     // rather than from a string in the job (§13).
     expect(sent[0]?.subject).toMatch(/next working day/i);
     expect(sent[0]?.subject).not.toContain('digest.');
+  });
+});
+
+/**
+ * §21.3's section on the same email (slice 19).
+ *
+ * §21.13's definition of done names this explicitly: "the digest section is
+ * asserted in the worker's own test rather than only through the UI". It cannot
+ * be tested in a browser for the reason none of the above can — it is a job, on
+ * a clock, in a timezone — and it is the half of slice 19 with the most SQL
+ * behind it: `working_days_ahead` resolving the horizon, the owner predicate,
+ * and the read-as-that-member scope that keeps the email honest.
+ *
+ * §21.14's second check is the one that shaped the code: "a page owner with no
+ * due work at all, on the evening before their page expires → the digest
+ * arrives". Before slice 19 `digestFor` returned early when the work query came
+ * back empty, and that early return is what would have silently swallowed this
+ * whole feature.
+ */
+describe('the digest section for pages needing review', () => {
+  afterEach(clearItems);
+
+  /** A page in the company space, owned by the second member and lapsing on `expires`. */
+  async function ownedPage(input: { title: string; expires: string | null }) {
+    const spaceId = uuidv7();
+    const pageId = uuidv7();
+    const projectId = uuidv7();
+    const suffix = String(Math.floor(Math.random() * 1_000_000));
+
+    await withActor(actor(), async (tx) => {
+      await tx.insert(project).values({
+        id: projectId,
+        workspaceId: w.workspaceId,
+        teamId: w.teamId,
+        slug: `digest-proj-${suffix}`,
+        key: `D${suffix.slice(0, 4)}`,
+        name: `Digest project ${suffix}`,
+      });
+    }, h.app);
+
+    await withActor(actor(), async (tx) => {
+      await tx.insert(wikiSpace).values({
+        id: spaceId,
+        workspaceId: w.workspaceId,
+        kind: 'project',
+        projectId,
+        name: `Digest space ${suffix}`,
+        slug: `digest-space-${suffix}`,
+      });
+
+      await tx.insert(wikiPage).values({
+        id: pageId,
+        workspaceId: w.workspaceId,
+        spaceId,
+        rootId: pageId,
+        title: input.title,
+        slug: `digest-page-${suffix}`,
+        body: 'Body.',
+        ownerMemberId: w.memberMemberId,
+        // The pair together, because 0034's CHECK requires it and an expiry
+        // with no verification is a lapse date for an assertion nobody made.
+        verifiedAt: input.expires === null ? null : new Date('2026-01-01T00:00:00Z'),
+        verifiedByMemberId: input.expires === null ? null : w.ownerMemberId,
+        verificationExpiresAt: input.expires,
+      });
+    }, h.app);
+
+    return { spaceId, pageId };
+  }
+
+  async function clearPages() {
+    await withActor(actor(), async (tx) => {
+      await tx.delete(wikiPage).where(eq(wikiPage.workspaceId, w.workspaceId));
+      await tx.delete(wikiSpace).where(eq(wikiSpace.workspaceId, w.workspaceId));
+    }, h.app);
+  }
+
+  afterEach(clearPages);
+
+  /**
+   * §21.14's check 2, and the reason `digestFor`'s early return moved.
+   *
+   * No due work at all — the work query returns nothing — and the digest still
+   * arrives, naming the page. This is the assertion that would have failed
+   * against the obvious implementation.
+   */
+  it('reaches an owner who has no due work at all', async () => {
+    await ownedPage({ title: 'Leave policy', expires: WEDNESDAY });
+
+    const count = await sendWorkspaceDigest({
+      workspaceId: w.workspaceId,
+      localDate: TUESDAY,
+    });
+
+    expect(count).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toContain('Leave policy');
+  });
+
+  /**
+   * Already-lapsed pages are included, and deliberately.
+   *
+   * A digest that only warned about the *coming* lapse would go quiet the
+   * morning after one happened — exactly when the page most needs somebody to
+   * look at it. That is the failure §17-19 records for due dates ("the first
+   * time the product mentioned a due date was when the item was already
+   * overdue"), and it would have been repeated here.
+   */
+  it('keeps naming a page whose review is already overdue', async () => {
+    await ownedPage({ title: 'Expense rules', expires: '2026-08-01' });
+
+    await sendWorkspaceDigest({ workspaceId: w.workspaceId, localDate: TUESDAY });
+
+    expect(sent[0]?.text).toContain('Expense rules');
+  });
+
+  /** Beyond the seven-working-day horizon is not tonight's problem. */
+  it('says nothing about a page lapsing months from now', async () => {
+    await ownedPage({ title: 'Onboarding guide', expires: '2027-01-01' });
+
+    const count = await sendWorkspaceDigest({
+      workspaceId: w.workspaceId,
+      localDate: TUESDAY,
+    });
+
+    // No due work either, so there is nothing at all to send.
+    expect(count).toBe(0);
+    expect(sent).toHaveLength(0);
+  });
+
+  /** A page with no review cycle never appears, which is *Never* working. */
+  it('says nothing about a page with no review cycle', async () => {
+    await ownedPage({ title: 'Scratch notes', expires: null });
+
+    const count = await sendWorkspaceDigest({
+      workspaceId: w.workspaceId,
+      localDate: TUESDAY,
+    });
+
+    expect(count).toBe(0);
+  });
+
+  /**
+   * §21.3: "Nobody is notified page by page." One message carries both halves,
+   * which is §7.8's rule — "never one email per item" — extended to a second
+   * kind of thing worth reading.
+   */
+  it('carries work and pages in the same one message', async () => {
+    await dueItem(WEDNESDAY);
+    await ownedPage({ title: 'Security policy', expires: WEDNESDAY });
+
+    const count = await sendWorkspaceDigest({
+      workspaceId: w.workspaceId,
+      localDate: TUESDAY,
+    });
+
+    expect(count).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toContain('Due 2026-09-09');
+    expect(sent[0]?.text).toContain('Security policy');
+  });
+
+  /**
+   * An unowned page reaches nobody, which is the point of the column: §21.3
+   * makes *owned by nobody* a visible state with a filter of its own rather than
+   * a page that quietly emails the whole company.
+   */
+  it('says nothing about a page nobody owns', async () => {
+    const { pageId } = await ownedPage({ title: 'Orphan page', expires: WEDNESDAY });
+
+    await withActor(actor(), async (tx) => {
+      await tx.update(wikiPage).set({ ownerMemberId: null }).where(eq(wikiPage.id, pageId));
+    }, h.app);
+
+    const count = await sendWorkspaceDigest({
+      workspaceId: w.workspaceId,
+      localDate: TUESDAY,
+    });
+
+    expect(count).toBe(0);
   });
 });

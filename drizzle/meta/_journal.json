@@ -232,6 +232,34 @@
       "when": 1788541558527,
       "tag": "0032_slice18_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788578848722,
+      "tag": "0033_slice19_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788578871062,
+      "tag": "0034_slice19_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788584902544,
+      "tag": "0035_slice20_backlinks",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788584912182,
+      "tag": "0036_slice20_hardening",
+      "breakpoints": true
     }
   ]
 }

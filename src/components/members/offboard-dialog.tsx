@@ -45,6 +45,7 @@ export function OffboardDialog({
   memberName,
   noteCount,
   pageCount,
+  ownedPageCount,
   candidates,
 }: {
   workspaceSlug: string;
@@ -69,6 +70,20 @@ export function OffboardDialog({
    * as many words before the click."
    */
   pageCount: number;
+  /**
+   * How many pages this person is **answerable for** (§21.3, slice 19).
+   *
+   * A third number, and a different fact from the two above: pages they *wrote*
+   * stay attributed and need nobody's attention, and pages they *owned* become
+   * nobody's responsibility the moment they leave. §21.3's `[!]`: "the removal
+   * nulls the column rather than deleting anything, so those pages appear under
+   * *owned by nobody* the next morning."
+   *
+   * Said before the click for the reason the note count is: handing them over is
+   * something only somebody who knows the work can do, and only while they are
+   * still here.
+   */
+  ownedPageCount: number;
   /** Every other live member. Empty in a workspace of one, which is refused anyway. */
   candidates: ReassignCandidate[];
 }) {
@@ -137,6 +152,16 @@ export function OffboardDialog({
             a line people learn to skip.
           */}
           {pageCount > 0 && <Alert>{t('pagesKept', { count: pageCount })}</Alert>}
+
+          {/*
+            §21.3's `[!]`. `warning` rather than the neutral tone above, because
+            unlike "their pages stay" this is something that will need attention
+            afterwards if nobody acts on it now — the pages are fine, but nobody
+            is answerable for whether they are still true.
+          */}
+          {ownedPageCount > 0 && (
+            <Alert tone="warning">{t('pagesReleased', { count: ownedPageCount })}</Alert>
+          )}
 
           <fieldset className="space-y-2">
             <legend className="text-xs font-medium text-text-muted">{t('question')}</legend>

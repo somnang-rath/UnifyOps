@@ -162,10 +162,43 @@ test.describe('§11 — every control has an accessible name', () => {
     for (const [name, path] of [
       ['wiki space', spaceUrl],
       ['wiki new page', `${spaceUrl}/new`],
+      // Slice 19's All-pages view, added to both sweeps *with* the slice rather
+      // than after it — the lesson slice 17 and slice 18 each learned by adding
+      // a route and finding out later that neither sweep walked it. It is also
+      // the widest table in the product, so it is the screen most likely to be
+      // the one that scrolls the document sideways at 390px.
+      ['wiki all pages', `${spaceUrl}/pages`],
     ] as [string, string][]) {
       await page.goto(path);
       await expectEveryControlNamed(page, name);
     }
+
+    /*
+     * **The reader and the editor, which neither sweep had ever walked** — they
+     * need a page to exist, and until slice 20 nothing here created one.
+     *
+     * The editor is where this matters most now: §21.5's `/` menu is ten
+     * buttons that exist only while somebody is typing, and every one of them
+     * takes its name from the catalogue. A key present in `en.json` and missing
+     * from `km.json` is invisible to `messages.test.ts`, which can only compare
+     * keys — which is the whole reason this sweep runs per locale.
+     */
+    await page.goto(`${spaceUrl}/new`);
+    await page.getByLabel(/^title|^ចំណងជើង/i).fill('Handbook');
+    await page.getByRole('button', { name: /create|បង្កើត/i }).click();
+    await expect(page.getByRole('heading', { name: 'Handbook' })).toBeVisible();
+    const pageUrl = new URL(page.url()).pathname;
+
+    await expectEveryControlNamed(page, 'wiki page');
+
+    await page.goto(`${pageUrl}/edit`);
+    await expectEveryControlNamed(page, 'wiki editor');
+
+    const body = page.getByLabel(/^body|^ខ្លឹមសារ/i);
+    await body.click();
+    await body.pressSequentially('/');
+    await expect(page.getByRole('listbox', { name: /insert a block|បញ្ចូលប្លុក/i })).toBeVisible();
+    await expectEveryControlNamed(page, 'wiki editor with the insert menu open');
   });
 
   test('the command palette and the shortcut sheet, which are the two overlays', async ({

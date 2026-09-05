@@ -6,12 +6,16 @@ import { appUrl } from '@/env';
 import { emptyQuery } from '@/lib/work-item-query';
 import type { CalendarDate } from '@/lib/workspace-date';
 import { hourIn, todayIn } from '@/lib/workspace-date';
-import { project, user, workspace, workspaceMember } from '@/server/db/schema';
+import { project, projectMember, user, workspace, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { digestEmail } from '@/server/email/templates';
 import type { DigestLine } from '@/server/email/templates';
 import { sendMail } from '@/server/email/mailer';
 import { fetchWorkItemPages } from '@/server/queries/work-items';
+import { expiringPagesFor } from '@/server/services/wiki';
+import type { Actor } from '@/server/authz/policy';
+import type { WorkspaceRole } from '@/server/authz/roles';
+import { VERIFICATION_WARNING_DAYS } from '@/lib/wiki';
 import { platformDb } from './client';
 import { channelsFor } from './notify';
 
@@ -125,6 +129,19 @@ export async function sendWorkspaceDigest(job: DigestJob): Promise<number> {
        */
       isWorkingDay: sql<boolean>`is_working_day(${workspace.id}, ${job.localDate}::date)`,
       horizon: sql<string | null>`next_working_day(${workspace.id}, ${job.localDate}::date)`,
+      /**
+       * §21.3's window: pages lapsing "within the next seven working days".
+       *
+       * Resolved **once for the whole company**, beside the two answers above
+       * and by the same family of functions, rather than once per member — the
+       * split slice 13 made for `stale_before` and slice 9 for this job's own
+       * horizon. Asked per member it would be one `generate_series` over the
+       * holiday table per person in the company, every evening, to compute the
+       * same date every time.
+       */
+      pageHorizon: sql<string | null>`working_days_ahead(
+        ${workspace.id}, ${job.localDate}::date, ${VERIFICATION_WARNING_DAYS}
+      )`,
     })
     .from(workspace)
     .where(and(eq(workspace.id, job.workspaceId), isNull(workspace.deletedAt)))
@@ -144,6 +161,9 @@ export async function sendWorkspaceDigest(job: DigestJob): Promise<number> {
     .select({
       memberId: workspaceMember.id,
       userId: workspaceMember.userId,
+      // §21.3's page section asks §10 about each space, and §10 starts from the
+      // workspace role. One column on a query that was already running.
+      role: workspaceMember.role,
       email: user.email,
       name: user.name,
       locale: user.locale,
@@ -160,11 +180,49 @@ export async function sendWorkspaceDigest(job: DigestJob): Promise<number> {
       workspace: company,
       today: job.localDate,
       horizon: company.horizon,
+      // A company whose calendar yields no working day inside 400 days gets no
+      // page section rather than a wrong one. 0028's `working_days BETWEEN 1
+      // AND 127` makes that unreachable in practice.
+      pageHorizon: company.pageHorizon,
     });
     if (mailed) sent += 1;
   }
 
   return sent;
+}
+
+/**
+ * The `Actor` §10 needs for this member, built inside the transaction that is
+ * already open (§21.3 — slice 19).
+ *
+ * `resolveActorContext` is the request-time equivalent and is unusable here — it
+ * reads cookies. What it does that matters is load the explicit project
+ * memberships, because §10's composition rule derives the implicit ones from
+ * them and `policy.ts` is emphatic that an implicit role is never pre-baked into
+ * this map.
+ *
+ * `readOnly: false` because a worker is not a view-as session; nothing here
+ * mutates anything in any case, and every wiki read this actor is handed to is a
+ * `canReadSpace`.
+ */
+async function actorFor(
+  tx: Parameters<typeof channelsFor>[0],
+  input: { workspaceId: string; userId: string; memberId: string; role: WorkspaceRole },
+): Promise<Actor> {
+  const rows = await tx
+    .select({ projectId: projectMember.projectId, role: projectMember.role })
+    .from(projectMember)
+    .where(
+      and(eq(projectMember.workspaceMemberId, input.memberId), isNull(projectMember.deletedAt)),
+    );
+
+  return {
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    workspaceRole: input.role,
+    projectRoles: new Map(rows.map((row) => [row.projectId, row.role])),
+    readOnly: false,
+  };
 }
 
 /**
@@ -177,10 +235,18 @@ export async function sendWorkspaceDigest(job: DigestJob): Promise<number> {
  * its recipient could not open.
  */
 async function digestFor(input: {
-  member: { memberId: string; userId: string; email: string; name: string; locale: string };
+  member: {
+    memberId: string;
+    userId: string;
+    role: WorkspaceRole;
+    email: string;
+    name: string;
+    locale: string;
+  };
   workspace: { id: string; name: string; slug: string };
   today: CalendarDate;
   horizon: CalendarDate;
+  pageHorizon: CalendarDate | null;
 }): Promise<boolean> {
   const { member } = input;
 
@@ -222,7 +288,31 @@ async function digestFor(input: {
       );
 
       const rows = pages[0]?.rows ?? [];
-      if (rows.length === 0) return null;
+
+      /**
+       * §21.3's section, read **as this member** inside the transaction that is
+       * already open — which is what makes "an email cannot describe an item its
+       * recipient is not allowed to open" true of pages as well as of work
+       * items, for free, from RLS rather than from a filter somebody remembered.
+       */
+      const reviewable =
+        input.pageHorizon === null
+          ? []
+          : await expiringPagesFor(tx, {
+              actor: await actorFor(tx, {
+                workspaceId: input.workspace.id,
+                userId: member.userId,
+                memberId: member.memberId,
+                role: member.role,
+              }),
+              memberId: member.memberId,
+              horizon: input.pageHorizon,
+            });
+
+      // Nothing to say in either half. The check moved down from above the work
+      // query, because a person with no due work and one lapsing page now has
+      // something to read — §21.14's second check asks for exactly that case.
+      if (rows.length === 0 && reviewable.length === 0) return null;
 
       // The slugs the deep links need. One query for the handful of projects
       // this person's due work actually touches.
@@ -245,25 +335,36 @@ async function digestFor(input: {
         ];
       });
 
-      return lines;
+      const pageLines: DigestLine[] = reviewable.map((page) => ({
+        // The expiry stands where a work item shows its key, because it is the
+        // fact that decides whether somebody opens this now or on Monday.
+        key: page.expiresAt,
+        title: page.title,
+        dueDate: page.expiresAt,
+        url: `${appUrl().replace(/\/+$/, '')}/${member.locale}/${input.workspace.slug}/wiki/${page.spaceSlug}/${page.slug}`,
+      }));
+
+      return { lines, pageLines };
     },
   );
 
-  if (!payload || payload.length === 0) return false;
+  if (!payload) return false;
+  if (payload.lines.length === 0 && payload.pageLines.length === 0) return false;
 
   /**
    * Split for reading, not for querying. §7.8 asks for "what is due tomorrow,
    * and what is already overdue" as two things a person scans differently — the
    * first is a plan for the morning, the second is a problem.
    */
-  const overdue = payload.filter((line) => line.dueDate < input.today);
-  const dueSoon = payload.filter((line) => line.dueDate >= input.today);
+  const overdue = payload.lines.filter((line) => line.dueDate < input.today);
+  const dueSoon = payload.lines.filter((line) => line.dueDate >= input.today);
 
   const mail = digestEmail({
     locale: member.locale,
     workspaceName: input.workspace.name,
     overdue,
     dueSoon,
+    pagesToReview: payload.pageLines,
     url: `${appUrl().replace(/\/+$/, '')}/${member.locale}/${input.workspace.slug}`,
   });
 

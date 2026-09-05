@@ -223,9 +223,43 @@ test.describe('§15-6 — every screen at 390px', () => {
     for (const [name, path] of [
       ['wiki space', spaceUrl],
       ['wiki new page', `${spaceUrl}/new`],
+      // Slice 19's All-pages view, added to both sweeps *with* the slice rather
+      // than after it — the lesson slice 17 and slice 18 each learned by adding
+      // a route and finding out later that neither sweep walked it. It is also
+      // the widest table in the product, so it is the screen most likely to be
+      // the one that scrolls the document sideways at 390px.
+      ['wiki all pages', `${spaceUrl}/pages`],
     ] as [string, string][]) {
       await page.goto(path);
       await expectNoSidewaysScroll(page, name);
     }
+
+    /*
+     * **The reader and the editor, which neither sweep had ever walked** — they
+     * need a page to exist, and until slice 20 nothing here created one.
+     *
+     * The editor is the screen most likely to fail this assertion now: slice 20
+     * gave it two panes side by side (§21.5's live preview) and an absolutely
+     * positioned `/` menu, and slice 16's sweep found that an absolutely
+     * positioned descendant of a `static` parent resolves against the initial
+     * containing block and grows the *document* — invisible on screen, because
+     * the offending element was a 1×1 clipped label.
+     */
+    await page.goto(`${spaceUrl}/new`);
+    await page.getByLabel(/^title|^ចំណងជើង/i).fill('Handbook');
+    await page.getByRole('button', { name: /create|បង្កើត/i }).click();
+    await expect(page.getByRole('heading', { name: 'Handbook' })).toBeVisible();
+    const pageUrl = new URL(page.url()).pathname;
+
+    await expectNoSidewaysScroll(page, 'wiki page');
+
+    await page.goto(`${pageUrl}/edit`);
+    // With the `/` menu **open**, which is the state that positions an element
+    // absolutely and the only state worth asserting here.
+    const body = page.getByLabel(/^body|^ខ្លឹមសារ/i);
+    await body.click();
+    await body.pressSequentially('/');
+    await expect(page.getByRole('listbox', { name: /insert a block|បញ្ចូលប្លុក/i })).toBeVisible();
+    await expectNoSidewaysScroll(page, 'wiki editor with the insert menu open');
   });
 });

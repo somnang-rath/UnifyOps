@@ -359,14 +359,24 @@ test.describe('wiki', () => {
     /*
      * Slice 8's rule — wait for the mutation to land before navigating, or
      * `page.goto` aborts the server action mid-flight and the delete silently
-     * does not happen — with the signal this screen actually gives.
+     * does not happen.
      *
-     * The usual "wait for the control to re-enable itself" does not apply here:
-     * the action revalidates the wiki, the reader re-renders, `getPage` no
-     * longer finds a deleted page and the route 404s in place, so the button is
-     * *gone* rather than enabled. Its disappearance is the commit.
+     * **The confirm button disappearing is not that signal, and believing it was
+     * cost an afternoon.** This spec used to wait on `expect(confirm)
+     * .toHaveCount(0)` with a comment reasoning that "the route 404s in place,
+     * so the button is gone rather than enabled — its disappearance is the
+     * commit." The premise is wrong: the dialog closes on **submit**, client
+     * side, before the action has resolved, so the wait returned while the
+     * delete was still in flight and `page.goto` then aborted it. It passed for
+     * two slices because the window was narrow, and it began failing when the
+     * page grew two queries — which is exactly how a latent race announces
+     * itself.
+     *
+     * The honest signal is the one the *server* produces: the action revalidates
+     * the wiki, `getPage` no longer finds a deleted page, and the reader 404s in
+     * place. **The page's own heading going away is the commit.**
      */
-    await expect(confirm).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Parent page' })).toHaveCount(0);
 
     await page.goto(spaceUrl);
     await expect(page.getByRole('link', { name: 'Parent page' })).toHaveCount(0);

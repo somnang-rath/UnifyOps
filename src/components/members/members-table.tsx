@@ -40,6 +40,8 @@ export type MemberRow = {
   /** How many private notes they have, for §7.12's dialog (§20.5). A number, never content. */
   noteCount: number;
   pageCount: number;
+  /** Pages they are answerable for, which are released on removal (§21.3). */
+  ownedPageCount: number;
 };
 
 export type InvitationRow = {
@@ -269,6 +271,7 @@ function MemberTableRow({
                 memberName={member.name || member.email}
                 noteCount={member.noteCount}
                 pageCount={member.pageCount}
+                ownedPageCount={member.ownedPageCount}
                 candidates={candidates}
               />
             </div>

@@ -1,6 +1,7 @@
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { DocumentBody } from '@/components/ui/document-body';
 import { Link } from '@/i18n/navigation';
+import { documentText } from '@/lib/documents';
 import { hasKhmer } from '@/lib/search';
 import type { PageDetail, PageRef } from '@/server/queries/wiki';
 
@@ -47,9 +48,20 @@ export async function PageReader({
            * stacks diacritics vertically and clips at Latin line-heights.
            */
           lang={hasKhmer(page.title) ? 'km' : undefined}
-          className="font-display text-2xl font-semibold tracking-tight text-text"
+          className="flex items-baseline gap-2 font-display text-2xl font-semibold tracking-tight text-text"
         >
-          {page.title}
+          {page.icon && (
+            /*
+             * Decorative (§21.2, slice 20). The title carries the meaning, and
+             * an emoji announced before every page heading is noise a screen
+             * reader cannot skip — the same call `page-backlinks.tsx` makes for
+             * the icon in its list.
+             */
+            <span aria-hidden="true" className="shrink-0">
+              {page.icon}
+            </span>
+          )}
+          <span className="min-w-0">{page.title}</span>
         </h1>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-text-muted">
@@ -89,6 +101,18 @@ export async function PageReader({
             workspaceSlug,
             mentioned,
             pages: pageContext(pages, workspaceSlug),
+            /*
+              What a callout with no title of its own is called (§21.5). From the
+              catalogue rather than from the parser, because it is the one word
+              in a rendered body the product supplies — and a body must never
+              carry an English word into a Khmer page (§13).
+            */
+            calloutLabels: {
+              info: t('callout.info'),
+              success: t('callout.success'),
+              warning: t('callout.warning'),
+              danger: t('callout.danger'),
+            },
           }}
           className="max-w-prose"
         />
@@ -112,7 +136,7 @@ export async function PageReader({
 export function pageContext(
   pages: PageRef[],
   workspaceSlug: string,
-): Record<string, { title: string; href: string | null }> {
+): Record<string, { title: string; href: string | null; excerpt?: string }> {
   return Object.fromEntries(
     pages.map((page) => [
       page.id,
@@ -122,7 +146,35 @@ export function pageContext(
         // it referred to, and the link would 404 into slice 16's "four causes"
         // page, which is a worse answer than a plain word.
         href: page.deleted ? null : `/${workspaceSlug}/wiki/${page.spaceSlug}/${page.slug}`,
+        excerpt: previewOf(page.excerpt),
       },
     ]),
   );
+}
+
+/**
+ * The first line of a referenced page, for §21.4's hover preview.
+ *
+ * **Read through the parser, never sliced off the raw body**, which is
+ * `noteTitle`'s rule from slice 17 and for the same reason: a body opening with
+ * `## Rollback` should preview as *Rollback*, and a body opening with a mention
+ * token should not preview as a uuid. `documentText` already walks the tree and
+ * drops both.
+ *
+ * Truncated by **grapheme** (§13) — never `.slice()` on text a person will read,
+ * because one Khmer syllable is routinely three or four code points and cutting
+ * between them leaves a broken cluster on screen.
+ */
+const PREVIEW_GRAPHEMES = 120;
+
+function previewOf(body: string): string | undefined {
+  const [line] = documentText(body).split('\n');
+  if (!line) return undefined;
+
+  const graphemes = [
+    ...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line),
+  ];
+  return graphemes.length <= PREVIEW_GRAPHEMES
+    ? line
+    : `${graphemes.slice(0, PREVIEW_GRAPHEMES).map((part) => part.segment).join('')}…`;
 }

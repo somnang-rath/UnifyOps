@@ -10,6 +10,8 @@ import { SHORTCUTS } from '@/lib/shortcuts';
 import { ACCENT_COLORS } from '@/lib/branding';
 import { WEEK_DAYS } from '@/lib/workspace-date';
 import { NOTIFICATION_KINDS } from '@/lib/notification-kinds';
+import { CALLOUT_TONES } from '@/lib/documents';
+import { INSERTIONS } from '@/lib/editor-commands';
 
 type Tree = { [k: string]: string | Tree };
 
@@ -122,6 +124,14 @@ describe('message catalogues', () => {
     require(WEEK_DAYS.map((value) => `settings.company.days.${value}`));
     // §6-6's two preference grids draw one row per kind, in both screens.
     require(NOTIFICATION_KINDS.map((value) => `notificationSettings.kind.${value}`));
+    /*
+     * Slice 20's two. §21.5's `/` menu draws one row per insertion, and a
+     * callout with no title of its own is named by its tone — both are closed
+     * sets rendered one option per member, which is exactly the shape that
+     * produced the `soon` defect in slice 10 and the `due` one in slice 13.
+     */
+    require(INSERTIONS.map((value) => `wiki.editor.insert.${value}`));
+    require(CALLOUT_TONES.map((value) => `wiki.callout.${value}`));
 
     expect(missing).toEqual([]);
   });

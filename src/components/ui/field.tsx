@@ -1,4 +1,10 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import {
+  useId,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type Ref,
+  type TextareaHTMLAttributes,
+} from 'react';
 import { cn } from '@/lib/cn';
 
 /**
@@ -97,9 +103,26 @@ export type TextareaFieldProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement
   label: string;
   help?: string;
   error?: string;
+  /**
+   * The element itself, for the one caller that needs it (§21.5, slice 20).
+   *
+   * The wiki editor's `/` menu and its formatting shortcuts are caret
+   * operations: `selectionStart`, `selectionEnd` and `setSelectionRange` are
+   * properties of the DOM node, and nothing about them can be expressed as a
+   * value. Declared rather than left to React 19's ref-as-a-prop, so the type is
+   * on the field's contract instead of arriving by accident.
+   */
+  ref?: Ref<HTMLTextAreaElement>;
 };
 
-export function TextareaField({ label, help, error, className, ...props }: TextareaFieldProps) {
+export function TextareaField({
+  label,
+  help,
+  error,
+  className,
+  ref,
+  ...props
+}: TextareaFieldProps) {
   const id = useId();
   const messageId = `${id}-message`;
 
@@ -114,6 +137,7 @@ export function TextareaField({ label, help, error, className, ...props }: Texta
     >
       <textarea
         id={id}
+        ref={ref}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ?? help ? messageId : undefined}
         className={cn(CONTROL_CLASSES, 'min-h-24 py-2 leading-relaxed', className)}

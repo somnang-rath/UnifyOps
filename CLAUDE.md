@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: **§14 is complete and §20 is complete**; slices 17 and 18 are built
+## Status: **§14 and §20 are complete; §21 is specified and slices 19 and 20 of it are built**
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -48,6 +48,21 @@ named where it lives: **Google OAuth** (§4's last unbuilt must-have, a slice-3 
 form** (a slice-5 gap, and what note-promotion and §7.9's "no results + create" should both open once it
 exists), and **a workspace-wide recovery screen** for §4's 30-day window — which §20.3.6 assumed already
 existed and which does not.
+
+**§21 is the second pass over §20's two nouns, and it is specified as four independent slices — 19 through
+22.** They are "not a queue": each is shippable on its own and any may be skipped without stranding another,
+and §21.13 orders them by *what makes a wiki survive* before *what makes it pleasant*. **Slices 19 and 20
+are built** (both 2026-09-05) and each has its own section below — ownership, verification, expiry, the
+All-pages view and one new section on an email that was already going out; then backlinks, the reference
+graph and the editor pass. **Slices 21 and 22 are specified and unbuilt**: comments on pages, and templates
+with export/import. Work is still taken one at a time, on request.
+
+§21.1 is the sentence the whole section hangs off, and it is worth having before touching any of it: **copy
+what a knowledge product knows about documents rotting; refuse what it knows about letting people build their
+own software.** §21.9 lists what that refuses — blocks as a platform, databases inside pages, formulas,
+embeds, publish-to-web, synced blocks, realtime co-editing — each with the cost it would carry. The operative
+rule for anything built under §21 is **a page may point at the company's data; it may never contain a second
+copy of it**.
 
 **Slice 10 is the first slice that only extended what was already there.** No new sink, no new process, no
 new §10 row — one branch in the §9 builder, six entries on the registry, three tables. That is what §6 means
@@ -156,12 +171,34 @@ abandoned-upload sweeper and the screens that read them (`src/lib/wiki.ts`,
 `src/server/db/schema/wiki.ts`, `src/server/queries/wiki.ts`,
 `src/server/services/{wiki,space-access}.ts`, `src/server/jobs/sweep.ts`, the eight files under
 `src/components/wiki/`, `src/components/work-item/related-pages.tsx`, and the routes under
-`[workspaceSlug]/wiki/`).
+`[workspaceSlug]/wiki/`), and now §21's first slice — page ownership, verification and the All-pages
+view: four columns on `wiki_page`, one on `wiki_space`, the `wiki_page_label` join table, §9's fifth
+working-day function, three audit-only events and one more section on the evening digest
+(`verificationStatus` and its constants in `src/lib/wiki.ts`, migrations `0033`/`0034`,
+`fetchSpacePages`/`fetchVerificationCounts`/`fetchExpiringOwnedPages` in `src/server/queries/wiki.ts`,
+`verifyPage`/`unverifyPage`/`setPageOwner`/`listSpacePages`/`releasePagesOf` in
+`src/server/services/wiki.ts`, `src/components/wiki/{verification-badge,verification-panel,all-pages-view,space-verification-form}.tsx`,
+and the `wiki/[spaceSlug]/pages/` route), and now §21's second slice — backlinks, the reference graph and
+the editor pass: the `wiki_page_ref` table and the `icon` column, the callout/toggle/to-do grammar and
+heading anchors, the `/` menu, the formatting shortcuts and the live preview beside the field
+(`src/lib/editor-commands.ts`, `tableOfContents` and the callout half of `src/lib/documents.ts`, migrations
+`0035`/`0036`, `fetchBacklinks` and `PageRef.excerpt` in `src/server/queries/wiki.ts`,
+`syncPageRefs`/`setPageIcon` in `src/server/services/wiki.ts`, `normalizePageIcon` in `src/lib/wiki.ts`, and
+`src/components/wiki/{insert-menu,page-toc,page-backlinks}.tsx`).
 All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-05 after **slice 18** — `typecheck`, `lint`, `test` (529 unit), `build`,
-`test:e2e` (218 across three Playwright projects, 13 skips) and `test:tenancy` (314 against real
+Every gate passed on 2026-09-05 after **slice 20** — `typecheck`, `lint`, `test` (588 unit), `build`,
+`test:e2e` (239 across three Playwright projects, 13 skips) and `test:tenancy` (344 against real
 Postgres 18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a promise.
+
+**`pnpm test:e2e` needs `--workers=2` on this machine, and that number is a fact about the hardware rather
+than about the suite.** `workers` is unset in `playwright.config.ts`, so locally Playwright defaults to half
+the CPU cores — and at that width the full run produced **63 failures, none of them reproducible**: the
+failing set changed between runs, every spec passed in isolation, and the server log filled with `The
+destination stream closed early`, which is slice 8's signature for a client abandoning an in-flight server
+action. At `--workers=2` the same tree runs clean. CI is unaffected, because it already sets `workers: 1`.
+**Do not read a large local failure count as a regression before re-running narrower** — and do not answer
+it with retries, which is what would have hidden the one real race that was inside it (below).
 
 **The full e2e run after slice 17 found three failures that were nothing to do with it**, and they are worth
 knowing about because the shape recurs. `onboarding.spec.ts` still asserted `manifest.icons` was **empty** —
@@ -186,6 +223,21 @@ second panel to the item page was enough to expose it". Three of the four runs, 
 both specs, were green. If it fails again, the fix is slice 8's — wait for the control that owns the
 mutation to re-enable itself before navigating — not a retry count.
 
+**Slice 20 found a real race hiding inside that noise, and it is the most instructive thing in the slice.**
+`wiki.spec.ts`'s delete test waited on `expect(confirm).toHaveCount(0)` — the confirm button disappearing —
+with a comment reasoning that "the route 404s in place, so the button is gone rather than enabled; its
+disappearance is the commit." **The premise was wrong.** The dialog closes on *submit*, client side, before
+the action has resolved, so the wait returned while the delete was still in flight and the following
+`page.goto` aborted it. The test then found the page still listed and reported it as a reparenting bug.
+
+It passed for two slices because the window was narrow, and it started failing when slice 20 added two
+queries to `getPage` — which is exactly how a latent race announces itself, and the third time this file has
+had to record that shape (slice 8's two specs, slice 10's `getWorkItem`). It was diagnosed by *adding three
+`console.log` lines*, which made it pass — the classic tell. The wait is now on a signal the **server**
+produces: the page's own heading going away, which only happens once the revalidation has re-rendered a
+route that 404s. **A control closing is a client event; only something that requires the server's new answer
+is proof of a commit.**
+
 Slice 8 fixed a latent race in two earlier e2e tests rather than working around it. `activity.spec.ts` and
 `work-item.spec.ts` both changed a state and then immediately called `page.goto`, which can abort the server
 action mid-flight — visible in the server log as `The destination stream closed early`, and on screen as a
@@ -203,11 +255,19 @@ start (the `docker-desktop` WSL distro stayed `Stopped`). If Testcontainers hang
 fallback is real and is what both suites were verified against:
 
 ```bash
-initdb -D /tmp/pg -A trust -U postgres            # once
+initdb -D /tmp/pg -A trust -U postgres -E UTF8 --locale=C   # once — see below
 pg_ctl -D /tmp/pg -o "-p 55432" -l /tmp/pg.log start
 TENANCY_SUPERUSER_URL=postgresql://postgres@127.0.0.1:55432/postgres pnpm test:tenancy
 TENANCY_SUPERUSER_URL=postgresql://postgres@127.0.0.1:55432/postgres pnpm test:e2e
 ```
+
+**`-E UTF8` is not optional on Windows, and without it nothing database-shaped runs.** `initdb` with no
+encoding takes one from the OS locale, which here is `WIN1252` — and the tenancy harness then dies on its
+very first statement with `new encoding (UTF8) is incompatible with the encoding of the template database
+(WIN1252)`, because `provision.ts` creates its database as UTF8. It is a confusing failure to meet: it names
+an encoding nobody asked for and points at a `create database` line. `--locale=C` goes with it so text
+ordering is byte order, which is what `rank`'s `COLLATE "C"` already assumes. This recipe said neither
+until slice 20 hit it.
 
 The Postgres binaries are at `C:\Program Files\PostgreSQL\18\bin` and are **not on PATH**. Two Windows
 details cost an hour in slice 4: `pg_ctl … start` does not detach from Git Bash, so run it through
@@ -383,8 +443,8 @@ The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
 grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
 4, `0007`/`0008` for slice 5, and so on to `0027`/`0028` for slice 15 and `0029`/`0030` for
-slice 17 and `0031`/`0032` for slice 18. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
-`0004`, `0006`, `0008`, `0010`, `0012`, `0014`, `0016`, `0018`, `0020`, `0022`, `0024`, `0026`, `0028`, `0030` and `0032` are hand-written and must stay that way. A hand-written migration is
+slice 17, `0031`/`0032` for slice 18, `0033`/`0034` for slice 19 and `0035`/`0036` for slice 20. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
+`0004`, `0006`, `0008`, `0010`, `0012`, `0014`, `0016`, `0018`, `0020`, `0022`, `0024`, `0026`, `0028`, `0030`, `0032` and `0034` are hand-written and must stay that way. A hand-written migration is
 scaffolded with `db:generate --custom` so the journal and snapshot stay consistent. **Renaming a generated
 migration means editing its `tag` in `drizzle/meta/_journal.json` too, and deleting one means deleting its
 snapshot** — drizzle-kit diffs against the highest snapshot it finds, so a stale `000N_snapshot.json` makes
@@ -2197,6 +2257,281 @@ and names its own screen; what was raised is the ceiling on the walk.
 pass.** It is slice 8's signature — a `page.goto` overlapping a server action's revalidation — and here it
 follows a create whose redirect the spec has already awaited. Worth knowing rather than worth chasing: if the
 wiki specs ever flake, this is the thread, and the fix is slice 8's rather than a retry count.
+
+## Ownership and verification, and the badge that has to be able to go away
+
+Slice 19, the first of §21's four and the flagship of that section. `src/lib/wiki.ts` (the verification
+half), `src/server/db/schema/wiki.ts`, migrations `0033`/`0034`, `src/server/queries/wiki.ts`,
+`src/server/services/wiki.ts`, the three registry entries, the digest's third section, the components
+`verification-badge.tsx`, `verification-panel.tsx`, `all-pages-view.tsx` and `space-verification-form.tsx`,
+and the route under `wiki/[spaceSlug]/pages/`.
+
+**§20.15 named the first year's risk and slice 19 answers the second year's.** "A wiki nobody writes in" was
+answered by the note as an on-ramp; the opposite failure is worse — *a wiki everybody writes in and nobody can
+trust*, where the onboarding page describes a process that changed in March and the new hire follows it
+anyway. Staleness does not announce itself: a wrong page and a right page look identical, which is why the
+answer cannot be a convention and has to be data.
+
+**A page's verification state is derived from two columns and today, and there is no `status` column** —
+slice 11's call for a cycle and slice 13's for availability, and it is stronger here than in either. A cycle
+that reads as active a day late is cosmetic; a page that reads as verified for a year after it lapsed is the
+product vouching for a document nobody has read. `verificationStatus` in `src/lib/wiki.ts` is the one place
+the comparison happens, and `today` is always the **workspace's** (§17-13).
+
+**Editing a verified page clears the verification, and it is the only automatic transition in the feature.**
+Without it the whole thing is decoration: a badge that survives the edit that invalidated it is a false claim
+carrying the product's authority. `saveWikiPage` clears all three columns in the statement it was already
+running — unconditionally rather than behind an `if`, because a branch would only be a way for the two paths
+to differ — and emits `wiki_page.unverified` **only when there was one to lose**, since a row per save of a
+never-verified page is `wiki_page.updated`'s own reason for not being audited, reintroduced through the side
+door. The writer is told on the editor, where it happened.
+
+**Verifying is conditional on the revision the verifier read, and that is the sharpest instance of §20.3.3
+in the product.** A stale *save* refuses because merging prose destroys work; a stale *verification* refuses
+because it would attach somebody's name, permanently and in the audit log, to words they never saw. Same
+single statement — `where revision_no = $base`, with `returning` as the proof — because there is no second
+correct answer. **Un-verifying is deliberately not conditional**: saying "I no longer vouch for this" is safe
+whatever the body has become, and refusing it would ask somebody to re-read a page in order to stop standing
+behind it.
+
+**Two thresholds, and the contrast between them is the rule.** `VERIFICATION_WARNING_DAYS` is seven
+**working** days — the amber badge, aimed at the one person who has to act, counted in the unit the product
+measures every other deadline in. `VERIFICATION_HORIZON_DAYS` is thirty **calendar** days — the All-pages
+filter, used by somebody planning a month of review work. Working days needed §9's fifth SQL function,
+`working_days_ahead` in 0034, built on `is_working_day` exactly as `stale_before` is and **asked once per
+screen rather than once per row**: per row it would be a `generate_series` and a holiday probe per page, on
+the one surface that draws five hundred of them. **The `N` is the constant and the resolved date is a fetch
+option**, which is slice 9's split for the digest's horizon and slice 13's for staleness.
+
+**Nobody is notified page by page, and that is the decision worth defending.** §7.8's general rule would put
+an inbox row under every expiring page, which is a stream that teaches people to ignore the bell — §7.8's own
+warning, applied to documentation. Instead the evening digest gains **one section**, riding the existing
+`digest` kind so it inherits the preference row, the working-evening rule and the read-as-that-member scope.
+**No sixth notification kind**; §6-6's five stay five. The section is placed last in the email on purpose: a
+page needing review is a fortnight's notice, and putting it above somebody's overdue work would be the product
+talking about documentation while their own work is late.
+
+**`digestFor`'s early return had to move, and that is the change most likely to be undone by accident.**
+It returned as soon as the work query came back empty — correct until slice 19, and the line that would have
+silently swallowed this whole feature, because the person who most needs the reminder is often the policy
+owner with no due work at all. §21.14's check 2 is exactly that case and `digest.test.ts` asserts it.
+**Already-lapsed pages stay in the window** rather than dropping out of it, for §17-19's reason: a digest that
+went quiet the morning after a lapse would go quiet exactly when the page most needs somebody to look at it.
+
+**Three events, all `audit` only, and they are audited for a reason the rest of the log does not have.** A
+verification changes **no body**, so it writes no revision — the history a page carries for every other kind of
+change is structurally unable to record it, and "who said this was accurate, and when" would be the one thing
+that happened to a page that nothing remembers. `wiki_page.unverified` carries a `reason` (`edited` or
+`cleared`) because six months later "did they mean to stop vouching for this" is the question, and without it
+the automatic transition and the deliberate one look identical.
+
+**No §10 row — the thirteenth time that decision has gone the same way**, after labels, attachments,
+notifications, custom fields, cycles, saved views, availability, search, the holiday calendar, settings,
+password reset and notes. Owning, verifying and un-verifying are all *writing in that space*, which §20.5's
+two rows already govern. **Tags are `label`, not a second vocabulary** (§21.3), so `wiki_page_label` is
+`work_item_label` with one column renamed — one join table against a second settings screen, a second colour
+set and a second thing to explain to §2.3's owner.
+
+**Offboarding is the asymmetry stated once more.** Notes are destroyed, pages stay attributed, and ownership
+is **released** — the column is nulled and the page appears under *owned by nobody* the next morning.
+`releasePagesOf` runs inside `removeMember`'s own transaction, and unlike `deleteNotesOf` beside it **this
+one is audited, one row per page**: an owner asking six months later why the leave policy has no owner needs
+the answer, and a summary row would name the member without naming the pages. §7.12's dialog says the count
+before the click, which is where a fact somebody can still act on belongs.
+
+**One thing §21.3 says that the schema cannot mean literally, resolved and recorded rather than papered
+over.** "The space carries a default … applied at page creation and overridable per page" — but a new page has
+never been verified, and 0034's CHECK refuses an expiry with no verification, because that is a lapse date for
+an assertion nobody made. So the space default is resolved **at verification**, not copied at creation: the
+period select is pre-set to it, and a copy taken at creation would have gone stale the moment somebody changed
+the space default, which is the opposite of "so a policy space does not depend on somebody remembering on
+every page". It is one line either way and **worth confirming against §21.3 before a pilot** (§18-7), like
+slice 18's Guest reading.
+
+**The e2e run found two defects that nothing else could have, and both are the shape that recurs.**
+
+- **`column reference "id" is ambiguous`, on every page render.** Inside a `sql` template in the
+  *select-fields* position drizzle emits a column **unqualified** — `${workspaceMember.id}` becomes a bare
+  `"id"` — so a correlated subquery joining `workspace_member` to `app_user`, both of which have an `id`,
+  fails at runtime. It typechecks, the tenancy suite never calls that shape, and the first thing that sees it
+  is a browser. Every such subquery now uses explicit table aliases, and the ones correlating to the *outer*
+  row name `wiki_page.id` literally rather than interpolating it — inside a subquery with three relations of
+  its own, the interpolated form resolves against the inner tables. Worth knowing before writing the next
+  correlated subquery in a `.select({...})`. (The table is `app_user`; `user` is only the drizzle export's
+  name, which is its own small trap.)
+- **A submit button named the same as a field in its own form.** "Take this on" carried
+  `name="ownerMemberId"` inside a form that already had a `<select name="ownerMemberId">`, and `formData.get`
+  returns the **first** value — so the control did the opposite of its label, silently, with the page
+  reloading as though it had worked. It is its own form now. A submit button's `name`/`value` is form data
+  like any other, and the general rule is that a button must not share a name with a field beside it.
+
+**Both sweeps gained the new route with the slice rather than after it**, which is the lesson slices 17 and 18
+each learned by adding a route and finding out later. The All-pages view is also the widest table in the
+product, so it is the screen most likely to be the one that scrolls the document sideways at 390px.
+
+**One assertion scar worth keeping.** `getByText(/Policy Owner/)` matched three elements, because the owner
+picker lists every member as an `<option>` — and one of the three would have matched whether or not the page
+was ever verified. The assertion is on the *sentence* now. **An assertion that a control's own options can
+satisfy is not testing the thing it names**, which is the same shape slice 15 recorded for the accent picker.
+
+## Backlinks, the two kinds of edge, and the menu that may only type
+
+Slice 20, the second of §21's four. `src/lib/documents.ts` (the grammar half), `src/lib/editor-commands.ts`,
+`src/server/db/schema/wiki.ts`, migrations `0035`/`0036`, `fetchBacklinks` and the excerpt in
+`src/server/queries/wiki.ts`, `syncPageRefs` and `setPageIcon` in `src/server/services/wiki.ts`, the
+components `insert-menu.tsx`, `page-toc.tsx` and `page-backlinks.tsx`, and the callout/toggle/to-do half of
+`src/components/ui/document-body.tsx`.
+
+**`syncPageRefs` sits directly beneath `syncOutboundLinks` and does the opposite thing, and reading the two
+together is the whole of §21.4.** `wiki_page_link` is **authored** — somebody connected a page to a work
+item, it has an author, it emits an event, and `syncOutboundLinks` therefore computes what a revision
+*added* and inserts only those. `wiki_page_ref` is **derived** — it is a projection of the body, so
+`syncPageRefs` computes the body's *whole* set and makes the table equal it. Merging them would mean either
+an edit silently detaching a link somebody made on purpose, or a reference outliving the paragraph that made
+it, and §20.0 argued both once already. The e2e spec puts both edges in **one body** and removes both
+sentences in **one edit**: the derived one goes, the authored one stays. That is §21.13's definition of done
+for this slice, and it is one test rather than two because the distinction only exists in contrast.
+
+**Delete-then-insert rather than a diff**, which is what keeps §21.15's mitigation true: the table is a
+projection, so a function that can only *set* the answer is what makes "if it is ever wrong it can be
+regenerated from the bodies" a property rather than a hope. It is also why there is no `created_by_member_id`
+and no `created_at` on the table — nobody *made* these rows, a save computed them, and a date on one would
+be a fact about a rebuild.
+
+**A target that does not exist writes nothing, and the filter is what makes that true.** `parsePageIds`
+returns whatever uuids somebody typed, so a hand-typed token would otherwise be an insert that fails and
+takes the writer's save down with it. Filtering against `wiki_page` first — in the same transaction, under
+RLS — means a body may reference a hard-deleted page and still save. It renders as §20.7's absence, which is
+what slice 17 chose for exactly this case.
+
+**No §10 check on the reference target, and that is the opposite call from `syncOutboundLinks` on purpose.**
+A reference is text in a body: refusing to record one would not stop the writer typing it, and the *reader*
+is filtered instead — `getPage` resolves `readableSpaceIds` before `fetchBacklinks` is built, because a
+backlink is the one place a page in a space somebody cannot read would otherwise announce its own title on a
+page they can. Linking a *work item* is different and does ask §10, because that writes a row into the
+item's own panel.
+
+**No §10 row — the fourteenth and fifteenth times that decision has gone the same way**, after labels,
+attachments, notifications, custom fields, cycles, saved views, availability, search, the holiday calendar,
+settings, password reset, notes and slice 19's verification. Writing a reference and setting an icon are both
+*writing in that space*, which §20.5's two rows already govern.
+
+**A soft-deleted page keeps its edges and a hard-deleted one does not**, and the pair is asserted directly.
+§20.3.6 gives deletion a 30-day window, so a restore has to restore the backlinks with it rather than needing
+every referring page re-saved; a hard delete takes them, because an edge to a page that no longer exists is
+not a record of anything. That is `wiki_page_link`'s call and the opposite of `note`'s pin, which survives its
+item because the note is still the person's.
+
+### The grammar §21.5 adds, and the one rule the `/` menu lives under
+
+**A menu item may only insert text a person could have typed.** §21.15 puts that in the code review rather
+than in a test — "the day one of them cannot, block identity has arrived by the back door" — and
+`editor-commands.ts` is written against it: every entry is a string of Markdown and a caret offset, with no
+node, no id and no placeholder object. The half a test *can* hold is held: `editor-commands.test.ts` parses
+every entry back through `documents.ts` and asserts it becomes the block it promises, which is what catches
+the menu and the grammar drifting apart.
+
+**Three grammar rules landed with it**, and two of them exist because the menu offers them:
+
+- **A callout is a tagged blockquote, and a toggle is a callout with a `-`.** §21.2 names them as two rules;
+  they are built as **one syntax family with a `folded` flag**, because a disclosure and a highlighted aside
+  differ only in whether the body starts open, and two syntaxes would be two things to teach. The syntax is
+  Obsidian's and GitHub's — the one convention that already exists for both — and it is an *extension of the
+  blockquote*, so stripping the rule degrades every callout into the quote it is written as. An unrecognised
+  tone is not an error: `> [!tip]` stays a quote whose first line reads `[!tip]`, which is the grammar's
+  standing rule that everything not on the list renders as the text it was.
+- **A to-do is `- [ ]` / `- [x]`, and `checked` is `boolean | null`.** `false` and `null` are different facts —
+  an unticked box and a bullet that is not a to-do at all — and the renderer draws them differently. Without
+  this rule the menu's *to-do* entry would have written text that renders as a bullet with a literal `[ ]` in
+  it, which is the menu promising something the reader does not get. §21.2's inventory says to-dos were
+  already built; they were not, and the `/` menu is what made that visible.
+- **Every heading carries an anchor, assigned in a post-pass.** De-duplication is document-wide and
+  `parseBlocks` is recursive, so a counter threaded through the recursion would have to be threaded through
+  quotes, callouts and list items too — and the first branch that forgot it would produce two headings with
+  one id, which reads as a contents list whose second entry jumps to the first. §21.5 names the failure
+  rather than designing around it: renaming a heading breaks a link to it, which is the bargain every
+  Markdown document makes and is visible and recoverable, where an id embedded in the body is where a text
+  format stops being one.
+
+**`<details>` rather than a `useState`, and that is what keeps `DocumentBody` server-renderable.** It carries
+no `'use client'` on purpose (§20.7), so a toggle built out of state would have forced the whole renderer
+into every page's bundle to make one triangle work. The platform's disclosure gives the open/closed state,
+the keyboard behaviour, the ARIA and — the part that matters most in a document — find-in-page reaching
+inside a closed one. Same call `dialog.tsx` makes: the alternative is not our own code but the browser's.
+
+**The `/` menu is the mention picker's shape, not the palette's.** §21.5 calls it "`command-palette.tsx`'s
+contract, third use", and it is the *contract* that is reused — arrows, Home/End, Enter, wrapping, and the
+ARIA combobox pattern announced on the **textarea** — not the modal the palette lives in. Focus never leaves
+the field, so `InsertMenu` holds no state and takes none; and its options use `onMouseDown` with
+`preventDefault` rather than `onClick`, because a click blurs the textarea first and a blurred textarea has
+no selection to insert into.
+
+**A slash only opens the menu at the start of a line**, which is the difference from `@` and the whole of
+what stops the feature ruining ordinary writing: `and/or`, a date, a fraction and a URL all carry a slash
+mid-line. Every entry inserts a *block*, so the start of a line is also the only place any of them would be
+correct. `applyInsertion` adds one character nobody typed — a newline, when the caret is not already at the
+start of a line — because the parser is line-oriented and `Some text## Heading` is one paragraph, so without
+it the writer watches their heading fail to appear.
+
+**`⌘B` and `⌘I` toggle rather than only wrap**, because a shortcut that can only add is one people press once
+by accident and then undo by hand; both the inside and the outside of a selection are recognised, since the
+common case is somebody double-clicking the word rather than the asterisks. **Alt is namespaced away from
+every binding**, which is `shortcuts.ts`'s rule from slice 14 and matters here for the same reason: AltGr
+produces characters on a Khmer layout.
+
+**The live preview is beside the field on a wide screen and a toggle below it**, and both panes are always
+mounted with CSS deciding which is visible. That removed the hidden input the form used to need — the
+textarea is never unmounted, so its value reaches the server on its own and its caret survives a trip through
+the preview. §21.5 asks for "a live preview beside the textarea", and *beside* is what a wide screen gets;
+at 390px there is no beside, so §15-6 gets the toggle.
+
+**The hover preview is a `title` attribute, not a floating card.** §21.4 asks for "the title and the first
+line of the body, resolved from a row the page has already loaded", and the excerpt rides `fetchPageRefs`,
+which the render already ran. A card would need `DocumentBody` to become a client component to decorate an
+inline word; the platform's tooltip is keyboard-reachable, screen-reader-read, positioned by the browser and
+free at 390px. It is `title` and never `aria-label`, because a label would *replace* the link's name and a
+screen reader would announce the excerpt instead of the page. The excerpt is read **through the parser**, so
+a body opening `# Shipping` previews as *Shipping* — the property the e2e assertion pins, because it is what
+a substring implementation would silently break.
+
+**The page icon is an emoji in a `text` column**, and the two-place enforcement is stated rather than blurred:
+`normalizePageIcon` counts **graphemes** with `Intl.Segmenter` and is exact, and 0036's CHECK is a *floor* —
+no whitespace, at most 16 code points — because Postgres has no grapheme segmentation and adding an extension
+to bound one decorative column would be a deployment dependency taken for a cosmetic field. It **truncates
+rather than refuses**, unlike every other cap in the wiki: a title over its cap loses meaning, and somebody
+who pastes two emoji meant the first one. `setPageIcon` deliberately does not touch `revision_no` or clear
+§21.3's verification — an icon is not the body.
+
+**The icon has its own action, and the reason is that `saveWikiPage` would have given it two behaviours it
+must not have.** Folded into the body's save it would ride the conditional update — so changing an icon while
+a colleague was typing would be refused as a stale save (§20.3.3), a refusal with real weight spent on a
+decoration — and it would clear §21.3's verification, which every body save does unconditionally. A verified
+page whose icon changed is still a page somebody read and vouched for. `setPageIcon` therefore touches
+neither `revision_no` nor the verification columns, and the form is its own, in the right rail beside the
+owner picker rather than in the header: a control next to the title puts an editable field in the middle of
+what a reader came to read.
+
+**A text input rather than an emoji picker.** A picker is a grid of two thousand images, a search box needing
+a name per emoji per language, and a dependency — for a field every keyboard on earth can already fill
+(`⌘⌃Space`, `Win+.`, a long-press on a phone). §12's inventory has no picker, and inventing one here is how a
+design system acquires a component nobody else can use.
+
+**Two things the e2e run found, and both are scars this repo had already written down.**
+
+- **`.first()` on a page-wide locator matched the sidebar, not the body.** The space sidebar lists every page
+  in the space, so `getByRole('link', { name: 'Deployment' })` resolved to the *navigation* entry — an
+  assertion that would have passed whether or not the token in the body rendered at all. It is scoped to the
+  `article` now. Same shape slice 15 recorded for the accent picker and slice 19 for the owner picker: **an
+  assertion a control beside the thing can satisfy is not testing the thing it names.**
+- **A referenced page with no body correctly has no preview**, which is not a defect and did read as one. The
+  fixture writes a body now, rather than the assertion being loosened to accept an empty `title`.
+
+**Both sweeps gained the reader and the editor, which neither had ever walked** — they need a page to exist,
+and until this slice nothing in either sweep created one. The editor is now the screen most likely to fail
+the 390px assertion: it has two panes side by side and an absolutely positioned `/` menu, and slice 16's
+sweep found that an absolutely positioned descendant of a `static` parent resolves against the initial
+containing block and grows the *document*. Both sweeps assert with the menu **open**, which is the only state
+worth asserting.
 
 ## Bilingual invariants
 

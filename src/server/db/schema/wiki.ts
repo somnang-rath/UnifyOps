@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  date,
   foreignKey,
   index,
   integer,
@@ -7,6 +8,7 @@ import {
   pgPolicy,
   pgTable,
   text,
+  timestamp,
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -19,7 +21,7 @@ import {
   workspaceIdColumn,
 } from './_shared';
 import { project } from './project';
-import { workItem } from './work-item';
+import { label, workItem } from './work-item';
 import { workspace, workspaceMember } from './workspace';
 
 /**
@@ -106,6 +108,29 @@ export const wikiSpace = pgTable(
     nameKey: text('name_key'),
 
     slug: text('slug').notNull(),
+
+    /**
+     * The review cycle new pages in this space inherit, in days — or null for
+     * *Never*, which is the default default (§21.3 — slice 19).
+     *
+     * **One column, applied at page creation and overridable per page**, so a
+     * space of policies does not depend on somebody remembering on every page.
+     * "A company space of policies wants 180 days; a project space of scratch
+     * notes wants Never."
+     *
+     * A number here and a resolved *date* on the page, which is the split §21.3
+     * asks for: this is a standing preference later pages inherit, and
+     * `wiki_page.verification_expires_at` is a fact about one assertion somebody
+     * made on one afternoon. Storing the number on the page instead would make
+     * every reader recompute the date, and the first screen to forget the
+     * arithmetic would draw a badge that never expires.
+     *
+     * Bounded in migration 0034 rather than enumerated, for the reason 0028
+     * declined to enumerate the locales: `VERIFICATION_DAYS` is a fact about
+     * `src/lib/wiki.ts`, and a CHECK listing it would have to be migrated in
+     * step with adding a period.
+     */
+    defaultVerificationDays: integer('default_verification_days'),
 
     ...timestamps,
   },
@@ -204,6 +229,37 @@ export const wikiPage = pgTable(
     title: text('title').notNull(),
 
     /**
+     * One emoji, or nothing — the page's icon (§21.2, slice 20).
+     *
+     * **A grapheme in a `text` column, not an icon name and not an upload.** An
+     * icon *set* would be a name resolving to a component, which is a second
+     * vocabulary to build, translate and explain; an uploaded image would be a
+     * second `attachment` shape for a 16px square, and slice 15 already refused
+     * that trade for the workspace logo at a far larger size. An emoji is text
+     * the writer's own keyboard produces, it renders in both scripts with no
+     * asset, and it survives §21.8's export as itself.
+     *
+     * Nullable, because a page with no icon is the overwhelming default and must
+     * not be a page with a *chosen* blank — the distinction slice 15 drew for
+     * the workspace accent, where storing "unchosen" as a default made the
+     * default unrecoverable.
+     *
+     * **The one-grapheme rule is enforced in two places that do different
+     * amounts of work, and the difference is stated rather than blurred.**
+     * `normalizePageIcon` counts with `Intl.Segmenter` and is exact — a flag or
+     * a skin-toned emoji is several code points that render as one character,
+     * and counting the other way would refuse icons that fit (§13). Postgres has
+     * no grapheme segmentation, so 0036's CHECK is a *floor*: no whitespace, and
+     * at most 16 code points, which is longer than any single emoji sequence and
+     * far shorter than a sentence. That is the honest division — the database
+     * refuses what is obviously not an icon, for the reason every other
+     * invariant here is in the database (a row written by §21.8's importer has
+     * to be as correct as one the service wrote), and the service refuses what
+     * only a grapheme segmenter can see.
+     */
+    icon: text('icon'),
+
+    /**
      * Markdown, in a `text` column (§20.7), parsed by `src/lib/documents.ts` —
      * the same format and the same parser a note's body uses.
      *
@@ -238,6 +294,68 @@ export const wikiPage = pgTable(
      * and the thing that cannot is refused out loud.
      */
     revisionNo: integer('revision_no').notNull().default(1),
+
+    /**
+     * The person answerable for this page being true (§21.3 — slice 19).
+     *
+     * **Not its author, and not necessarily its last editor.** Those two are
+     * already recorded, completely and append-only, in `wiki_page_revision`;
+     * this is a different fact, and the one that decides whether the wiki
+     * survives its second year. §21.3: the risk that matters by then is "a wiki
+     * everybody writes in and nobody can trust, where the onboarding page
+     * describes a process that changed in March and the new hire follows it
+     * anyway".
+     *
+     * Nullable, and *owned by nobody* is a real and visible state rather than a
+     * gap — it is one of the All-pages view's filters precisely so somebody can
+     * find them. A page nobody has claimed is the honest starting point for
+     * every page ever written.
+     *
+     * `restrict`, joining `wiki_page_revision_author_fk` on the surviving half
+     * of §20.5's asymmetry — and it is never actually exercised, because
+     * offboarding *soft*-deletes a membership. §7.12's removal nulls this column
+     * explicitly inside `removeMember`'s own transaction (§21.3: "the removal
+     * nulls the column rather than deleting anything"), which is also why this
+     * is not `set null`: on a composite key `SET NULL` nulls **every** column,
+     * `workspace_id` included — the trap slice 11 documented on the cycle key.
+     */
+    ownerMemberId: uuid('owner_member_id'),
+
+    /**
+     * When somebody last asserted this page is accurate, and who (§21.3).
+     *
+     * **Both are set and cleared together, under a CHECK in migration 0034,
+     * because half of this pair is not a fact.** A `verified_at` with no author
+     * is an assertion nobody made; an author with no timestamp is an assertion
+     * with no date, and a verification whose date is unknown is exactly as
+     * useful as no verification. `num_nonnulls(...) IN (0, 2)` — 0018's device,
+     * pointed at a pair rather than at a value column.
+     *
+     * `restrict` on the author for `wiki_page_revision`'s reason: who vouched
+     * for the company's record is part of the company's record.
+     */
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verifiedByMemberId: uuid('verified_by_member_id'),
+
+    /**
+     * When the assertion lapses, or null for *no review cycle* (§21.3).
+     *
+     * **Null is the default and must stay it** — "which is right for most pages
+     * and must stay the default". A product that put every page on a review
+     * calendar would be handing §2.3's non-technical owner an obligation, which
+     * is the failure §21.0 quotes from the survey's own limitations table:
+     * "with no imposed structure, undisciplined workspaces become sprawling and
+     * unfindable. Governance is on you."
+     *
+     * A `date` rather than a `timestamptz`, unlike `verified_at` beside it, and
+     * the difference is not an oversight. *When somebody clicked verify* is an
+     * instant. *When this lapses* is a calendar day, compared against the
+     * **workspace's** today (§17-13) by `verificationStatus` — the same shape
+     * and the same comparison `cycle.start_date` and `end_date` have carried
+     * since slice 11, and for the same reason: a shared deadline has to mean one
+     * thing in two timezones.
+     */
+    verificationExpiresAt: date('verification_expires_at'),
 
     /**
      * §13's two-index search recipe, on the same generated column slice 14
@@ -283,6 +401,28 @@ export const wikiPage = pgTable(
     /** The subtree read behind a move and a delete. */
     index('wiki_page_root_idx').on(t.rootId),
 
+    /**
+     * The digest's question, asked once an evening per workspace: *which pages
+     * does this person own that lapse soon* (§21.3).
+     *
+     * Partial on the owner, because the overwhelming majority of pages have none
+     * and an index over those is an index of nulls. The expiry rides along so
+     * the horizon comparison is served by the same scan rather than by a filter
+     * on top of it.
+     */
+    index('wiki_page_owner_idx')
+      .on(t.ownerMemberId, t.verificationExpiresAt)
+      .where(sql`${t.ownerMemberId} is not null and ${t.deletedAt} is null`),
+
+    /**
+     * The All-pages view, and the standing count in the space header.
+     *
+     * Keyed on the space first because §21.3 makes that view "one query over one
+     * space" — anchored by the space exactly as every other page query is, which
+     * is what keeps it outside §9's builder without being outside §16's rule.
+     */
+    index('wiki_page_verification_idx').on(t.spaceId, t.verificationExpiresAt),
+
     foreignKey({
       name: 'wiki_page_space_fk',
       columns: [t.spaceId, t.workspaceId],
@@ -298,6 +438,26 @@ export const wikiPage = pgTable(
       name: 'wiki_page_parent_fk',
       columns: [t.parentId, t.workspaceId],
       foreignColumns: [t.id, t.workspaceId],
+    }).onDelete('restrict'),
+
+    /**
+     * Both member references are `restrict`, and neither is ever exercised by an
+     * offboarding — §7.12 soft-deletes a membership, so the row stays and the
+     * service nulls `owner_member_id` itself. What these refuse is a *hard*
+     * delete of a member who owned or vouched for a page, which is the same
+     * thing `wiki_page_revision_author_fk` refuses and for the same reason
+     * (§20.5): a page is the company's record and stays attributed.
+     */
+    foreignKey({
+      name: 'wiki_page_owner_fk',
+      columns: [t.ownerMemberId, t.workspaceId],
+      foreignColumns: [workspaceMember.id, workspaceMember.workspaceId],
+    }).onDelete('restrict'),
+
+    foreignKey({
+      name: 'wiki_page_verifier_fk',
+      columns: [t.verifiedByMemberId, t.workspaceId],
+      foreignColumns: [workspaceMember.id, workspaceMember.workspaceId],
     }).onDelete('restrict'),
 
     ...tenantPolicies(),
@@ -470,6 +630,159 @@ export const wikiPageLink = pgTable(
       columns: [t.createdByMemberId, t.workspaceId],
       foreignColumns: [workspaceMember.id, workspaceMember.workspaceId],
     }).onDelete('restrict'),
+
+    ...tenantPolicies(),
+  ],
+);
+
+/**
+ * A page ↔ label link (§21.3 — slice 19).
+ *
+ * **Tags are `label`, not a second vocabulary**, and that is the whole of this
+ * table's justification. §21.3: "Slice 5 made labels workspace vocabulary
+ * managed under `workspace.settings`, with `LABEL_COLORS` and `LabelChip`
+ * already built and already bilingual. A second tagging system for pages would
+ * be a second settings screen, a second colour set and a second thing to explain
+ * to §2.3's owner."
+ *
+ * So this is `work_item_label` with one column renamed — deliberately, down to
+ * the constraint names, because the day somebody wants "everything tagged
+ * *security*" across both nouns the two halves have to be the same shape. What
+ * it costs is one join table; what it saves is a settings screen, a palette and
+ * a paragraph of explanation.
+ *
+ * **No §10 row, the thirteenth time that decision has gone the same way** —
+ * after labels, attachments, notifications, custom fields, cycles, saved views,
+ * availability, search, the holiday calendar, settings, password reset and
+ * notes. Applying a label to a page is *writing in that space*, which §20.5's
+ * two rows already govern, exactly as applying one to a work item has been
+ * `work_item.edit` since slice 5. An Owner decides what tags exist; anyone who
+ * can write can apply one.
+ */
+export const wikiPageLabel = pgTable(
+  'wiki_page_label',
+  {
+    id: primaryId(),
+    workspaceId: workspaceIdColumn().references(() => workspace.id, { onDelete: 'cascade' }),
+    pageId: uuid('page_id').notNull(),
+    labelId: uuid('label_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('wiki_page_label_key').on(t.pageId, t.labelId),
+
+    /** "Every page tagged *policy*" — the read that makes tagging worth doing. */
+    index('wiki_page_label_label_idx').on(t.labelId),
+
+    /**
+     * `cascade` on both sides, for `wiki_page_link`'s reason: a tag on a page
+     * that no longer exists is not a record of anything, and deleting a label
+     * from the workspace's vocabulary should take its applications with it —
+     * which is exactly what `work_item_label` already does, and what makes
+     * §7.11's "renaming preserves values" true for the label case too.
+     */
+    foreignKey({
+      name: 'wiki_page_label_page_fk',
+      columns: [t.pageId, t.workspaceId],
+      foreignColumns: [wikiPage.id, wikiPage.workspaceId],
+    }).onDelete('cascade'),
+
+    foreignKey({
+      name: 'wiki_page_label_label_fk',
+      columns: [t.labelId, t.workspaceId],
+      foreignColumns: [label.id, label.workspaceId],
+    }).onDelete('cascade'),
+
+    ...tenantPolicies(),
+  ],
+);
+
+/**
+ * A page → page reference, **derived from the body** (§21.4 — slice 20).
+ *
+ * "`wiki_page_ref (from_page_id, to_page_id, workspace_id)`, unique on the pair,
+ * composite tenant keys on both sides. It is derived and rebuilt on every save
+ * from the `#[uuid]` tokens in the body — the same diff `saveWikiPage` already
+ * performs for mentions, in the same transaction, against the body the
+ * conditional update has just proved was current."
+ *
+ * **Two kinds of edge, and this is the derived one.** §20.0 found the
+ * distinction the hard way and §21.4 states it: `wiki_page_link` is *authored* —
+ * somebody attached a page to a work item, it has an author, it emits an event,
+ * it appears in the item's activity feed, and removing the sentence that
+ * mentioned the item does **not** remove it. This table is the opposite in every
+ * one of those: it is a projection of the body, it has no author, it emits
+ * nothing, and it disappears when the sentence does. Merging the two would mean
+ * either an edit silently detaching a link somebody made on purpose, or a
+ * reference outliving the paragraph that made it.
+ *
+ * **It is rebuilt, never appended to**, which is §21.15's mitigation and
+ * §21.13's definition of done for this slice. Because it is a projection it can
+ * be regenerated from the bodies if it is ever wrong — a property worth keeping
+ * deliberately, and the reason there is no `created_by_member_id` here: nobody
+ * *made* these rows, a save computed them.
+ *
+ * **No `created_at`, and that is the same argument.** A derived row has no date
+ * worth recording: it was written by the last save of the source page, whose
+ * timestamp is on the page and in its revision history. Storing one would invite
+ * a screen to say "linked on 3 March", which would be a fact about a rebuild.
+ *
+ * **No §10 row — the fourteenth time that decision has gone the same way**,
+ * after labels, attachments, notifications, custom fields, cycles, saved views,
+ * availability, search, the holiday calendar, settings, password reset, notes
+ * and slice 19's verification. Writing a reference is *writing in that space*,
+ * which §20.5's two rows already govern; reading one back is bounded by the
+ * spaces the reader can already see, which `readableSpaceIds` resolves before
+ * any backlink query is built.
+ */
+export const wikiPageRef = pgTable(
+  'wiki_page_ref',
+  {
+    id: primaryId(),
+    workspaceId: workspaceIdColumn().references(() => workspace.id, { onDelete: 'cascade' }),
+
+    /** The page whose body contains the token. */
+    fromPageId: uuid('from_page_id').notNull(),
+    /** The page the token names. */
+    toPageId: uuid('to_page_id').notNull(),
+  },
+  (t) => [
+    /**
+     * One edge, not a bag. `parsePageIds` already de-duplicates within a body
+     * for the matching reason, so referencing one page from three paragraphs is
+     * one row — and "what links here" lists a page once however many times it
+     * mentioned this one.
+     */
+    unique('wiki_page_ref_key').on(t.fromPageId, t.toPageId),
+
+    /**
+     * **The backlink index, and the reason this table exists at all.** §21.4's
+     * "what links here" reads the pair the other way round, which is the
+     * direction no body can answer without scanning every body in the workspace.
+     */
+    index('wiki_page_ref_to_idx').on(t.toPageId),
+
+    /**
+     * `cascade` on both sides, for `wiki_page_link`'s reason: an edge to or from
+     * a page that no longer exists is not a record of anything.
+     *
+     * This only ever fires on a *hard* delete, which pages do not normally have
+     * — §20.3.6 makes deletion soft with a 30-day window. A soft-deleted page
+     * keeps its edges, which is what lets §21.4's "a deleted page's references
+     * render as 'a deleted page'" be true, and what makes a restore restore the
+     * backlinks with it rather than needing every referring page re-saved.
+     */
+    foreignKey({
+      name: 'wiki_page_ref_from_fk',
+      columns: [t.fromPageId, t.workspaceId],
+      foreignColumns: [wikiPage.id, wikiPage.workspaceId],
+    }).onDelete('cascade'),
+
+    foreignKey({
+      name: 'wiki_page_ref_to_fk',
+      columns: [t.toPageId, t.workspaceId],
+      foreignColumns: [wikiPage.id, wikiPage.workspaceId],
+    }).onDelete('cascade'),
 
     ...tenantPolicies(),
   ],

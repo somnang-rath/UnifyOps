@@ -78,6 +78,9 @@ export default async function MembersPage({
           // them, before the click. A number, never a list.
           noteCount: m.noteCount,
           pageCount: m.pageCount,
+          // §21.3: and how many pages lose their owner, which is the one of
+          // the three somebody can still do something about.
+          ownedPageCount: m.ownedPageCount,
         }))}
         invitations={invitations.map((i) => ({
           id: i.id,

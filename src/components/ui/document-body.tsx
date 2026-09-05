@@ -4,6 +4,7 @@ import { hasKhmer } from '@/lib/search';
 import {
   parseDocument,
   type BlockNode,
+  type CalloutTone,
   type InlineNode,
   type ListItem,
 } from '@/lib/documents';
@@ -60,7 +61,18 @@ export type DocumentContext = {
    * server *and* inside the notes list's client bundle: a function would have to
    * be one the client could call, and that is a fetch per token per render.
    */
-  pages?: Record<string, { title: string; href: string | null }>;
+  pages?: Record<string, { title: string; href: string | null; excerpt?: string }>;
+  /**
+   * What each callout tone is called, when the writer gave one no title (§21.5).
+   *
+   * Passed in rather than read from `useTranslations`, because this component
+   * renders on the server *and* inside a client bundle — the same reason
+   * `mentioned` and `pages` are maps rather than resolvers. Absent, an untitled
+   * callout simply has no title bar, which is the right degradation: a body must
+   * never render an English word into a Khmer page because a caller forgot
+   * something (§13).
+   */
+  calloutLabels?: Record<CalloutTone, string>;
   /** The workspace an `ENG-142` reference resolves inside. */
   workspaceSlug: string;
 };
@@ -109,7 +121,14 @@ export function DocumentBody({
 function Block({ block, context }: { block: BlockNode; context: DocumentContext }) {
   switch (block.kind) {
     case 'heading':
-      return <Heading level={block.level} content={block.content} context={context} />;
+      return (
+        <Heading
+          level={block.level}
+          anchor={block.anchor}
+          content={block.content}
+          context={context}
+        />
+      );
 
     case 'paragraph':
       // `break-words` so a pasted URL cannot push the panel wider than the page
@@ -141,6 +160,9 @@ function Block({ block, context }: { block: BlockNode; context: DocumentContext 
           ))}
         </blockquote>
       );
+
+    case 'callout':
+      return <Callout block={block} context={context} />;
 
     case 'code':
       return (
@@ -201,13 +223,112 @@ function Block({ block, context }: { block: BlockNode; context: DocumentContext 
 
 function Items({ items, context }: { items: ListItem[]; context: DocumentContext }) {
   return items.map((item, index) => (
-    <li key={index}>
-      <Inlines nodes={item.content} context={context} />
-      {item.children.map((child, childIndex) => (
-        <Block key={childIndex} block={child} context={context} />
-      ))}
+    <li
+      key={index}
+      /**
+       * A to-do carries no marker, because it draws its own box (§21.5).
+       * `list-none` with a negative start margin puts the checkbox where the
+       * bullet was, so a mixed list still lines up down one edge.
+       */
+      className={item.checked === null ? undefined : '-ms-5 flex list-none items-baseline gap-2'}
+    >
+      {item.checked !== null && (
+        <input
+          type="checkbox"
+          checked={item.checked}
+          disabled
+          /**
+           * **Disabled, and read-only in the strongest sense.** This is a
+           * document, not a form: the state lives in the body's own text, so a
+           * box that could be clicked would either lie (nothing is stored) or
+           * silently edit somebody else's page from the reader. Ticking one is
+           * editing the line — which is what the editor is for.
+           *
+           * `aria-hidden` would be wrong: the box *is* the information. It keeps
+           * its accessible state and the item's text is its label through the
+           * `<li>`, so a screen reader reads "checked, ship the release notes".
+           */
+          readOnly
+          className="shrink-0 accent-accent"
+        />
+      )}
+      <span className={item.checked === null ? undefined : 'min-w-0 flex-1'}>
+        <Inlines nodes={item.content} context={context} />
+        {item.children.map((child, childIndex) => (
+          <Block key={childIndex} block={child} context={context} />
+        ))}
+      </span>
     </li>
   ));
+}
+
+/** How each tone is drawn — the same four `Alert` has carried since slice 1. */
+const CALLOUT_TONES: Record<CalloutTone, string> = {
+  info: 'border-border bg-surface-sunken',
+  success: 'border-success bg-success-subtle',
+  warning: 'border-warning bg-warning-subtle',
+  danger: 'border-danger bg-danger-subtle',
+};
+
+/**
+ * A callout, and — when the writer put a `-` after the tag — a toggle (§21.5).
+ *
+ * **`<details>` rather than a `useState`, and that is what keeps this component
+ * server-renderable.** `DocumentBody` carries no `'use client'` on purpose
+ * (§20.7), so a toggle built out of state would have forced the whole renderer
+ * into every page's bundle to make one triangle work. The platform's own
+ * disclosure gives the open/closed state, the keyboard behaviour, the correct
+ * ARIA and — the part that matters most in a document — **find-in-page reaching
+ * inside a closed one** in browsers that implement it. This is the same call
+ * `dialog.tsx` makes for the modal: the alternative is not our own code but the
+ * browser's.
+ *
+ * A callout with no title is named by its tone, translated, rather than left
+ * with an empty summary bar. That string is the one word in a body this
+ * component supplies, which is why it comes from the catalogue and not from the
+ * parser (§13).
+ */
+function Callout({
+  block,
+  context,
+}: {
+  block: Extract<BlockNode, { kind: 'callout' }>;
+  context: DocumentContext;
+}) {
+  const body = block.children.map((child, index) => (
+    <Block key={index} block={child} context={context} />
+  ));
+
+  const title = block.title ? (
+    <Inlines nodes={block.title} context={context} />
+  ) : (
+    context.calloutLabels?.[block.tone]
+  );
+
+  const shell = cn('rounded-md border p-3', CALLOUT_TONES[block.tone]);
+
+  if (!block.folded) {
+    return (
+      <aside className={cn(shell, 'space-y-2')}>
+        {(block.title || context.calloutLabels) && (
+          <p className="text-xs font-semibold text-text">{title}</p>
+        )}
+        {body}
+      </aside>
+    );
+  }
+
+  return (
+    <details className={shell}>
+      {/*
+        `cursor-pointer` and a marker the browser draws. The focus ring is the
+        global `:focus-visible` rule — a `<summary>` is focusable already, which
+        is half the reason this is a `<details>`.
+      */}
+      <summary className="cursor-pointer text-xs font-semibold text-text">{title}</summary>
+      <div className="mt-2 space-y-2">{body}</div>
+    </details>
+  );
 }
 
 /**
@@ -222,17 +343,49 @@ function Items({ items, context }: { items: ListItem[]; context: DocumentContext
  */
 function Heading({
   level,
+  anchor,
   content,
   context,
 }: {
   level: number;
+  anchor: string;
   content: InlineNode[];
   context: DocumentContext;
 }) {
   const inner = <Inlines nodes={content} context={context} />;
-  if (level <= 1) return <h2 className="text-base font-semibold text-text">{inner}</h2>;
-  if (level === 2) return <h3 className="text-sm font-semibold text-text">{inner}</h3>;
-  return <h4 className="text-sm font-medium text-text">{inner}</h4>;
+
+  /**
+   * The id §21.5's table of contents jumps to.
+   *
+   * **`scroll-mt-16` is not decoration.** The workspace header is sticky, so a
+   * heading scrolled to by fragment lands underneath it — the link works, and
+   * the reader is looking at the wrong line with no way to know a jump
+   * happened. It is the one place a scroll offset belongs in a document body.
+   *
+   * `tabIndex={-1}` for the reason slice 16's skip link carries it: a bare
+   * fragment link moves the *scroll* and leaves focus where it was in some
+   * browsers, so the next Tab goes back into the contents list somebody just
+   * used. A programmatically focusable heading takes the focus with the scroll.
+   */
+  const props = { id: anchor, tabIndex: -1, className: 'scroll-mt-16' } as const;
+
+  if (level <= 1)
+    return (
+      <h2 {...props} className={cn(props.className, 'text-base font-semibold text-text')}>
+        {inner}
+      </h2>
+    );
+  if (level === 2)
+    return (
+      <h3 {...props} className={cn(props.className, 'text-sm font-semibold text-text')}>
+        {inner}
+      </h3>
+    );
+  return (
+    <h4 {...props} className={cn(props.className, 'text-sm font-medium text-text')}>
+      {inner}
+    </h4>
+  );
 }
 
 function Inlines({ nodes, context }: { nodes: InlineNode[]; context: DocumentContext }) {
@@ -342,6 +495,27 @@ function Inline({ node, context }: { node: InlineNode; context: DocumentContext 
       return (
         <Link
           href={target.href}
+          /**
+           * §21.4's hover preview, and it is a `title` attribute rather than a
+           * popover — which is a decision, not a shortcut.
+           *
+           * What §21.4 asks for is "the title and the first line of the body,
+           * resolved from a row the page has already loaded", and the excerpt is
+           * exactly that: it rides `fetchPageRefs`, which this render already
+           * ran. A floating card would need this component to become a client
+           * one — it carries no `'use client'` on purpose (§20.7), and a
+           * reference appears inside running prose, so the cost would be the
+           * whole renderer in every bundle to decorate an inline word. The
+           * platform's own tooltip is keyboard-reachable, screen-reader-read,
+           * positioned by the browser and free at 390px, where a hand-built card
+           * anchored to a word mid-paragraph is the thing most likely to push
+           * the document sideways (§15-6).
+           *
+           * `title` and not `aria-label`: a label would *replace* the link's
+           * name, so a screen reader would announce the excerpt instead of the
+           * page — losing the one word that says where the link goes.
+           */
+          title={target.excerpt ? `${target.title} — ${target.excerpt}` : undefined}
           className="rounded-xs bg-surface-sunken px-1 font-medium text-accent"
         >
           {label}

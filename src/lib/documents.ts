@@ -33,6 +33,7 @@
  */
 
 import { MENTION_AT, PAGE_AT, scanItemReferences } from './doc-refs';
+import { slugify } from './slug';
 
 /* ------------------------------------------------------------------------- */
 /* The tree                                                                  */
@@ -60,13 +61,71 @@ export type ListItem = {
   content: InlineNode[];
   /** A nested list, or nothing. The only block a list item may contain. */
   children: BlockNode[];
+  /**
+   * `- [ ]` and `- [x]` — a to-do (§21.5, slice 20).
+   *
+   * `null` on an ordinary bullet, which is what keeps the two distinguishable:
+   * an unticked box is `false` and a list item that is not a to-do at all is
+   * neither. The box is rendered `disabled` — this is a document, and a
+   * checkbox that submitted something would be a form hiding in a page.
+   *
+   * It exists because §21.5's `/` menu offers "to-do", and the rule governing
+   * that menu is that **a menu item may only insert text a person could have
+   * typed**. `- [ ] ` is exactly that; without this rule it would have rendered
+   * as a bullet with a literal `[ ]` in it, which is the menu promising
+   * something the reader does not get.
+   */
+  checked: boolean | null;
 };
 
+/**
+ * The four tones a callout may take (§21.5, slice 20).
+ *
+ * Deliberately the same four `Alert` has carried since slice 1 rather than a
+ * fifth vocabulary — a callout is a body-level Alert, so it inherits the tones,
+ * the semantic aliases and the contrast work already done for them. A closed
+ * enum, so no translation key ever reaches the database (§13) and an unknown
+ * tone parses as the text it was.
+ */
+export const CALLOUT_TONES = ['info', 'success', 'warning', 'danger'] as const;
+export type CalloutTone = (typeof CALLOUT_TONES)[number];
+
 export type BlockNode =
-  | { kind: 'heading'; level: number; content: InlineNode[] }
+  /**
+   * `anchor` is assigned document-wide by `parseDocument`, never by the block
+   * parser — see `assignAnchors`. It is what the table of contents links to and
+   * what a heading renders as its own id (§21.5).
+   */
+  | { kind: 'heading'; level: number; content: InlineNode[]; anchor: string }
   | { kind: 'paragraph'; content: InlineNode[] }
   | { kind: 'list'; ordered: boolean; start: number; items: ListItem[] }
   | { kind: 'quote'; children: BlockNode[] }
+  /**
+   * `> [!warning] Title` — a callout, and with a `-` after the tag a **toggle**
+   * (§21.5, slice 20).
+   *
+   * **One grammar family rather than two, and that is a decision.** §21.2 names
+   * "callout and toggle" as two rules; they are built as one syntax with a
+   * `folded` flag because a disclosure and a highlighted aside differ only in
+   * whether the body starts open. Two syntaxes would be two things to teach, two
+   * `/` menu entries that look unrelated, and two ways for a body to say nearly
+   * the same thing. The syntax is Obsidian's and GitHub's, which is the one
+   * convention that already exists for both — so a body pasted out of either
+   * renders here, and a body pasted out of here renders there.
+   *
+   * It is an *extension of the blockquote*, not a new block delimiter: strip the
+   * rule and every callout degrades into the quote it is written as, with its
+   * tag as the first line. That is the failure mode a text format should have.
+   */
+  | {
+      kind: 'callout';
+      tone: CalloutTone;
+      /** The words after the tag, or none — then the renderer names the tone. */
+      title: InlineNode[] | null;
+      /** `> [!note]-` — starts collapsed, and is a `<details>` on the page. */
+      folded: boolean;
+      children: BlockNode[];
+    }
   | { kind: 'code'; language: string | null; text: string }
   | { kind: 'rule' }
   | { kind: 'table'; header: InlineNode[][]; align: (Align | null)[]; rows: InlineNode[][][] };
@@ -163,6 +222,18 @@ function blocksToText(blocks: readonly BlockNode[]): string {
             .join('\n');
         case 'quote':
           return blocksToText(block.children);
+        /**
+         * A callout's title is reading text and its tone is not.
+         *
+         * The tone is a rendering decision the same way a heading level is, and
+         * a preview line reading "warning" because somebody used a callout would
+         * be the one place this function invented a word nobody wrote — in
+         * English, in a Khmer body (§13).
+         */
+        case 'callout':
+          return [block.title ? inlinesToText(block.title) : '', blocksToText(block.children)]
+            .filter((part) => part.length > 0)
+            .join('\n');
         case 'code':
           return block.text;
         case 'rule':
@@ -218,6 +289,23 @@ const QUOTE = /^ {0,3}>\s?(.*)$/;
 const TABLE_DIVIDER = /^\s*\|?(\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?\s*$/;
 
 /**
+ * `[!warning]- An optional title` — the first line of a callout (§21.5).
+ *
+ * Matched against a blockquote's first line, after the `>` has been stripped,
+ * which is why it carries no `>` of its own. Group 2 is the fold marker and
+ * group 3 the title.
+ */
+const CALLOUT_TAG = /^\[!([A-Za-z]+)\](-?)\s*(.*)$/;
+
+/** `[ ]` or `[x]` at the head of a list item's text — a to-do (§21.5). */
+const TASK_MARKER = /^\[([ xX])\]\s+(.*)$/;
+
+function toneOf(tag: string): CalloutTone | null {
+  const lower = tag.toLowerCase();
+  return (CALLOUT_TONES as readonly string[]).includes(lower) ? (lower as CalloutTone) : null;
+}
+
+/**
  * A body, parsed.
  *
  * Line-oriented and single-pass over blocks, then one inline pass per run of
@@ -228,7 +316,88 @@ const TABLE_DIVIDER = /^\s*\|?(\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?\s*$/;
  * has been seen.
  */
 export function parseDocument(body: string): DocumentTree {
-  return parseBlocks(normalizeDocument(body).split('\n'), 0);
+  return assignAnchors(parseBlocks(normalizeDocument(body).split('\n'), 0));
+}
+
+/* ------------------------------------------------------------------------- */
+/* Anchors and the table of contents                                         */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Every heading gets an id, and duplicates get a suffix (§21.5).
+ *
+ * **A post-pass rather than a parser field, because de-duplication is
+ * document-wide and `parseBlocks` is recursive.** A counter threaded through the
+ * recursion would have to be threaded through quotes, callouts and list items
+ * too, and the first branch that forgot it would silently produce two headings
+ * with one id — which reads as a table of contents whose second entry jumps to
+ * the first.
+ *
+ * **The failure is named rather than designed around** (§21.5): "renaming a
+ * heading breaks a link to it. That is the bargain every Markdown document on
+ * earth makes; it is visible and it is recoverable, where the alternative is an
+ * id embedded in the body, which is where a text format stops being one."
+ *
+ * Khmer headings route through `slugify`, whose romanisation is documented as an
+ * approximation (slice 3) — an anchor is not a title and does not have to be
+ * beautiful. A heading that slugifies to nothing at all (an emoji, a number in a
+ * script `slugify` does not romanise) falls back to its position, so every
+ * heading is addressable even when its words are not.
+ */
+function assignAnchors(blocks: BlockNode[]): BlockNode[] {
+  const taken = new Map<string, number>();
+  let ordinal = 0;
+
+  const walk = (nodes: BlockNode[]): BlockNode[] =>
+    nodes.map((block) => {
+      switch (block.kind) {
+        case 'heading': {
+          ordinal += 1;
+          const base = slugify(inlinesToText(block.content)) || `section-${ordinal}`;
+          const seen = taken.get(base) ?? 0;
+          taken.set(base, seen + 1);
+          return { ...block, anchor: seen === 0 ? base : `${base}-${seen + 1}` };
+        }
+        case 'quote':
+        case 'callout':
+          return { ...block, children: walk(block.children) };
+        case 'list':
+          return { ...block, items: block.items.map((item) => ({ ...item, children: walk(item.children) })) };
+        default:
+          return block;
+      }
+    });
+
+  return walk(blocks);
+}
+
+export type TocEntry = { level: number; text: string; anchor: string };
+
+/**
+ * The headings of a body, in order, for §21.5's table of contents.
+ *
+ * **Top-level headings only.** A heading inside a quote or a callout is an
+ * aside's own structure rather than the document's, and listing it would put an
+ * entry in the contents for a line the reader experiences as part of a
+ * paragraph. It still carries an anchor — `assignAnchors` walks everything — so
+ * a link written to one by hand resolves; it simply is not offered.
+ *
+ * Returns text rather than nodes, because a contents entry is a label in a list
+ * and not a place emphasis, links or mention chips belong: a `#[uuid]` inside a
+ * heading resolves to nothing in `inlinesToText` by design, and a contents that
+ * rendered a nested link would be a link inside a link.
+ */
+export function tableOfContents(body: string): TocEntry[] {
+  const entries: TocEntry[] = [];
+
+  for (const block of parseDocument(body)) {
+    if (block.kind !== 'heading') continue;
+    const text = inlinesToText(block.content).trim();
+    if (text.length === 0) continue;
+    entries.push({ level: block.level, text, anchor: block.anchor });
+  }
+
+  return entries;
 }
 
 function parseBlocks(lines: readonly string[], depth: number): BlockNode[] {
@@ -277,18 +446,49 @@ function parseBlocks(lines: readonly string[], depth: number): BlockNode[] {
         // A trailing run of `#` is closing punctuation in an ATX heading and is
         // not part of the words.
         content: parseInlines((heading[2] as string).replace(/\s+#+\s*$/, '')),
+        // Filled by `assignAnchors` once the whole document is parsed, because
+        // de-duplication is a document-wide question and this parser is
+        // recursive. Never read from here.
+        anchor: '',
       });
       index += 1;
       continue;
     }
 
-    // --- Blockquote -------------------------------------------------------
+    // --- Blockquote, and the callout that is written as one -----------------
     if (QUOTE.test(line)) {
       const inner: string[] = [];
       while (index < lines.length && QUOTE.test(lines[index] as string)) {
         inner.push(QUOTE.exec(lines[index] as string)?.[1] ?? '');
         index += 1;
       }
+
+      /**
+       * `> [!tone]` on the first line makes the quote a callout (§21.5).
+       *
+       * Checked *after* the quote's lines are gathered and against the first of
+       * them, so the tag is recognised in exactly the position the convention
+       * puts it and nowhere else. An unrecognised tag — `> [!tip]` — is not an
+       * error and not a callout: it stays a quote whose first line reads
+       * `[!tip]`, which is the grammar's standing rule that everything not on
+       * the list renders as the text it was.
+       */
+      const tag = CALLOUT_TAG.exec(inner[0] ?? '');
+      const tone = tag ? toneOf(tag[1] as string) : null;
+
+      if (tag && tone) {
+        const rest = inner.slice(1);
+        const title = (tag[3] as string).trim();
+        blocks.push({
+          kind: 'callout',
+          tone,
+          title: title.length > 0 ? parseInlines(title) : null,
+          folded: tag[2] === '-',
+          children: depth >= MAX_DEPTH ? [paragraphOf(rest)] : parseBlocks(rest, depth + 1),
+        });
+        continue;
+      }
+
       blocks.push({
         kind: 'quote',
         // Recursion is bounded by the same depth budget lists use: a quote
@@ -402,7 +602,17 @@ function parseList(lines: readonly string[], from: number, depth: number): [Bloc
 
     // At the same indent, or past the depth cap, or a stray indent with no item
     // above it: the text joins the flat list rather than disappearing.
-    items.push({ content: parseInlines(marker.text), children: [] });
+    //
+    // A to-do is a bullet whose text opens with `[ ]` or `[x]` (§21.5). It is
+    // recognised here rather than in the marker so that `1. [x] done` is an
+    // ordered to-do too — people write checklists both ways, and refusing one of
+    // them would be a rule with nothing behind it.
+    const task = TASK_MARKER.exec(marker.text);
+    items.push({
+      content: parseInlines(task ? (task[2] as string) : marker.text),
+      children: [],
+      checked: task ? (task[1] as string).toLowerCase() === 'x' : null,
+    });
     index += 1;
   }
 

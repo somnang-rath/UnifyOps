@@ -12,7 +12,11 @@ import {
   subtreeHeight,
   subtreeIds,
   validatePage,
+  verificationExpiry,
+  verificationStatus,
+  VERIFICATION_DAYS,
   type TreePage,
+  normalizePageIcon,
 } from './wiki';
 
 /**
@@ -241,5 +245,166 @@ describe('diffLines', () => {
     expect(lines.some((line) => line.op === 'same')).toBe(false);
     expect(lines.filter((line) => line.op === 'removed')).toHaveLength(3_001);
     expect(lines.filter((line) => line.op === 'added')).toHaveLength(3_001);
+  });
+});
+
+/**
+ * §21.3's derived state — the rule slice 11 wrote for a cycle, applied to a
+ * page.
+ *
+ * "A stored status needs a job to flip it, a repair after the job was down, and
+ * a missed repair is a page that reads as verified forever." These tests are
+ * what make the absence of that job safe: the function is total over the two
+ * columns and the two dates, so there is no state it cannot name.
+ */
+describe('verificationStatus', () => {
+  const verifiedOn = new Date('2026-03-01T10:00:00Z');
+
+  it('is never for a page nobody has vouched for', () => {
+    expect(
+      verificationStatus(
+        { verifiedAt: null, verificationExpiresAt: null },
+        { today: '2026-09-05', warnFrom: '2026-09-14' },
+      ),
+    ).toBe('never');
+  });
+
+  /**
+   * The default, and §21.3 requires it to stay one: "Null means *no review
+   * cycle*, which is right for most pages and must stay the default." A page
+   * verified once with no cycle is a standing claim until somebody edits it —
+   * which is `saveWikiPage`'s transition, not this function's.
+   */
+  it('is verified indefinitely when there is no review cycle', () => {
+    expect(
+      verificationStatus(
+        { verifiedAt: verifiedOn, verificationExpiresAt: null },
+        { today: '2030-01-01', warnFrom: '2030-01-09' },
+      ),
+    ).toBe('verified');
+  });
+
+  it('is verified while the expiry is beyond the warning horizon', () => {
+    expect(
+      verificationStatus(
+        { verifiedAt: verifiedOn, verificationExpiresAt: '2026-12-01' },
+        { today: '2026-09-05', warnFrom: '2026-09-14' },
+      ),
+    ).toBe('verified');
+  });
+
+  it('turns amber once the expiry is inside the horizon', () => {
+    expect(
+      verificationStatus(
+        { verifiedAt: verifiedOn, verificationExpiresAt: '2026-09-10' },
+        { today: '2026-09-05', warnFrom: '2026-09-14' },
+      ),
+    ).toBe('expiring');
+  });
+
+  /** The boundary in both directions, because off-by-one here is a badge that
+      never turns amber or one that turns amber a day early, and neither is
+      visible without an assertion. */
+  it('includes both ends of the horizon', () => {
+    const at = (expires: string) =>
+      verificationStatus(
+        { verifiedAt: verifiedOn, verificationExpiresAt: expires },
+        { today: '2026-09-05', warnFrom: '2026-09-14' },
+      );
+
+    expect(at('2026-09-05')).toBe('expiring');
+    expect(at('2026-09-14')).toBe('expiring');
+    expect(at('2026-09-15')).toBe('verified');
+    expect(at('2026-09-04')).toBe('expired');
+  });
+
+  it('is expired the day after the expiry', () => {
+    expect(
+      verificationStatus(
+        { verifiedAt: verifiedOn, verificationExpiresAt: '2026-09-04' },
+        { today: '2026-09-05', warnFrom: '2026-09-14' },
+      ),
+    ).toBe('expired');
+  });
+
+  /**
+   * The client may not have a horizon — only the database knows the company's
+   * working days (§9). Without one the amber middle collapses into `verified`,
+   * which is a true statement rather than a guess, and `expired` still reads
+   * correctly because it needs no horizon at all.
+   */
+  it('degrades to a true statement with no horizon', () => {
+    const page = { verifiedAt: verifiedOn, verificationExpiresAt: '2026-09-10' };
+    expect(verificationStatus(page, { today: '2026-09-05' })).toBe('verified');
+    expect(verificationStatus(page, { today: '2026-09-05', warnFrom: null })).toBe('verified');
+    expect(verificationStatus(page, { today: '2026-11-01' })).toBe('expired');
+  });
+});
+
+describe('verificationExpiry', () => {
+  /** §21.3: "what is stored is the resolved date". */
+  it('resolves each offered period to a date', () => {
+    expect(verificationExpiry('2026-09-05', 90)).toBe('2026-12-04');
+    expect(verificationExpiry('2026-09-05', 180)).toBe('2027-03-04');
+    expect(verificationExpiry('2026-09-05', 365)).toBe('2027-09-05');
+  });
+
+  it('resolves Never to no date at all', () => {
+    expect(verificationExpiry('2026-09-05', null)).toBeNull();
+  });
+
+  /**
+   * Every member of the closed set resolves, which is what stops a period being
+   * added to `VERIFICATION_DAYS` without anybody checking it produces a date.
+   */
+  it('resolves every member of the closed set', () => {
+    for (const days of VERIFICATION_DAYS) {
+      expect(verificationExpiry('2026-09-05', days)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+});
+
+describe('normalizePageIcon (§21.2 — slice 20)', () => {
+  /**
+   * **The grapheme is the unit, and this is the test that says so.** A flag is
+   * two code points, a skin-toned emoji three or four, and a joined one more
+   * still — all of which a person sees as one character and types with one
+   * keystroke. Counting code points would refuse every one of them while
+   * accepting four Latin letters, which is §13's arithmetic pointed exactly the
+   * wrong way.
+   */
+  it('accepts a multi-code-point emoji as one icon', () => {
+    for (const icon of ['\ud83c\uddf0\ud83c\udded', '\ud83d\udc4d\ud83c\udffd', '\ud83d\udcd8']) {
+      expect(normalizePageIcon(icon)).toBe(icon);
+      expect([...icon].length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  /**
+   * Truncates rather than refuses, unlike every other cap in the wiki: an icon
+   * is decoration, and somebody who pastes two emoji meant the first one.
+   */
+  it('keeps the first grapheme when given several', () => {
+    expect(normalizePageIcon('\ud83c\udf89\ud83c\udf8a')).toBe('\ud83c\udf89');
+  });
+
+  it('reads empty, blank and absent as no icon at all', () => {
+    // *No icon* is a value somebody chooses, not a field left blank — the rule
+    // `moveWorkItem` wrote for a neighbour id and `setPageOwner` restated.
+    expect(normalizePageIcon('')).toBeNull();
+    expect(normalizePageIcon('   ')).toBeNull();
+    expect(normalizePageIcon(null)).toBeNull();
+    expect(normalizePageIcon(undefined)).toBeNull();
+  });
+
+  it('normalises to NFC, so two spellings of one character are one string', () => {
+    expect(normalizePageIcon('e\u0301')).toBe('\u00e9');
+  });
+
+  it('takes one letter, because the field is not policed for being an emoji', () => {
+    // Refusing non-emoji would mean shipping an emoji table and keeping it in
+    // step with Unicode — for a decorative field where the worst case is a page
+    // whose icon is the letter its owner chose.
+    expect(normalizePageIcon('A')).toBe('A');
   });
 });

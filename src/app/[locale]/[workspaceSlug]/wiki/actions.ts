@@ -15,9 +15,16 @@ import {
   restorePage,
   restoreRevision,
   saveWikiPage,
+  setPageLabels,
+  setPageIcon,
+  setPageOwner,
+  setSpaceVerificationDefault,
   unlinkPageFromItem,
+  unverifyPage,
+  verifyPage,
   type WikiFailure,
 } from '@/server/services/wiki';
+import { isVerificationDays, type VerificationDays } from '@/lib/wiki';
 
 /**
  * The wiki's actions (§20.3.2, §20.3.3, §20.3.6 — slice 18).
@@ -47,6 +54,8 @@ const KEYS: Record<WikiFailure, string> = {
   unknown_item: 'wiki.errors.unknownItem',
   stale: 'wiki.errors.stale',
   mention_not_visible: 'wiki.errors.mentionNotVisible',
+  invalid_period: 'wiki.errors.invalidPeriod',
+  unknown_member: 'wiki.errors.unknownMember',
 };
 
 type Context = { workspaceSlug: string; locale: 'en' | 'km' };
@@ -116,7 +125,11 @@ export async function savePageAction(
     }
 
     revalidateWiki(context);
-    return { savedAt: Date.now(), revisionNo: result.revisionNo };
+    return {
+      savedAt: Date.now(),
+      revisionNo: result.revisionNo,
+      unverified: result.unverified,
+    };
   } catch (error) {
     if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
     throw error;
@@ -378,6 +391,212 @@ export async function unlinkPageAction(
     if (projectSlug.length > 0) {
       revalidatePath(`/${context.locale}/${context.workspaceSlug}/projects/${projectSlug}`, 'layout');
     }
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Ownership and verification (§21.3 — slice 19)                             */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The period a form submitted, or `undefined` for *take the space's default*.
+ *
+ * Three cases, and the distinction between the last two is the one that matters:
+ * an absent field means the caller did not choose and the space's standing
+ * preference applies; the literal string `never` means somebody chose *no review
+ * cycle*, which is a decision and not an absence. That is `reassignTo`'s rule
+ * from §7.12 — "`undefined` is not a third answer" — pointed the other way,
+ * where a declined choice genuinely has a defined meaning.
+ */
+function periodFrom(formData: FormData): VerificationDays | null | undefined {
+  const raw = formData.get('days');
+  if (raw === null) return undefined;
+
+  const value = String(raw);
+  if (value === 'never') return null;
+
+  const days = Number(value);
+  return isVerificationDays(days) ? days : undefined;
+}
+
+/**
+ * §21.3's verify, and it carries the base revision for the same reason the save
+ * does.
+ *
+ * "`[X]` verifying a page somebody has edited underneath you → refused with
+ * §20.3.3's own message, because verifying a body you did not read is the
+ * failure being prevented."
+ */
+export async function verifyPageAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const baseRevision = Number(formData.get('baseRevision'));
+  if (!Number.isSafeInteger(baseRevision) || baseRevision < 1) {
+    return { error: KEYS.not_found };
+  }
+
+  try {
+    const result = await verifyPage(resolved, {
+      pageId: String(formData.get('pageId') ?? ''),
+      baseRevision,
+      days: periodFrom(formData),
+    });
+    if (result.ok === false) return { error: KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/** Withdrawing an assertion — deliberately not revision-conditional (§21.3). */
+export async function unverifyPageAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  try {
+    const result = await unverifyPage(resolved, String(formData.get('pageId') ?? ''));
+    if (result.ok === false) return { error: KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/**
+ * Claiming a page, handing it over, or releasing it (§21.3).
+ *
+ * The empty string is *nobody*, which is a real answer and one of the All-pages
+ * view's four filters — not a missing value. A `<select>` cannot submit `null`,
+ * so the empty option carries the intent and this is where it is read back.
+ */
+export async function setPageOwnerAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const owner = String(formData.get('ownerMemberId') ?? '');
+
+  try {
+    const result = await setPageOwner(resolved, {
+      pageId: String(formData.get('pageId') ?? ''),
+      ownerMemberId: owner.length > 0 ? owner : null,
+    });
+    if (result.ok === false) return { error: KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/**
+ * The page's icon (§21.2 — slice 20).
+ *
+ * Its own action rather than a field on `saveWikiPageAction`, because an icon
+ * must not ride the body's conditional update: changing one while a colleague
+ * is typing would be refused as a stale save, and it would clear §21.3's
+ * verification, which every body save does unconditionally. A verified page
+ * whose icon changed is still a page somebody read and vouched for.
+ */
+export async function setPageIconAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const icon = String(formData.get('icon') ?? '');
+
+  try {
+    const result = await setPageIcon(resolved, {
+      pageId: String(formData.get('pageId') ?? ''),
+      // Empty is an **intent** — "no icon" — and not a missing value, which is
+      // the rule `moveWorkItem` wrote for a neighbour id and `setPageOwner`
+      // restated one function above.
+      icon: icon.length > 0 ? icon : null,
+    });
+    if (result.ok === false) return { error: KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/** The space's standing review cycle (§21.3). */
+export async function setSpaceVerificationDefaultAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const days = periodFrom(formData);
+
+  try {
+    const result = await setSpaceVerificationDefault(resolved, {
+      spaceId: String(formData.get('spaceId') ?? ''),
+      // An unreadable value is *Never* here rather than "leave it alone": this
+      // is a form whose whole content is the choice, so a submit that could not
+      // be parsed is a bug in the form and silently keeping the old value would
+      // hide it.
+      days: days === undefined ? null : days,
+    });
+    if (result.ok === false) return { error: KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/**
+ * The page's tags (§21.3).
+ *
+ * `getAll` rather than `get`, because the control is a set of checkboxes and an
+ * empty set — every box cleared — is a legitimate submission that has to reach
+ * the service as an empty array rather than as no field at all.
+ */
+export async function setPageLabelsAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  try {
+    const result = await setPageLabels(resolved, {
+      pageId: String(formData.get('pageId') ?? ''),
+      labelIds: formData.getAll('labelIds').map(String).filter((id) => id.length > 0),
+    });
+    if (result.ok === false) return { error: KEYS[result.problem] };
+
+    revalidateWiki(context);
     return { done: true };
   } catch (error) {
     if (error instanceof ForbiddenError) return { error: KEYS.forbidden };

@@ -301,10 +301,23 @@ export function digestEmail(input: {
   /** Due on or before the horizon — the next working day, not necessarily tomorrow. */
   dueSoon: DigestLine[];
   overdue: DigestLine[];
+  /**
+   * Pages this person owns whose verification lapses soon (§21.3 — slice 19).
+   *
+   * **The one place anybody is told about an expiry**, and the section exists
+   * here rather than as an inbox row because §21.3 refuses the alternative in
+   * as many words: "an inbox row per expiring page is a stream that teaches
+   * people to ignore the bell" — §7.8's own warning, applied to documentation.
+   *
+   * It rides the existing `digest` kind, so it inherits the preference row, the
+   * working-evening rule and the read-as-that-member scope, and **no sixth
+   * notification kind** was added: §6-6's five stay five.
+   */
+  pagesToReview: DigestLine[];
   url: string;
 }): Mail {
   const t = translatorFor(input.locale);
-  const count = input.dueSoon.length + input.overdue.length;
+  const count = input.dueSoon.length + input.overdue.length + input.pagesToReview.length;
 
   const { html, text } = listLayout({
     locale: input.locale,
@@ -313,6 +326,11 @@ export function digestEmail(input: {
     sections: [
       { title: t('digest.overdue'), lines: input.overdue },
       { title: t('digest.dueSoon'), lines: input.dueSoon },
+      // Last, deliberately. Work with a date on it is what somebody opens this
+      // email for; a page needing review is a fortnight's notice, and putting it
+      // above the overdue list would be the product telling somebody about
+      // documentation while their own work is late.
+      { title: t('digest.pagesToReview'), lines: input.pagesToReview },
     ],
     footer: t('digest.preferences'),
   });

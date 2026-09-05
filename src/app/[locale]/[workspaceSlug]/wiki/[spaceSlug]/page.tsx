@@ -54,12 +54,29 @@ export default async function SpacePage({
         </aside>
 
         <div className="min-w-0 space-y-3">
-          <h1
-            lang={hasKhmer(name) ? 'km' : undefined}
-            className="font-display text-xl font-semibold tracking-tight"
-          >
-            {name}
-          </h1>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h1
+              lang={hasKhmer(name) ? 'km' : undefined}
+              className="font-display text-xl font-semibold tracking-tight"
+            >
+              {name}
+            </h1>
+
+            {/*
+              §21.3's All-pages view, reached from the space it covers. A link
+              rather than a tab, because its filters are URLs somebody sends a
+              colleague — "every unowned page in the company space" is the
+              message, and a client-side tab cannot be one.
+            */}
+            {view.tree.length > 0 && (
+              <Link
+                href={`/${workspaceSlug}/wiki/${spaceSlug}/pages`}
+                className="text-2xs text-text-muted underline-offset-2 hover:underline"
+              >
+                {t('wiki.pages.link')}
+              </Link>
+            )}
+          </div>
 
           {view.tree.length === 0 ? (
             <div className="space-y-3">
