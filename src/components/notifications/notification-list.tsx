@@ -296,7 +296,13 @@ function subjectHref(workspaceSlug: string, group: Group): string {
       const path = `/${workspaceSlug}/projects/${group.subject.projectSlug}/${group.subject.itemNumber}`;
       return group.commentId ? `${path}#comment-${group.commentId}` : path;
     }
-    case 'wiki_page':
-      return `/${workspaceSlug}/wiki/${group.subject.spaceSlug}/${group.subject.pageSlug}`;
+    case 'wiki_page': {
+      // The comment anchor is appended on **both** branches since §21.6 gave a
+      // page a thread. It was dropped here when a page had none, which is the
+      // same assumption 0032's `notification_comment_with_item` CHECK encoded
+      // and 0038 drops — this is that sentence's third and last place.
+      const path = `/${workspaceSlug}/wiki/${group.subject.spaceSlug}/${group.subject.pageSlug}`;
+      return group.commentId ? `${path}#comment-${group.commentId}` : path;
+    }
   }
 }

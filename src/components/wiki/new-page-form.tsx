@@ -29,19 +29,44 @@ export function NewPageForm({
   locale,
   spaceId,
   parents,
+  draft,
   create,
 }: {
   workspaceSlug: string;
   locale: 'en' | 'km';
   spaceId: string;
   parents: { id: string; title: string; depth: number }[];
+  /**
+   * §21.7's chosen template, as a starting title and body — or nothing.
+   *
+   * **A copy, and only a copy.** "Choosing one copies its body into the first
+   * revision", so what arrives here is text in a textarea that the writer can
+   * edit, delete or ignore before they create anything. There is no link back to
+   * the template afterwards and no inheritance: a template that changed next
+   * March must not silently rewrite the incident report somebody filed today,
+   * which is the difference between a template and the synced block §21.9
+   * refuses.
+   *
+   * The title is offered too, and it is the half most people will change — but
+   * an empty title box under a filled body reads as though the template failed
+   * to load, and §21.7's value is that "a company's fourth incident report has
+   * the same headings as its first", which is a claim about the whole document.
+   */
+  draft: { title: string; body: string } | null;
   create: (previous: WikiPageFormState, formData: FormData) => Promise<WikiPageFormState>;
 }) {
   const t = useTranslations('wiki');
   const [state, action, pending] = useActionState(create, WIKI_PAGE_IDLE);
 
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
+  /*
+    Seeded from the draft, which is safe here for the one reason it was not safe
+    in `GroupList`: the route **keys this component on the template id**, so a
+    different draft is a different component rather than the same one holding
+    stale state. Seeding `useState` from props without that key is exactly the
+    trap slice 5 recorded.
+  */
+  const [title, setTitle] = useState(draft?.title ?? '');
+  const [body, setBody] = useState(draft?.body ?? '');
 
   const overLength = graphemeLength(body) > MAX_PAGE_BODY_LENGTH;
 

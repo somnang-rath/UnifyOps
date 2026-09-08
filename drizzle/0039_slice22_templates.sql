@@ -1,0 +1,2 @@
+ALTER TABLE "wiki_page" ADD COLUMN "is_template" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "wiki_page_template_idx" ON "wiki_page" USING btree ("space_id","title") WHERE "wiki_page"."is_template" and "wiki_page"."deleted_at" is null;

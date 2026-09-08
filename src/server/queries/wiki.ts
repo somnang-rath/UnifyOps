@@ -2,6 +2,7 @@ import 'server-only';
 
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { AnyColumn, SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { TenantDb } from '@/server/db/client';
 import {
   project,
@@ -84,6 +85,8 @@ export type PageDetail = PageSummary &
     icon: string | null;
     body: string;
     revisionNo: number;
+    /** §21.7's flag — slice 22. An ordinary page, hidden from the tree. */
+    isTemplate: boolean;
     /** The subtree key 0032's trigger maintains — what a move and a delete read. */
     rootId: string;
     createdAt: Date;
@@ -153,9 +156,37 @@ export async function fetchSpaces(tx: TenantDb): Promise<SpaceListRow[]> {
       name: wikiSpace.name,
       nameKey: wikiSpace.nameKey,
       slug: wikiSpace.slug,
+      /**
+       * How many live pages the space holds.
+       *
+       * **Written with an explicit alias and a literal outer reference**, and
+       * the version that was here until slice 22 is worth recording because it
+       * looked right and was silently, always wrong: the space list has said
+       * "No pages" for every space in the product since slice 18 shipped.
+       *
+       * It interpolated drizzle columns — `${wikiPage.spaceId} = ${wikiSpace.id}`
+       * — and **this query has no join**. That is the whole of it: drizzle
+       * qualifies a column only when the statement has more than one table in
+       * it, so with a single `.from()` both sides arrived as bare `"space_id"`
+       * and `"id"`. Inside a subquery over `wiki_page` the inner scope then wins
+       * for both, Postgres read the predicate as `wiki_page.space_id =
+       * wiki_page.id`, planned it as an uncorrelated InitPlan, and it matched
+       * nothing.
+       *
+       * **The rule is about joins, not about `sql` templates**, and it is worth
+       * stating precisely because the imprecise version sends somebody
+       * "fixing" a dozen correct queries: an interpolated column in a
+       * correlated subquery is safe wherever the outer query joins (drizzle
+       * qualifies it) and wherever the inner tables have no column of that name
+       * (nothing to shadow it) — and is a trap only where neither holds. Slice
+       * 19 met the loud member of this family, `column reference "id" is
+       * ambiguous`; this is the quiet one, which returns a plausible number.
+       * Naming the outer table literally and aliasing the inner one is correct
+       * in every case, which is why it is what this now does.
+       */
       pageCount: sql<number>`(
-        select count(*)::int from ${wikiPage}
-        where ${wikiPage.spaceId} = ${wikiSpace.id} and ${wikiPage.deletedAt} is null
+        select count(*)::int from wiki_page p
+        where p.space_id = wiki_space.id and p.deleted_at is null
       )`,
     })
     .from(wikiSpace)
@@ -187,8 +218,155 @@ export async function fetchSpaceTree(tx: TenantDb, spaceId: string): Promise<Pag
       updatedAt: wikiPage.updatedAt,
     })
     .from(wikiPage)
-    .where(and(eq(wikiPage.spaceId, spaceId), isNull(wikiPage.deletedAt)))
+    .where(
+      and(
+        eq(wikiPage.spaceId, spaceId),
+        isNull(wikiPage.deletedAt),
+        /*
+          §21.7: a template is "hidden from the tree". Filtered here rather than
+          in the sidebar, because this function is not only the sidebar — it is
+          also what `createPageIn` and `movePage` read to compute a depth and a
+          sibling position, and what the parent picker is built from. Filtering
+          in the one place means a template cannot be offered as a parent by a
+          screen that forgot, which is the same reason `fetchPage`'s
+          `includeDeleted` is off by default rather than applied by each caller.
+        */
+        eq(wikiPage.isTemplate, false),
+      ),
+    )
     .orderBy(asc(wikiPage.position), asc(wikiPage.title), asc(wikiPage.id));
+}
+
+/**
+ * A space's templates, by name (§21.7 — slice 22).
+ *
+ * **No body column, and that is the decision that shaped the picker.** The
+ * obvious version fetches the bodies too, so choosing a template can fill the
+ * textarea with no round trip — and that is fifty pages of prose in the payload
+ * of every "New page" render to use one of them. `MAX_PAGE_BODY_LENGTH` is
+ * 200,000 characters, so the worst case is not a rounding error: it is ten
+ * megabytes sent to a phone on mobile data (§2.5) to draw four links.
+ *
+ * So the picker is four links carrying a template *id*, and the chosen body is
+ * read once, on the server, by the render that shows it. That also makes
+ * `/wiki/{space}/new?template={id}` a URL somebody can send a colleague — "start
+ * an incident report" — which is what §5 asks of every other state in the
+ * product and which a `<select>` could not have been.
+ *
+ * The set is small by construction: a company has meeting notes, an incident
+ * report, a decision record and a runbook. `TEMPLATE_LIMIT` is what keeps that
+ * sentence true if somebody disagrees, and `wiki_page_template_idx` is partial
+ * on exactly these rows.
+ */
+export const TEMPLATE_LIMIT = 50;
+
+export type TemplateRow = { id: string; slug: string; title: string; icon: string | null };
+
+export async function fetchSpaceTemplates(
+  tx: TenantDb,
+  spaceId: string,
+): Promise<TemplateRow[]> {
+  return tx
+    .select({
+      id: wikiPage.id,
+      // The reading link needs a slug; the *use* link addresses the template by
+      // id, which is the reference that survives a rename — the rule `#[uuid]`
+      // and `@[uuid]` already follow.
+      slug: wikiPage.slug,
+      title: wikiPage.title,
+      icon: wikiPage.icon,
+    })
+    .from(wikiPage)
+    .where(
+      and(
+        eq(wikiPage.spaceId, spaceId),
+        isNull(wikiPage.deletedAt),
+        eq(wikiPage.isTemplate, true),
+      ),
+    )
+    .orderBy(asc(wikiPage.title), asc(wikiPage.id))
+    .limit(TEMPLATE_LIMIT);
+}
+
+/**
+ * Every live page in a space, with everything an export file has to carry
+ * (§21.8 — slice 22).
+ *
+ * **One query for the whole space, bodies included** — the opposite of
+ * `fetchSpaceTree`'s "no body column", and the exception proves that rule rather
+ * than breaking it. The tree fetches no bodies because it draws a list of links;
+ * an export *is* the bodies. There is no cheaper shape available: every page's
+ * text has to cross this boundary exactly once.
+ *
+ * Templates are included. §21.7 makes a template an ordinary page, and an export
+ * that dropped them would be a folder the company could not import back into an
+ * empty workspace with the same contents — which is §21.13's definition of done
+ * for this slice, word for word.
+ *
+ * Ordered by the tree's own order, so the archive's files come out in the order
+ * the sidebar draws them and a diff of two exports is readable.
+ */
+export type ExportPageRow = {
+  id: string;
+  parentId: string | null;
+  slug: string;
+  title: string;
+  icon: string | null;
+  body: string;
+  isTemplate: boolean;
+  updatedAt: Date;
+  ownerName: string | null;
+  verifiedAt: Date | null;
+  verifiedByName: string | null;
+  verificationExpiresAt: CalendarDate | null;
+};
+
+/**
+ * The ceiling on one export.
+ *
+ * §16's question asked of a feature that reads a whole space at once. A space of
+ * two thousand pages is not a wiki anybody is reading, and an export of one is a
+ * request that would hold a connection and a few hundred megabytes of heap to
+ * build an archive nobody can open. The refusal is named on screen; the number
+ * is far above any real space and far below anything that hurts.
+ */
+export const EXPORT_PAGE_LIMIT = 2_000;
+
+export async function fetchSpaceExport(tx: TenantDb, spaceId: string): Promise<ExportPageRow[]> {
+  const owner = alias(workspaceMember, 'owner_member');
+  const ownerUser = alias(user, 'owner_user');
+  const verifier = alias(workspaceMember, 'verifier_member');
+  const verifierUser = alias(user, 'verifier_user');
+
+  return tx
+    .select({
+      id: wikiPage.id,
+      parentId: wikiPage.parentId,
+      slug: wikiPage.slug,
+      title: wikiPage.title,
+      icon: wikiPage.icon,
+      body: wikiPage.body,
+      isTemplate: wikiPage.isTemplate,
+      updatedAt: wikiPage.updatedAt,
+      ownerName: ownerUser.name,
+      verifiedAt: wikiPage.verifiedAt,
+      verifiedByName: verifierUser.name,
+      verificationExpiresAt: wikiPage.verificationExpiresAt,
+    })
+    .from(wikiPage)
+    /*
+      Left joins on both, and slice 21's finding is why this is stated rather
+      than assumed: an inner join on an optional relation is how a page with no
+      owner silently disappears from a list that was supposed to hold every page.
+      Most pages have neither an owner nor a verifier.
+    */
+    .leftJoin(owner, eq(owner.id, wikiPage.ownerMemberId))
+    .leftJoin(ownerUser, eq(ownerUser.id, owner.userId))
+    .leftJoin(verifier, eq(verifier.id, wikiPage.verifiedByMemberId))
+    .leftJoin(verifierUser, eq(verifierUser.id, verifier.userId))
+    .where(and(eq(wikiPage.spaceId, spaceId), isNull(wikiPage.deletedAt)))
+    .orderBy(asc(wikiPage.position), asc(wikiPage.title), asc(wikiPage.id))
+    .limit(EXPORT_PAGE_LIMIT + 1);
 }
 
 /** One page by its slug within a space — the reader's own lookup. */
@@ -574,6 +752,8 @@ const pageColumns = {
   depth: wikiPage.depth,
   body: wikiPage.body,
   revisionNo: wikiPage.revisionNo,
+  /** §21.7's flag — the reader badges it, the editor is unchanged by it. */
+  isTemplate: wikiPage.isTemplate,
   rootId: wikiPage.rootId,
   createdAt: wikiPage.createdAt,
   updatedAt: wikiPage.updatedAt,
@@ -645,6 +825,18 @@ export type SpacePageRow = PageVerificationColumns & {
   /** Who wrote the current revision — a different person from the owner, usually. */
   lastEditorName: string | null;
   labelIds: string[];
+  /**
+   * §21.7's flag — slice 22.
+   *
+   * **Templates are listed here though they are hidden from the tree**, and the
+   * two are not in tension: the tree is navigation, and this view is governance.
+   * A template nobody has owned or read since 2024 is exactly what "find every
+   * unowned page" is asked to surface, and it is the page whose staleness
+   * propagates — every incident report written from it inherits its headings.
+   * The row is badged so the answer to "why is this not in the sidebar" is on
+   * screen rather than in a plan.
+   */
+  isTemplate: boolean;
 };
 
 /**
@@ -686,6 +878,7 @@ export async function fetchSpacePages(
       slug: wikiPage.slug,
       depth: wikiPage.depth,
       updatedAt: wikiPage.updatedAt,
+      isTemplate: wikiPage.isTemplate,
 
       // Aliased for the reason `pageColumns` explains: in a select-fields `sql`
       // template drizzle drops the table qualifier, and `"id"` across a join of
@@ -852,12 +1045,24 @@ export async function fetchExpiringOwnedPages(
  * Written as a `sql` fragment rather than a function, because it rides the
  * member list's existing query as one more correlated subquery — the trap slices
  * 8 through 14 each hit and the answer they each arrived at.
+ *
+ * **The interpolated outer column is correct here, and slice 22 checked rather
+ * than assumed it.** `${memberIdColumn}` looks like `fetchSpaces`'s defect above
+ * and is not: drizzle emits a column unqualified only when the statement has a
+ * single table, and `listMembers` joins `app_user`, so this reaches Postgres as
+ * `"workspace_member"."id"` and the correlation is real. Confirmed with
+ * drizzle's own `.toSQL()` on both shapes, and pinned by
+ * `__tenancy__/member-counts.test.ts`, which asserts the numbers rather than the
+ * SQL — because the numbers are the only thing that would have failed.
+ *
+ * Keeping the parameter keeps it alias-safe, which a literal `workspace_member`
+ * would not be.
  */
 export function ownedPageCountFor(memberIdColumn: SQL | AnyColumn): SQL<number> {
   return sql<number>`(
-    select count(*)::int from ${wikiPage}
-    where ${wikiPage.ownerMemberId} = ${memberIdColumn}
-      and ${wikiPage.deletedAt} is null
+    select count(*)::int from wiki_page p
+    where p.owner_member_id = ${memberIdColumn}
+      and p.deleted_at is null
   )`;
 }
 

@@ -655,3 +655,28 @@ export function verificationExpiry(
 ): CalendarDate | null {
   return days === null ? null : addDays(from, days);
 }
+
+/* ------------------------------------------------------------------------- */
+/* Templates, export and import (§21.7, §21.8 — slice 22)                    */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The ceiling on one import upload.
+ *
+ * **In `src/lib` because both sides run it**, which is this directory's whole
+ * rule: the panel names the limit before somebody spends a minute uploading, and
+ * `importSpace` enforces it on the bytes. One number, so the sentence on screen
+ * cannot promise something the server refuses.
+ *
+ * It sits *under* `next.config.ts`'s `serverActions.bodySizeLimit` on purpose —
+ * see the comment there. The refusal a person meets has to be ours, with words
+ * on it, rather than Next's 413.
+ *
+ * 5 MiB is a few thousand pages of Markdown. It is five times smaller than
+ * slice 8's attachment cap because prose is not a photograph, and §2.5's market
+ * is a phone where data costs money.
+ */
+export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+
+/** How many files one import may carry. A folder, not a filesystem. */
+export const MAX_IMPORT_FILES = 500;

@@ -7,10 +7,11 @@ import { wikiPage, wikiSpace } from '@/server/db/schema';
 import { isArchived, loadProject, projectResource, type ProjectRow } from './project-access';
 
 /**
- * The three questions every wiki mutation asks before it does anything (§20.5).
+ * The questions every wiki mutation asks before it does anything (§20.5, §21.6).
  *
- * *Which space is this*, *may this person read it*, and *may this person write
- * in it*. Its own module for the reason `project-access.ts` is one: the wiki
+ * *Which space is this*, *may this person read it*, *may this person write in
+ * it*, and — since slice 21 — *may this person comment in it*. Its own module
+ * for the reason `project-access.ts` is one: the wiki
  * service, the attachment service and the search service all need the same
  * answers, and importing one service from another would put a cycle between the
  * thing that creates a page and the thing that stores its images.
@@ -25,6 +26,12 @@ import { isArchived, loadProject, projectResource, type ProjectRow } from './pro
  * **Reading needed no §10 row and writing needed two** (§20.5). That asymmetry
  * is the shape of this file: `canReadSpace` composes rows that already existed,
  * and `canWriteSpace` calls the two actions slice 18 added.
+ *
+ * **Commenting needed none either** (§21.6), and it is not a third answer but the
+ * first one again: "anyone who can read the space may comment in it." What that
+ * costs is one clause read cannot need — a view-as session — which
+ * `canCommentInSpace` states by hand because there is no §10 action here for the
+ * policy module to refuse on its own.
  */
 
 export type SpaceRow = {
@@ -183,6 +190,74 @@ export function canWriteSpace(actor: Actor, context: SpaceContext): boolean {
     context.project !== null &&
     can(actor, 'wiki.write_project_space', projectResource(context.project))
   );
+}
+
+/**
+ * May this person **comment** in the space (§21.6)?
+ *
+ * "Anyone who can read the space may comment in it, which for a project space
+ * includes a Guest who can see the project — deliberately, because the whole
+ * value of a comment on documentation comes from the person who found it wrong,
+ * and that is disproportionately the newest person in the room."
+ *
+ * So it is `canReadSpace` plus one thing that read does not need, and the extra
+ * clause is the interesting half. **A view-as session is refused here by hand**,
+ * where every other mutation in the wiki gets that refusal for free: `can()`
+ * denies every action carrying `mutation: true` while `readOnly` is set (§7.13),
+ * and there is no §10 action to ask about here — §21.6 says so in as many words
+ * ("§10's `comment.create` and `comment.delete_others` … need **no new row**").
+ * A rule that is not an action does not reach the module that enforces the
+ * read-only session, so this states it.
+ *
+ * The database refuses underneath either way — every tenant table's `INSERT`
+ * policy carries `and not tenancy.is_read_only()` — but a service that leaves it
+ * to the policy reports a Postgres error where §11 asks for a sentence.
+ */
+export function canCommentInSpace(actor: Actor, context: SpaceContext): boolean {
+  return !actor.readOnly && canReadSpace(actor, context);
+}
+
+/**
+ * May this person delete **somebody else's** comment here (§10, §21.6)?
+ *
+ * No new row — the sixteenth time that decision has gone the same way. A project
+ * space asks `comment.delete_others`, which is the row that already governs the
+ * same act on that project's work items. The company space has no project to ask
+ * about, so it asks `wiki.write_company_space`, which is the row §20.5 added for
+ * the one container that has no project — and which resolves to the same
+ * Admin-and-above set that "Delete others' comments" gives a project Lead.
+ *
+ * Both are mutations, so a view-as session is refused by the policy module here
+ * without this function saying anything, unlike `canCommentInSpace` above.
+ */
+export function canModerateSpace(actor: Actor, context: SpaceContext): boolean {
+  if (context.space.workspaceId !== actor.workspaceId) return false;
+
+  if (context.space.kind === 'company') return can(actor, 'wiki.write_company_space');
+
+  return (
+    context.project !== null &&
+    can(actor, 'comment.delete_others', projectResource(context.project))
+  );
+}
+
+/**
+ * The refusal a comment should report, or null when it may proceed.
+ *
+ * `checkSpaceWrite`'s shape and the same three outcomes, differing only in the
+ * last question — which is the whole of §21.6's "one thing is genuinely new".
+ * A separate function rather than a flag on that one, so a call site cannot ask
+ * the write question and get the comment answer by passing the wrong boolean.
+ */
+export function checkSpaceComment(actor: Actor, context: SpaceContext): SpaceProblem | null {
+  if (!canReadSpace(actor, context)) return 'not_found';
+
+  // §4's archived rule names comments explicitly — "no new items, no edits, no
+  // state changes, no comments" — and it reaches the wiki through the project a
+  // space documents, exactly as it does for a write.
+  if (context.project !== null && isArchived(context.project)) return 'archived';
+
+  return canCommentInSpace(actor, context) ? null : 'forbidden';
 }
 
 /**

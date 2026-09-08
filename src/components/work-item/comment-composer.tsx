@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
 import { cn } from '@/lib/cn';
 import { COMMENT_IDLE, type CommentFormState } from '@/lib/form-state';
+import { filesContextOf, type ThreadContext } from './thread-context';
 import { activeMentionQuery, applyMention } from '@/lib/mentions';
 import type { MentionablePerson } from '@/server/services/comments';
 import { UploadQueue } from './upload-queue';
 import { filesFrom, useUploads } from './use-uploads';
-import { postCommentAction } from '@/app/[locale]/[workspaceSlug]/projects/[projectSlug]/actions';
 
 /**
  * The comment box, and the `@` picker inside it (§7.7).
@@ -50,14 +50,41 @@ import { postCommentAction } from '@/app/[locale]/[workspaceSlug]/projects/[proj
  * refused by name.
  */
 
-export type ComposerContext = {
-  workspaceSlug: string;
-  projectSlug: string;
-  locale: string;
-  workItemId: string;
-  /** The `142` of `ENG-142` — what the action revalidates. */
-  number: number;
-};
+/**
+ * The thread's contracts live in `thread-context.ts`, not here.
+ *
+ * A `'use client'` module's types cross the server boundary freely and its
+ * *functions* do not, and `comment-thread.tsx` is a server component that needs
+ * `filesContextOf`. Re-exported so the five attachment components that have
+ * imported `ComposerContext` from this file since slice 8 keep working.
+ */
+export type { ComposerContext, ThreadContext, ThreadSubject } from './thread-context';
+
+/**
+ * The hidden fields that tell an action which thread it is acting on.
+ *
+ * A `switch` on the union, so a third subject is a compile error here rather
+ * than a form that posts a field nothing reads — which fails as a `not_found`
+ * from a service, several layers away from the cause.
+ */
+export function SubjectFields({ context }: { context: ThreadContext }) {
+  return (
+    <>
+      <input type="hidden" name="workspaceSlug" value={context.workspaceSlug} />
+      <input type="hidden" name="locale" value={context.locale} />
+      {context.subject.kind === 'work_item' ? (
+        <>
+          <input type="hidden" name="projectSlug" value={context.subject.projectSlug} />
+          <input type="hidden" name="workItemId" value={context.subject.workItemId} />
+          <input type="hidden" name="number" value={context.subject.number} />
+        </>
+      ) : (
+        <input type="hidden" name="pageId" value={context.subject.pageId} />
+      )}
+    </>
+  );
+}
+
 
 /** How many people the picker shows at once. Enough to choose from, few enough
  * that the list does not cover the comment being replied to. */
@@ -79,19 +106,28 @@ export function CommentComposer({
   context,
   people,
 }: {
-  context: ComposerContext;
+  context: ThreadContext;
   people: readonly MentionablePerson[];
 }) {
   const t = useTranslations();
   const [state, submit, pending] = useActionState<CommentFormState, FormData>(
-    postCommentAction,
+    context.post,
     COMMENT_IDLE,
   );
 
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState<string | null>(null);
   const [highlighted, setHighlighted] = useState(0);
-  const uploads = useUploads(context);
+  const files = filesContextOf(context);
+  /**
+   * Called unconditionally with a possibly-null item, because a hook may not be.
+   * The null case is inert: `add` refuses, `readyIds` is empty and `busy` is
+   * false, so every control below that depends on it renders nothing.
+   */
+  const uploads = useUploads({
+    workspaceSlug: context.workspaceSlug,
+    workItemId: files?.workItemId ?? null,
+  });
   const picker = useRef<HTMLInputElement>(null);
 
   /**
@@ -210,11 +246,7 @@ export function CommentComposer({
 
   return (
     <form ref={form} action={submit} className="space-y-2">
-      <input type="hidden" name="workspaceSlug" value={context.workspaceSlug} />
-      <input type="hidden" name="projectSlug" value={context.projectSlug} />
-      <input type="hidden" name="locale" value={context.locale} />
-      <input type="hidden" name="workItemId" value={context.workItemId} />
-      <input type="hidden" name="number" value={context.number} />
+      <SubjectFields context={context} />
 
       {/* The files whose bytes have landed. The server re-checks that each one
           is this member's, on this item, and still pending — so these are a
@@ -250,19 +282,31 @@ export function CommentComposer({
           // a screenshot pasted here cannot be stolen by another panel — and
           // pasting ordinary text is untouched, because the handler only acts
           // when the clipboard actually carried a file.
-          onPaste={(event) => {
-            const pasted = filesFrom(event.clipboardData);
-            if (pasted.length === 0) return;
-            event.preventDefault();
-            uploads.add(pasted);
-          }}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => {
-            const dropped = filesFrom(event.dataTransfer);
-            if (dropped.length === 0) return;
-            event.preventDefault();
-            uploads.add(dropped);
-          }}
+          //
+          // **Not attached at all on a page**, so a pasted screenshot falls
+          // through to the browser's own paste rather than being swallowed by a
+          // handler that would queue an upload nothing can complete.
+          onPaste={
+            files === null
+              ? undefined
+              : (event) => {
+                  const pasted = filesFrom(event.clipboardData);
+                  if (pasted.length === 0) return;
+                  event.preventDefault();
+                  uploads.add(pasted);
+                }
+          }
+          onDragOver={files === null ? undefined : (event) => event.preventDefault()}
+          onDrop={
+            files === null
+              ? undefined
+              : (event) => {
+                  const dropped = filesFrom(event.dataTransfer);
+                  if (dropped.length === 0) return;
+                  event.preventDefault();
+                  uploads.add(dropped);
+                }
+          }
           // The ARIA combobox pattern, applied to the field rather than to a
           // separate control, so focus never leaves the textarea.
           role="combobox"
@@ -333,28 +377,42 @@ export function CommentComposer({
 
       <UploadQueue files={uploads.files} onRemove={uploads.remove} />
 
-      <div className="flex items-center justify-between gap-2">
-        {/* The keyboard and touch path to the same thing paste and drop do.
-            Without it, attaching a file to a comment would be mouse-only —
-            which §11's mouse-free loop and §15-6's 390px pass both refuse. */}
-        <Button size="sm" variant="ghost" onClick={() => picker.current?.click()}>
-          <Paperclip aria-hidden className="h-3.5 w-3.5" />
-          {t('attachments.add')}
-        </Button>
+      <div className="flex items-center justify-end gap-2">
+        {files !== null && (
+          <>
+            {/* The keyboard and touch path to the same thing paste and drop do.
+                Without it, attaching a file to a comment would be mouse-only —
+                which §11's mouse-free loop and §15-6's 390px pass both refuse.
 
-        <input
-          ref={picker}
-          type="file"
-          multiple
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden
-          onChange={(event) => {
-            uploads.add([...(event.target.files ?? [])]);
-            // Cleared, so picking the same file twice in a row still fires.
-            event.target.value = '';
-          }}
-        />
+                Absent rather than disabled on a page: a disabled control invites
+                somebody to go looking for the permission that would enable it,
+                and there is none — the ticket route has no page branch at all.
+                That is `custom-fields-editor.tsx`'s call for the kind select. */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="mr-auto"
+              onClick={() => picker.current?.click()}
+            >
+              <Paperclip aria-hidden className="h-3.5 w-3.5" />
+              {t('attachments.add')}
+            </Button>
+
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(event) => {
+                uploads.add([...(event.target.files ?? [])]);
+                // Cleared, so picking the same file twice in a row still fires.
+                event.target.value = '';
+              }}
+            />
+          </>
+        )}
 
         <Button
           type="submit"

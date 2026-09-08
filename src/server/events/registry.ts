@@ -1,5 +1,5 @@
 import type { NotificationKind } from '@/lib/notification-kinds';
-import type { DomainEvent, EventOf, EventType } from './types';
+import type { CommentSubject, DomainEvent, EventOf, EventType } from './types';
 
 /**
  * How an audited event becomes an audit row (§18-11).
@@ -72,8 +72,29 @@ export type NotifySubject =
 /** The item branch, which is thirty of the thirty-one call sites. */
 export const onWorkItem = (id: string): NotifySubject => ({ kind: 'work_item', id });
 
-/** The page branch — §20.6's mention in a page body. */
+/** The page branch — §20.6's mention in a body, and §21.6's comment on one. */
 export const onWikiPage = (id: string): NotifySubject => ({ kind: 'wiki_page', id });
+
+/**
+ * A comment's subject, as a notification's (§21.6 — slice 21).
+ *
+ * Two unions that look alike and are not the same thing. `CommentSubject` carries
+ * the denormalized `project_id` a §10 check needs; `NotifySubject` carries only
+ * what a deep link needs. Merging them would put a project id into every
+ * notification draft in the product in order to save this function.
+ *
+ * A `switch` rather than a ternary, so a third comment subject is a compile
+ * error here rather than a notification that silently goes nowhere — the same
+ * construction `subjectHref` uses in the inbox.
+ */
+function notifySubjectOf(subject: CommentSubject): NotifySubject {
+  switch (subject.kind) {
+    case 'work_item':
+      return onWorkItem(subject.workItemId);
+    case 'wiki_page':
+      return onWikiPage(subject.wikiPageId);
+  }
+}
 
 export type NotifyDraft = {
   kind: NotificationKind;
@@ -83,8 +104,13 @@ export type NotifyDraft = {
   subject: NotifySubject;
   /**
    * The comment to deep-link to. §7.8: the click lands on the comment, not just
-   * the item. Always null for a page subject: a page has no comments in v1, and
-   * §20.16 leaves open whether it ever gets them.
+   * the item.
+   *
+   * **No longer null for every page subject.** §21.6 answered §20.16's open
+   * question and a page has a thread now, so this is set on both branches. It
+   * stays null for a page *mention*, which is a name in a body rather than in a
+   * conversation. Dropping 0032's `notification_comment_with_item` CHECK is the
+   * database half of the same sentence — see 0038.
    */
   commentId: string | null;
   /** Ids and values for the renderer. Never a name and never a sentence (§13). */
@@ -873,6 +899,11 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
    * `commentId` on both, because §7.8 is specific — the click lands on the
    * comment, not merely on the item that holds it.
    */
+  // Two drafts and one subject, and since slice 21 the subject is whichever
+  // thing the comment was written on. `notifySubjectOf` is the only branch this
+  // entry needs, which is the payoff §20.6 was after when it made
+  // `NotifySubject` a union rather than a nullable field: page comments cost
+  // this entry one helper call rather than a second entry beside it.
   'comment.created': {
     audit: false,
     activity: noActivity,
@@ -880,14 +911,14 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       {
         kind: 'mention',
         recipientMemberIds: e.mentioned,
-        subject: onWorkItem(e.workItemId),
+        subject: notifySubjectOf(e.subject),
         commentId: e.commentId,
         data: {},
       },
       {
         kind: 'comment',
-        recipientMemberIds: othersAmong(e.assigneeIds, e.mentioned),
-        subject: onWorkItem(e.workItemId),
+        recipientMemberIds: othersAmong(e.subscriberIds, e.mentioned),
+        subject: notifySubjectOf(e.subject),
         commentId: e.commentId,
         data: {},
       },
@@ -908,7 +939,13 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
       // Admin-visible and never expires; copying the text of a comment into it
       // would make the log a second, permanent home for something a person may
       // have deleted precisely because it should not have been written.
-      data: (e) => ({ workItemId: e.workItemId, projectId: e.projectId, byAuthor: e.byAuthor }),
+      //
+      // The subject is spread rather than flattened into two nullable keys, so
+      // the row says which *kind* of thing the comment was on. An Owner reading
+      // "who removed the client's complaint" a year later gets "on this item" or
+      // "on this page" from the row itself, rather than having to know that one
+      // of two columns being null was how the product recorded the difference.
+      data: (e) => ({ subject: e.subject, byAuthor: e.byAuthor }),
     },
     activity: noActivity,
     notify: noNotify,
@@ -1188,6 +1225,49 @@ export const eventRegistry: { [T in EventType]: RegistryEntry<T> } = {
    * person who linked it. The feed line is where somebody scanning the item
    * finds it.
    */
+  /**
+   * §21.7's flag, audited for slice 19's reason (see the event's own comment):
+   * it changes no body, so it writes no revision, and the sidebar losing a page
+   * is a change somebody will ask about.
+   */
+  'wiki_page.template_changed': {
+    audit: {
+      subjectType: 'wiki_page',
+      subject: (e) => e.pageId,
+      data: (e) => ({ spaceId: e.spaceId, title: e.title, isTemplate: e.isTemplate }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
+  /**
+   * §21.8's two, both audited on the *space* and neither notified.
+   *
+   * The export is the one audited read in the product, and the event's own
+   * comment carries the argument. The import is an ordinary bulk mutation whose
+   * pages emit their own `wiki_page.created` — what this adds is that they
+   * arrived together, from a file, on purpose.
+   */
+  'wiki_space.exported': {
+    audit: {
+      subjectType: 'wiki_space',
+      subject: (e) => e.spaceId,
+      data: (e) => ({ pages: e.pages }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
+  'wiki_space.imported': {
+    audit: {
+      subjectType: 'wiki_space',
+      subject: (e) => e.spaceId,
+      data: (e) => ({ created: e.created, skipped: e.skipped }),
+    },
+    activity: noActivity,
+    notify: noNotify,
+  },
+
   'wiki_page.linked': {
     audit: false,
     activity: (e) => [onItem(e, { pageId: e.pageId })],

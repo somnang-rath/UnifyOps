@@ -142,3 +142,47 @@ export type WikiPageFormState = {
 };
 
 export const WIKI_PAGE_IDLE: WikiPageFormState = {};
+
+/**
+ * A space export (§21.8 — slice 22).
+ *
+ * **The archive comes back in the action's own result**, base64, because §21's
+ * impact table says "§8's five exceptions stay five" and a download endpoint
+ * would have been a sixth. The component turns it into a Blob and saves it.
+ *
+ * `at` is `postedAt` and `savedAt` under a third name and for the identical
+ * reason: two exports in a row must look different, or the second one produces
+ * an identical state object and no re-render — which here is not a cosmetic
+ * failure but a download that silently does not happen.
+ */
+export type SpaceExportState = {
+  error?: string;
+  filename?: string;
+  base64?: string;
+  pages?: number;
+  at?: number;
+};
+
+export const SPACE_EXPORT_IDLE: SpaceExportState = {};
+
+/**
+ * A space import (§21.8).
+ *
+ * `created` and `skipped` rather than a boolean, because §21.8's importer takes
+ * "Markdown and a zip of it" from anywhere — so some files will not be pages
+ * this product can hold, and §7.10's invitation rule applies: "part of a batch
+ * fails → **no rollback**; the result lists sent and not-sent". A file nested
+ * five deep must not throw away the ninety-nine that were fine.
+ *
+ * `reason` is a **key**, never a sentence, which is `form-state.ts`'s standing
+ * rule and matters here because the list is the whole of what the screen says
+ * went wrong.
+ */
+export type SpaceImportState = {
+  error?: string;
+  created?: number;
+  skipped?: { path: string; reason: string }[];
+  at?: number;
+};
+
+export const SPACE_IMPORT_IDLE: SpaceImportState = {};

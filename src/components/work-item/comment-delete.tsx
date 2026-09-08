@@ -3,8 +3,8 @@
 import { useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ROW_IDLE, type RowActionState } from '@/lib/form-state';
-import type { ComposerContext } from './comment-composer';
-import { deleteCommentAction } from '@/app/[locale]/[workspaceSlug]/projects/[projectSlug]/actions';
+import { SubjectFields } from './comment-composer';
+import type { ThreadContext } from './thread-context';
 
 /**
  * Remove a comment — the author retracting their own, or §10's Lead power over
@@ -26,23 +26,20 @@ export function DeleteComment({
   commentId,
   author,
 }: {
-  context: ComposerContext;
+  context: ThreadContext;
   commentId: string;
   /** Whose comment this is — the icon-only control needs a real name (§11). */
   author: string;
 }) {
   const t = useTranslations();
   const [state, submit, pending] = useActionState<RowActionState, FormData>(
-    deleteCommentAction,
+    context.remove,
     ROW_IDLE,
   );
 
   return (
     <form action={submit} className="inline-flex items-center gap-2">
-      <input type="hidden" name="workspaceSlug" value={context.workspaceSlug} />
-      <input type="hidden" name="projectSlug" value={context.projectSlug} />
-      <input type="hidden" name="locale" value={context.locale} />
-      <input type="hidden" name="number" value={context.number} />
+      <SubjectFields context={context} />
       <input type="hidden" name="commentId" value={commentId} />
 
       <button

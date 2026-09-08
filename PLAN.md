@@ -49,8 +49,9 @@ https://claude.ai/code/artifact/df48ef68-f940-4e47-9184-c1bbe14e3fa9
 > every §18 resolution recorded since — #5 and #6 (2026-09-03) and #10 (2026-09-04) — are in `PLAN.en.md`
 > and `PLAN.km.md` but not in the artifact. It is a third surface for the same content and has to be
 > republished by hand; until that happens, **the Markdown is the plan and the artifact is a stale copy.**
-> §20 — the wiki and notes, now built in full — is not in it either.
-> §២០ វិគី និងកំណត់ចំណាំ ក៏មិនមានក្នុងវាដែរ។
+> §20 — the wiki and notes, now built in full — is not in it either, and neither is §21, whose slices 19,
+> 20 and 21 are built.
+> §២០ វិគី និងកំណត់ចំណាំ ក៏មិនមានក្នុងវាដែរ ហើយ §២១ ក៏អត់ដែរ ដែលជំហានទី ១៩ ២០ និង ២១ របស់វាសាងសង់រួច។
 > **យឺតជាង Markdown ចាប់ពីដំណាក់កាល ៣ ហើយឥឡូវយឺតច្រើន។** ជួរផ្ទៀងផ្ទាត់ក្នុង §៨ លទ្ធផល ២៩–៣១ ក្នុង §១៧
 > និងរាល់ការសម្រេចក្នុង §១៨ តាំងពីពេលនោះ — លេខ ៥ និង ៦ (០៣-០៩-២០២៦) និងលេខ ១០ (០៤-០៩-២០២៦) — មានក្នុង
 > `PLAN.en.md` និង `PLAN.km.md` តែមិនមានក្នុងឯកសារគេហទំព័រទេ។ **Markdown ជាផែនការពិត ឯកសារគេហទំព័រជាច្បាប់ចម្លងចាស់។**

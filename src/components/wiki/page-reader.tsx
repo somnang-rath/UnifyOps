@@ -1,5 +1,6 @@
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { DocumentBody } from '@/components/ui/document-body';
+import { PagePrint } from '@/components/wiki/page-print';
 import { Link } from '@/i18n/navigation';
 import { documentText } from '@/lib/documents';
 import { hasKhmer } from '@/lib/search';
@@ -88,6 +89,27 @@ export async function PageReader({
             >
               {t('reader.edit')}
             </Link>
+          )}
+
+          {/*
+            §21.8's per-page export, beside History and Edit rather than in the
+            right rail: it is a thing to do *with this document*, which is what
+            the line under the title is for, and the rail is for properties of
+            it. Offered to every reader, because §21.8's whole argument is that
+            leaving with your own documents must be easy.
+          */}
+          <PagePrint />
+
+          {/*
+            §21.7, and the reason it is stated on the reader at all: a template
+            is an ordinary page that is missing from the sidebar, so a reader who
+            arrived by link and cannot find it in the tree would otherwise think
+            the tree was broken.
+          */}
+          {page.isTemplate && (
+            <span className="rounded-xs bg-surface-sunken px-1.5 py-0.5 text-text-muted">
+              {t('template.badge')}
+            </span>
           )}
         </div>
       </header>

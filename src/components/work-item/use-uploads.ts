@@ -53,7 +53,17 @@ const KEYS: Record<string, string> = {
 const problemKey = (value: unknown) =>
   (typeof value === 'string' && KEYS[value]) || 'attachments.errors.uploadFailed';
 
-export function useUploads(context: { workspaceSlug: string; workItemId: string }) {
+/**
+ * `workItemId` is nullable since slice 21, and null means *this subject cannot
+ * hold files*.
+ *
+ * A page comment is the only caller that passes null today, and it does so
+ * because `createUploadTicket` has no page branch — a slice-18 gap, recorded in
+ * `pageCommentThreadIn`. Nullable here rather than a second hook, because a hook
+ * cannot be called conditionally and the composer needs one code path either
+ * way: `add` refuses, so nothing ever reaches the ticket route.
+ */
+export function useUploads(context: { workspaceSlug: string; workItemId: string | null }) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const counter = useRef(0);
 
@@ -77,6 +87,14 @@ export function useUploads(context: { workspaceSlug: string; workItemId: string 
 
       if (problem) {
         patch(localId, { state: 'failed', problem: problemKey(problem) });
+        return;
+      }
+
+      // Refused before the round trip rather than after it. The route would
+      // reject a null item anyway; failing here keeps the reason a message key
+      // instead of whatever a 400 body happened to contain.
+      if (context.workItemId === null) {
+        patch(localId, { state: 'failed', problem: 'attachments.errors.uploadFailed' });
         return;
       }
 

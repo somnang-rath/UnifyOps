@@ -15,6 +15,8 @@ import {
   outboxMessage,
   project,
   user,
+  wikiPage,
+  wikiSpace,
   workItem,
   workspace,
   workspaceMember,
@@ -137,8 +139,30 @@ export async function deliverNotification(job: NotifyJob): Promise<void> {
     return;
   }
 
-  const context = await loadContext(message.workspaceId, message.id, message.workItemId);
-  if (!context) return;
+  const context = await loadContext(message.workspaceId, message.id);
+  if (!context) {
+    /**
+     * Nothing to say, and nothing more to try (§21.6).
+     *
+     * The message is marked delivered rather than left alone, which is the half
+     * of this that slice 18 got wrong: a bare `return` leaves the row undelivered
+     * and `drainOutbox` re-enqueues it on the next sweep, five seconds later,
+     * indefinitely. That is a stuck row rather than a lost notification — worse,
+     * because it occupies one of the drain's slots for ever and is invisible
+     * unless somebody reads the outbox by hand.
+     *
+     * A context that will not resolve resolves no better on the tenth attempt:
+     * the subject was deleted, or is of a kind this build does not know. Both are
+     * terminal, and `delivery_error` records which message it was.
+     */
+    await markDelivered(
+      message.workspaceId,
+      message.id,
+      'no subject: the item or page it names is gone',
+      message.recipientUserIds,
+    );
+    return;
+  }
 
   const failures: string[] = [];
 
@@ -152,6 +176,7 @@ export async function deliverNotification(job: NotifyJob): Promise<void> {
           kind: message.kind,
           eventType: message.eventType,
           workItemId: message.workItemId,
+          wikiPageId: message.wikiPageId,
           commentId: message.commentId,
           actorUserId: message.actorUserId,
         },
@@ -182,14 +207,31 @@ export async function deliverNotification(job: NotifyJob): Promise<void> {
   }
 }
 
+/**
+ * What a notification is about, as the worker needs it (§20.6, §21.6).
+ *
+ * `queries/notifications.ts` reconstructs the same union for the inbox and this
+ * reconstructs it for the email, from the same two nullable columns. Two
+ * reconstructions rather than one shared helper, because they read from
+ * different connections in different scopes — the inbox reads as the recipient
+ * under RLS, and this reads on the platform connection for the whole message at
+ * once — and folding them together would mean one of the two lying about which
+ * scope it ran in.
+ *
+ * `key` is what the subject line names: `ENG-142` for an item, the page's own
+ * title for a page — because a page has no short identifier and its title is the
+ * thing a reader recognises. `title` is the line under the heading, which is the
+ * item's title or the space the page lives in.
+ */
+type MessageSubject =
+  | { kind: 'work_item'; key: string; title: string; projectSlug: string; number: number }
+  | { kind: 'wiki_page'; key: string; title: string; spaceSlug: string; pageSlug: string };
+
 type MessageContext = {
   workspaceName: string;
   workspaceSlug: string;
   actorName: string;
-  itemKey: string;
-  itemTitle: string;
-  itemNumber: number;
-  projectSlug: string;
+  subject: MessageSubject;
 };
 
 /**
@@ -205,8 +247,26 @@ type MessageContext = {
 async function loadContext(
   workspaceId: string,
   outboxMessageId: string,
-  workItemId: string | null,
 ): Promise<MessageContext | null> {
+  /**
+   * **Both joins are `left`, and slice 21 is where that stopped being cosmetic.**
+   *
+   * This was an `innerJoin` on `work_item` with a comment beside it reading
+   * "every notifying event is about a work item". §20.6 made that false one slice
+   * earlier: a mention in a page body writes an outbox row whose `work_item_id`
+   * is null, the inner join then matched nothing, this function returned null,
+   * and `deliverNotification` returned **without marking the message delivered**
+   * — so the row stayed at the head of `drainOutbox`'s partial index and was
+   * re-enqueued every five seconds, for ever, while nobody's inbox ever showed it.
+   *
+   * The inbox query had already been converted to left joins for exactly this
+   * reason and says so in its own comment; the worker was missed. It is the third
+   * time in this repo that a subject union has had to be chased through a join
+   * (§20.6's `notification` inner join, slice 18's `SEARCH_SECTIONS` payload,
+   * this), and the pattern is worth stating: **widening a union is not done until
+   * every reader of the narrow field has been visited**, and the compiler cannot
+   * find them because a nullable column type-checks either way.
+   */
   const [row] = await platformDb()
     .select({
       workspaceName: workspace.name,
@@ -216,16 +276,29 @@ async function loadContext(
       itemNumber: workItem.number,
       projectKey: project.key,
       projectSlug: project.slug,
+      pageTitle: wikiPage.title,
+      pageSlug: wikiPage.slug,
+      spaceSlug: wikiSpace.slug,
+      spaceName: wikiSpace.name,
     })
     .from(outboxMessage)
     .innerJoin(workspace, eq(workspace.id, outboxMessage.workspaceId))
     .leftJoin(sql`app_user as actor`, sql`actor.id = ${outboxMessage.actorUserId}`)
-    .innerJoin(workItem, eq(workItem.id, outboxMessage.workItemId))
-    .innerJoin(project, eq(project.id, workItem.projectId))
+    .leftJoin(workItem, eq(workItem.id, outboxMessage.workItemId))
+    .leftJoin(project, eq(project.id, workItem.projectId))
+    .leftJoin(wikiPage, eq(wikiPage.id, outboxMessage.wikiPageId))
+    .leftJoin(wikiSpace, eq(wikiSpace.id, wikiPage.spaceId))
     .where(eq(outboxMessage.id, outboxMessageId))
     .limit(1);
 
-  if (!row || workItemId === null) return null;
+  if (!row) return null;
+
+  const subject = subjectOf(row);
+  // A subject whose parent went away between the mutation and this read. Not an
+  // error: the message is marked delivered by the caller either way, because a
+  // notification about a deleted item is a notification nobody wants and one
+  // that can never succeed.
+  if (subject === null) return null;
 
   return {
     workspaceName: row.workspaceName,
@@ -233,10 +306,7 @@ async function loadContext(
     // A deleted account still caused the event. §7.12 keeps history attributed,
     // and an email that says "Someone mentioned you" is better than none.
     actorName: row.actorName ?? '',
-    itemKey: `${row.projectKey}-${row.itemNumber}`,
-    itemTitle: row.itemTitle,
-    itemNumber: row.itemNumber,
-    projectSlug: row.projectSlug,
+    subject,
   };
 }
 
@@ -248,6 +318,7 @@ async function deliverToOne(input: {
     kind: NotificationKind;
     eventType: string;
     workItemId: string | null;
+    wikiPageId: string | null;
     commentId: string | null;
     actorUserId: string | null;
   };
@@ -255,12 +326,26 @@ async function deliverToOne(input: {
 }): Promise<void> {
   const { message, context } = input;
 
-  // Every notifying event is about a work item — the registry's `notify` drafts
-  // all carry one — so this is a type narrowing rather than a real branch. The
-  // column is nullable on `outbox_message` because the outbox is the general
-  // seam §8 describes and a later event may not be item-shaped.
-  const workItemId = message.workItemId;
-  if (workItemId === null) return;
+  /**
+   * The narrowing that used to be a silent drop (§20.6, §21.6).
+   *
+   * This read `if (message.workItemId === null) return;` — correct while every
+   * notifying draft was about an item, and a silent discard of every page
+   * notification from the moment §20.6 made that untrue. `loadContext` above has
+   * already resolved which subject this is against the *rows*, so the columns
+   * are taken from it rather than re-tested here: one place decides, and the
+   * insert below follows.
+   */
+  const subjectColumns =
+    context.subject.kind === 'work_item'
+      ? { workItemId: message.workItemId, wikiPageId: null }
+      : { workItemId: null, wikiPageId: message.wikiPageId };
+
+  // `loadContext` resolved a subject, so the matching column is set. Refused
+  // rather than asserted, for `claimPending`'s reason: a `!` would keep compiling
+  // if either constraint were relaxed, and a notification row with no subject
+  // fails `notification_one_subject` in a background worker.
+  if (subjectColumns.workItemId === null && subjectColumns.wikiPageId === null) return;
 
   const outcome = await withActor(
     {
@@ -286,7 +371,7 @@ async function deliverToOne(input: {
             kind: message.kind,
             eventType: message.eventType,
             actorUserId: message.actorUserId,
-            workItemId,
+            ...subjectColumns,
             commentId: message.commentId,
             outboxMessageId: message.id,
             data: {},
@@ -312,14 +397,14 @@ async function deliverToOne(input: {
     locale: outcome.recipient.locale,
     kind: message.kind === 'digest' ? 'item_activity' : message.kind,
     actorName: context.actorName,
-    itemKey: context.itemKey,
-    itemTitle: context.itemTitle,
+    subjectKind: context.subject.kind,
+    subjectKey: context.subject.key,
+    subjectTitle: context.subject.title,
     workspaceName: context.workspaceName,
-    url: itemUrl({
+    url: subjectUrl({
       locale: outcome.recipient.locale,
       workspaceSlug: context.workspaceSlug,
-      projectSlug: context.projectSlug,
-      number: context.itemNumber,
+      subject: context.subject,
       commentId: message.commentId,
     }),
   });
@@ -432,24 +517,87 @@ async function markDelivered(
 }
 
 /**
- * The deep link §7.8 asks for: the item, and the specific comment when there is
- * one.
+ * The two nullable column pairs, resolved into one subject (§20.6, §21.6).
+ *
+ * Returns null when neither branch resolves — the item or page was deleted
+ * between the mutation and this read, which is ordinary rather than an error and
+ * is what the caller turns into a delivered-with-a-reason.
+ *
+ * A page's `key` is its **title**, because a page has no `ENG-142` and its title
+ * is what a reader recognises in a subject line. Its `title` is the space, so the
+ * line under the heading answers "which handbook is this" — the same job an
+ * item's title does for its key.
+ */
+function subjectOf(row: {
+  itemTitle: string | null;
+  itemNumber: number | null;
+  projectKey: string | null;
+  projectSlug: string | null;
+  pageTitle: string | null;
+  pageSlug: string | null;
+  spaceSlug: string | null;
+  spaceName: string | null;
+}): MessageSubject | null {
+  if (
+    row.itemTitle !== null &&
+    row.itemNumber !== null &&
+    row.projectKey !== null &&
+    row.projectSlug !== null
+  ) {
+    return {
+      kind: 'work_item',
+      key: `${row.projectKey}-${row.itemNumber}`,
+      title: row.itemTitle,
+      projectSlug: row.projectSlug,
+      number: row.itemNumber,
+    };
+  }
+
+  if (row.pageTitle !== null && row.pageSlug !== null && row.spaceSlug !== null) {
+    return {
+      kind: 'wiki_page',
+      key: row.pageTitle,
+      title: row.spaceName ?? '',
+      spaceSlug: row.spaceSlug,
+      pageSlug: row.pageSlug,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The deep link §7.8 asks for: the subject, and the specific comment when there
+ * is one.
  *
  * Locale-prefixed, because `localePrefix: 'always'` — a link without one is a
  * redirect at best and the wrong language at worst (§13). Built here rather
  * than with `@/i18n/navigation`, whose helpers are for a request that has a
  * locale in context; a worker has a row in a database and a person's saved
  * preference.
+ *
+ * A `switch` on the union rather than an `if` on a nullable field, so a third
+ * subject is a compile error here rather than a link that silently goes nowhere
+ * — the construction `subjectHref` uses in the inbox, for the same reason.
+ *
+ * **The comment anchor is appended on both branches** since §21.6 gave pages a
+ * thread. Dropping 0032's `notification_comment_with_item` CHECK is the database
+ * half of the same sentence; see 0038.
  */
-export function itemUrl(input: {
+export function subjectUrl(input: {
   locale: string;
   workspaceSlug: string;
-  projectSlug: string;
-  number: number;
+  subject: MessageSubject;
   commentId: string | null;
 }): string {
   const base = appUrl().replace(/\/+$/, '');
-  const path = `${base}/${input.locale}/${input.workspaceSlug}/projects/${input.projectSlug}/${input.number}`;
+  const prefix = `${base}/${input.locale}/${input.workspaceSlug}`;
+
+  const path =
+    input.subject.kind === 'work_item'
+      ? `${prefix}/projects/${input.subject.projectSlug}/${input.subject.number}`
+      : `${prefix}/wiki/${input.subject.spaceSlug}/${input.subject.pageSlug}`;
+
   return input.commentId ? `${path}#comment-${input.commentId}` : path;
 }
 

@@ -3,12 +3,14 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { DeletedPages } from '@/components/wiki/deleted-pages';
 import { PageBreadcrumb } from '@/components/wiki/page-breadcrumb';
 import { SpaceSidebar } from '@/components/wiki/space-sidebar';
+import { SpaceTemplates } from '@/components/wiki/space-templates';
+import { SpaceTransfer } from '@/components/wiki/space-transfer';
 import { Link } from '@/i18n/navigation';
 import { displayName } from '@/lib/seeded-name';
 import { hasKhmer } from '@/lib/search';
 import { resolveActorContext } from '@/server/auth/context';
 import { getSpace, listDeletedPages } from '@/server/services/wiki';
-import { restorePageAction } from '../actions';
+import { exportSpaceAction, importSpaceAction, restorePageAction } from '../actions';
 
 /**
  * §20.11's space home: the tree, with no page selected.
@@ -101,6 +103,20 @@ export default async function SpacePage({
           )}
 
           {/*
+            §21.7's templates, listed here because they are deliberately absent
+            from the tree beside them. Hidden from the sidebar and findable
+            nowhere would be pages nobody can edit again — and the create screen
+            offering something the space cannot show is the shape of feature
+            people stop trusting.
+          */}
+          <SpaceTemplates
+            workspaceSlug={workspaceSlug}
+            spaceSlug={spaceSlug}
+            templates={view.templates}
+            canWrite={view.space.canWrite}
+          />
+
+          {/*
             §20.3.6's restore, at the foot of the space it belongs to. §20.3.6
             asks for "the recovery screen that already exists for items" and that
             screen does not exist — see `deleted-pages.tsx` for the finding.
@@ -119,6 +135,22 @@ export default async function SpacePage({
               restore={restorePageAction}
             />
           )}
+
+          {/*
+            §21.8, last on the screen. Neither half is what anybody came here
+            for, and a file input above the page list would be one mis-click
+            from a surprise — the placement `DeletedPages` already argues for.
+            Export is offered to every reader (see `exportSpace`); import only to
+            somebody who can write.
+          */}
+          <SpaceTransfer
+            workspaceSlug={workspaceSlug}
+            locale={locale === 'km' ? 'km' : 'en'}
+            spaceSlug={spaceSlug}
+            canWrite={view.space.canWrite}
+            exportSpace={exportSpaceAction}
+            importSpace={importSpaceAction}
+          />
         </div>
       </div>
     </div>

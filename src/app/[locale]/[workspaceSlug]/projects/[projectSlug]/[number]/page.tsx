@@ -23,6 +23,7 @@ import { displayName } from '@/lib/seeded-name';
 import { isOverdue } from '@/lib/workspace-date';
 import { Link } from '@/i18n/navigation';
 import { hasKhmer } from '@/lib/search';
+import { deleteCommentAction, postCommentAction } from '../actions';
 
 /**
  * One work item, at `/{workspace}/projects/{project}/{number}` — the URL behind
@@ -145,6 +146,28 @@ export default async function WorkItemPage({
     locale,
     workItemId: item.id,
     number: item.number,
+  };
+
+  /**
+   * The same page, as the thread now asks for it (§21.6 — slice 21).
+   *
+   * The two actions travel *with* the context rather than being imported by the
+   * components, because since slice 21 the same thread renders over a wiki page
+   * and the wiki has its own pair. `itemContext` above is still what the
+   * attachment components take, which is why both exist: files are an item's,
+   * and a thread is either subject's.
+   */
+  const threadContext = {
+    workspaceSlug,
+    locale,
+    subject: {
+      kind: 'work_item' as const,
+      projectSlug,
+      workItemId: item.id,
+      number: item.number,
+    },
+    post: postCommentAction,
+    remove: deleteCommentAction,
   };
 
   return (
@@ -317,7 +340,7 @@ export default async function WorkItemPage({
       {thread && (
         <CommentThread
           thread={thread}
-          context={itemContext}
+          context={threadContext}
           timezone={resolved.workspace.timezone}
           showAllHref={allComments ? null : widen({ comments: 'all' })}
         />

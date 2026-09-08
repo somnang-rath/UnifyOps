@@ -374,6 +374,7 @@
         "heading": "{actor} left a comment"
       },
       "cta": "Open the item",
+      "ctaPage": "Open the page",
       "preferences": "You are receiving this because of your notification settings in {workspace}."
     },
     "digest": {
@@ -581,6 +582,7 @@
     "mentionListLabel": "People you can mention",
     "cannotCommentArchived": "This project is archived, so its items are read-only. Unarchive it to comment.",
     "cannotCommentForbidden": "You do not have permission to comment on this item.",
+    "cannotCommentPage": "You cannot comment on this page right now.",
     "errors": {
       "bodyRequired": "Write something before posting.",
       "bodyTooLong": "That comment is too long. Try splitting it into two.",
@@ -622,6 +624,9 @@
     "markAllRead": "Mark all read",
     "markRead": "Mark read",
     "markUnread": "Mark unread",
+    "subject": {
+      "page": "Wiki page"
+    },
     "someone": "Someone",
     "loadMore": "Show older",
     "loading": "Loading…",
@@ -1215,7 +1220,8 @@
       "edit": "Edit",
       "emptyBody": "This page has no content yet.",
       "contents": "On this page",
-      "backlinks": "{count, plural, one {# page links here} other {# pages link here}}"
+      "backlinks": "{count, plural, one {# page links here} other {# pages link here}}",
+      "print": "Print"
     },
     "editor": {
       "titleLabel": "Title",
@@ -1312,7 +1318,13 @@
       "stale": "Somebody else saved this page while you were writing.",
       "mentionNotVisible": "{names} cannot read this space, so they cannot be mentioned here.",
       "invalidPeriod": "Pick one of the offered review periods.",
-      "unknownMember": "That person is no longer in this workspace."
+      "unknownMember": "That person is no longer in this workspace.",
+      "templateNotRoot": "Move this page to the top of the space before making it a template.",
+      "templateHasChildren": "A template cannot have sub-pages. Move or delete them first.",
+      "readOnly": "You cannot export while viewing the workspace as somebody else.",
+      "tooLarge": "That is too big to import. The limit is {max} MB.",
+      "unreadable": "Choose a .zip or a .md file.",
+      "nothingToImport": "There are no Markdown pages in that file."
     },
     "delete": {
       "action": "Delete page",
@@ -1379,7 +1391,8 @@
       "emptyUnverified": "Nothing here has been reviewed yet.",
       "summary": "{expired, plural, =0 {} other {# out of review}}",
       "needsReview": "{count, plural, one {# page needs a review} other {# pages need a review}}",
-      "allReviewed": "Everything here is in review."
+      "allReviewed": "Everything here is in review.",
+      "template": "Template"
     },
     "callout": {
       "info": "Note",
@@ -1392,6 +1405,34 @@
       "help": "One emoji.",
       "save": "Set",
       "saving": "Saving…"
+    },
+    "template": {
+      "badge": "Template",
+      "sectionTitle": "Templates",
+      "use": "Use",
+      "startFrom": "Start from",
+      "blank": "Start blank",
+      "explain": "A template is offered when somebody creates a page here. It leaves the sidebar.",
+      "isTemplate": "This page is a template, so it is offered on the create screen and hidden from the sidebar.",
+      "set": "Use as a template",
+      "unset": "Stop using as a template"
+    },
+    "transfer": {
+      "title": "Export and import",
+      "explain": "Export gives you a folder of Markdown files you can open in any editor. Import takes one back.",
+      "export": "Export as Markdown",
+      "exporting": "Exporting…",
+      "exported": "{count, plural, one {# page exported} other {# pages exported}}",
+      "import": "Import",
+      "importing": "Importing…",
+      "imported": "{count, plural, =0 {Nothing was imported} one {# page imported} other {# pages imported}}",
+      "fileLabel": "Markdown or a zip of it",
+      "skipped": {
+        "too_deep": "nested too deep",
+        "body_too_long": "too long",
+        "not_a_template": "imported, but not marked as a template",
+        "refused": "could not be imported"
+      }
     }
   }
 }

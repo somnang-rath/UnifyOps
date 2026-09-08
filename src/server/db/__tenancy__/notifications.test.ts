@@ -90,11 +90,10 @@ describe('the transactional outbox', () => {
         uow.emit({
           type: 'comment.created',
           workspaceId: a.workspaceId,
-          projectId: a.projectId,
-          workItemId: itemId,
+          subject: { kind: 'work_item', projectId: a.projectId, workItemId: itemId },
           commentId: uuidv7(),
           mentioned: [a.memberMemberId],
-          assigneeIds: [],
+          subscriberIds: [],
         });
       },
       h.app,
@@ -118,11 +117,10 @@ describe('the transactional outbox', () => {
           uow.emit({
             type: 'comment.created',
             workspaceId: a.workspaceId,
-            projectId: a.projectId,
-            workItemId: itemId,
+            subject: { kind: 'work_item', projectId: a.projectId, workItemId: itemId },
             commentId: uuidv7(),
             mentioned: [a.memberMemberId],
-            assigneeIds: [],
+            subscriberIds: [],
           });
 
           throw new Error('the mutation failed after emitting');

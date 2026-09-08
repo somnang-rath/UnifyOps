@@ -25,7 +25,9 @@ export default async function EditWikiPage({
   const resolved = await resolveActorContext(workspaceSlug);
   if (!resolved) notFound();
 
-  const view = await getPage(resolved, { spaceSlug, pageSlug });
+  // No thread: the editor does not render one, and three queries for a value
+  // discarded before paint is latency on the screen somebody is typing into.
+  const view = await getPage(resolved, { spaceSlug, pageSlug, thread: false });
   if (!view) notFound();
   if (!view.canWrite) {
     const { redirect } = await import('@/i18n/navigation');

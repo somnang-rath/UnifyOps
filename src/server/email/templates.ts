@@ -256,8 +256,20 @@ export function notificationEmail(input: {
   locale: string;
   kind: 'mention' | 'assignment' | 'item_activity' | 'comment';
   actorName: string;
-  itemKey: string;
-  itemTitle: string;
+  /**
+   * Which kind of thing this is about (§20.6, §21.6).
+   *
+   * It changes exactly one string — the call to action, which said "Open the
+   * item" for every notification in the product and would have said it about a
+   * page. The heading and the subject line are already written around `{key}`
+   * and take a page's title without a second catalogue entry, which is what
+   * makes this one field rather than a parallel template.
+   */
+  subjectKind: 'work_item' | 'wiki_page';
+  /** `ENG-142`, or a page's title — see `MessageSubject` in the worker. */
+  subjectKey: string;
+  /** The item's title, or the space a page lives in. */
+  subjectTitle: string;
   workspaceName: string;
   url: string;
 }): Mail {
@@ -266,10 +278,10 @@ export function notificationEmail(input: {
     locale: input.locale,
     heading: t(`notification.${input.kind}.heading`, {
       actor: input.actorName,
-      key: input.itemKey,
+      key: input.subjectKey,
     }),
-    paragraphs: [input.itemTitle],
-    linkLabel: t('notification.cta'),
+    paragraphs: [input.subjectTitle],
+    linkLabel: t(input.subjectKind === 'wiki_page' ? 'notification.ctaPage' : 'notification.cta'),
     url: input.url,
     footer: t('notification.preferences', { workspace: input.workspaceName }),
   });
@@ -278,7 +290,7 @@ export function notificationEmail(input: {
     to: '',
     subject: t(`notification.${input.kind}.subject`, {
       actor: input.actorName,
-      key: input.itemKey,
+      key: input.subjectKey,
     }),
     html,
     text,

@@ -5,7 +5,8 @@ import type { TenantDb } from '@/server/db/client';
 import { comment, user, workspaceMember } from '@/server/db/schema';
 
 /**
- * Reading one work item's comment thread (§7.7 — slice 8).
+ * Reading one thread — a work item's, or since slice 21 a wiki page's
+ * (§7.7, §21.6).
  *
  * Its own module beside `queries/activity.ts`, and not folded into the §9 list
  * query, for the reason written there: that builder exists because the board,
@@ -56,6 +57,29 @@ export type CommentThread = {
 };
 
 /**
+ * Which thread to read (§21.6).
+ *
+ * A union rather than two optional ids, and §21.15 is why: the risk it names for
+ * this slice is "`comment`'s nullable columns are forgotten in a predicate", and
+ * its mitigation is that "every query names its subject explicitly". Two
+ * optional fields would let a caller pass neither and read every comment in the
+ * workspace — the exact shape of that risk. This makes it a compile error.
+ */
+export type CommentSubjectRef =
+  | { kind: 'work_item'; workItemId: string }
+  | { kind: 'wiki_page'; wikiPageId: string };
+
+/** The predicate for one subject, and the only place either column is named. */
+function subjectPredicate(subject: CommentSubjectRef) {
+  switch (subject.kind) {
+    case 'work_item':
+      return eq(comment.workItemId, subject.workItemId);
+    case 'wiki_page':
+      return eq(comment.wikiPageId, subject.wikiPageId);
+  }
+}
+
+/**
  * The most recent `limit` comments, returned oldest-first.
  *
  * Fetched newest-first — the end of a conversation is the end anybody needs and
@@ -68,7 +92,7 @@ export type CommentThread = {
  */
 export async function fetchComments(
   tx: TenantDb,
-  input: { workItemId: string; limit: number },
+  input: { subject: CommentSubjectRef; limit: number },
 ): Promise<CommentThread> {
   const rows = await tx
     .select({
@@ -85,7 +109,7 @@ export async function fetchComments(
     .from(comment)
     .leftJoin(workspaceMember, eq(workspaceMember.id, comment.authorMemberId))
     .leftJoin(user, eq(user.id, workspaceMember.userId))
-    .where(eq(comment.workItemId, input.workItemId))
+    .where(subjectPredicate(input.subject))
     .orderBy(desc(comment.createdAt), desc(comment.id))
     // One more than asked for, so "is there anything older" is answered without
     // a second count over a table that only grows.

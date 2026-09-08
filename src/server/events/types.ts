@@ -1,4 +1,24 @@
 /**
+ * What a comment is about (§21.6 — slice 21).
+ *
+ * The third union of this shape in the product, after `NotifySubject` (§20.6)
+ * and the two nullable-column pairs 0032 constrained. A union rather than two
+ * nullable fields **so the compiler finds every construction site** — which is
+ * the property the registry was built for, and which is exactly how the three
+ * sites in `deleteComment` that had to change announced themselves the moment
+ * the schema widened.
+ *
+ * The item branch carries its project because every §10 question about a work
+ * item's comment is a question about the project, and slice 8 denormalized the
+ * column for the same reason. The page branch carries no project on purpose: a
+ * page's permission question is asked of its **space** (§20.5), and a page in
+ * the company space has no project to name.
+ */
+export type CommentSubject =
+  | { kind: 'work_item'; projectId: string; workItemId: string }
+  | { kind: 'wiki_page'; wikiPageId: string };
+
+/**
  * The domain event union.
  *
  * Every entry in this union must appear in the registry (src/server/events/registry.ts)
@@ -561,7 +581,7 @@ export type DomainEvent =
     }
   | {
       /**
-       * Somebody wrote a comment (§7.7).
+       * Somebody wrote a comment (§7.7, §21.6).
        *
        * `mentioned` carries member ids because slice 9's notifications are the
        * event stream's consumer, and §7.8's rule — every assignee except the
@@ -571,17 +591,32 @@ export type DomainEvent =
        */
       type: 'comment.created';
       workspaceId: string;
-      projectId: string;
-      workItemId: string;
+      subject: CommentSubject;
       commentId: string;
       mentioned: readonly string[];
-      assigneeIds: readonly string[];
+      /**
+       * The people with a standing interest in the subject, before the actor is
+       * removed (§7.8).
+       *
+       * **Named for what the registry does with it rather than for what it is on
+       * an item**, because since slice 21 it is two different sets. For a work
+       * item it is the assignees, exactly as `assigneeIds` was on this event
+       * until now. For a page it is the owner (§21.3) plus everybody who has
+       * already written in the thread — because a page has no assignees, and
+       * §21.13's outcome is a question asked and *answered*, which never happens
+       * if the person who asked only hears back when they are named.
+       *
+       * Carried on the event rather than looked up by the registry, which is
+       * slice 9's rule: "the projector is pure, so the events carry their
+       * assignees." A registry that queried the database on every mutation would
+       * stop being a decision table.
+       */
+      subscriberIds: readonly string[];
     }
   | {
       type: 'comment.deleted';
       workspaceId: string;
-      projectId: string;
-      workItemId: string;
+      subject: CommentSubject;
       commentId: string;
       /**
        * False when a Lead, Admin or Owner removed somebody else's comment —
@@ -757,6 +792,86 @@ export type DomainEvent =
       pageId: string;
       title: string;
       reason: 'edited' | 'cleared';
+    }
+  | {
+      /**
+       * A page became a template, or stopped being one (§21.7 — slice 22).
+       *
+       * **Audited, and the argument is slice 19's for a verification.** Flagging
+       * a page changes no body, so it writes no revision — the history a page
+       * carries for every other kind of change is structurally unable to record
+       * it. What it *does* change is visible to everybody: the page leaves the
+       * sidebar. "Why did the onboarding page vanish from the tree in March" is
+       * a question somebody will ask, and this row is the only thing that can
+       * answer it.
+       *
+       * `isTemplate` rather than two event types, because the two directions are
+       * one decision reversed and a reader of the log wants them adjacent —
+       * exactly the shape `wiki_page.unverified`'s `reason` takes.
+       *
+       * Not projected into any feed and notified to nobody: §20.6's rule is that
+       * activity is per work item and a page's history is its revision list, and
+       * this is not even that.
+       */
+      type: 'wiki_page.template_changed';
+      workspaceId: string;
+      spaceId: string;
+      pageId: string;
+      title: string;
+      isTemplate: boolean;
+    }
+  | {
+      /**
+       * A space was exported (§21.8 — slice 22).
+       *
+       * **The one event in the product that records a read**, and the exception
+       * is deliberate. Everything else in this union is a change to the
+       * company's data; an export changes nothing. What it does is take every
+       * word a company has written down and put it in a file that leaves the
+       * building — and "who took a copy of the handbook, and when" is precisely
+       * the question an Owner-visible, permanent, append-only log exists to
+       * answer.
+       *
+       * The precedent is `workspace.view_as_started`, which is also not a
+       * mutation and is audited for the same reason: §18-11 built a log so an
+       * owner could ask who had been looking at what. This is that question with
+       * a file attached.
+       *
+       * It is emphatically **not** a claim to have prevented anything. Anyone who
+       * can read a space can read its pages one at a time and paste them
+       * somewhere, and a product that pretended otherwise would be selling
+       * theatre. What the row buys is that the *convenient* path leaves a trace.
+       *
+       * `pages` rather than a byte count: an owner reading this wants to know
+       * how much of the company went out, and a page is the unit they think in.
+       */
+      type: 'wiki_space.exported';
+      workspaceId: string;
+      spaceId: string;
+      pages: number;
+    }
+  | {
+      /**
+       * A space was imported into (§21.8 — slice 22).
+       *
+       * **One event for a whole import, not one per page.** The pages each emit
+       * their own `wiki_page.created` — they are ordinary pages, created by the
+       * ordinary function, which is the property that makes the importer safe —
+       * so a per-page event here would double every row. What this records is
+       * the *act*: somebody uploaded a file on an afternoon and thirty pages
+       * appeared, and the log should say so in one line rather than leaving
+       * whoever reads it to infer a bulk operation from a burst of creations.
+       *
+       * That is the same call slice 15's `workspace.settings_changed` made when
+       * it refused to be six events for one form: "a log reading as six changes
+       * to one company on one afternoon is a log somebody has to reconstruct".
+       */
+      type: 'wiki_space.imported';
+      workspaceId: string;
+      spaceId: string;
+      /** How many pages landed, and how many files were refused (§21.8). */
+      created: number;
+      skipped: number;
     }
   | {
       type: 'wiki_page.moved';

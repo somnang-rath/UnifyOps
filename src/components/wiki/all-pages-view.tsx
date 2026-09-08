@@ -152,6 +152,21 @@ export async function AllPagesView({
                       {page.title}
                     </Link>
 
+                    {/*
+                      §21.7 — slice 22. A template is listed here though it is
+                      hidden from the tree, because this view is governance
+                      rather than navigation: a template nobody owns is exactly
+                      what the `unowned` filter is for, and its staleness
+                      propagates into every page written from it. Badged, so the
+                      answer to "why is this not in the sidebar" is on the screen
+                      rather than in a plan.
+                    */}
+                    {page.isTemplate && (
+                      <span className="ms-2 rounded-xs bg-surface-sunken px-1 py-0.5 text-2xs text-text-muted">
+                        {t('template')}
+                      </span>
+                    )}
+
                     {page.labelIds.length > 0 && (
                       <span className="mt-1 flex flex-wrap gap-1">
                         {page.labelIds.flatMap((id) => {

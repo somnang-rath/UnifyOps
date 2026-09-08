@@ -5,12 +5,21 @@ import { Link } from '@/i18n/navigation';
 import { splitMentions } from '@/lib/mentions';
 import type { CommentEntry, CommentThreadView } from '@/server/services/comments';
 import { AttachmentList } from './attachment-list';
-import { CommentComposer, type ComposerContext } from './comment-composer';
+import { CommentComposer } from './comment-composer';
+import { filesContextOf, type ThreadContext } from './thread-context';
 import { DeleteComment } from './comment-delete';
 import { hasKhmer } from '@/lib/search';
 
 /**
- * One work item's conversation (§7.7 — slice 8).
+ * One conversation — a work item's, or since slice 21 a wiki page's
+ * (§7.7, §21.6).
+ *
+ * **Subject-agnostic, and that is the whole reason it did not have to be
+ * written twice.** Everything below reads `thread.entries`, `thread.mentionable`
+ * and the two booleans; nothing here knows what the comments are attached to.
+ * What differs between the two subjects — which permission was asked, who may
+ * be mentioned, whether a comment can carry a file — was decided by the service
+ * before this component was handed anything.
  *
  * A server component, like the activity feed it sits above: the bodies, the
  * names and the timestamps are all resolved where the locale and the workspace
@@ -87,15 +96,19 @@ async function Comment({
   timezone,
 }: {
   entry: CommentEntry;
-  context: ComposerContext;
+  context: ThreadContext;
   mentioned: Record<string, string>;
   timezone: string;
 }) {
+  // Null on a page, where `entry.files` is always empty anyway — so the list
+  // below is unreachable rather than merely empty, and cannot be given a context
+  // that does not describe it.
+  const files = filesContextOf(context);
   const [t, format] = await Promise.all([getTranslations(), getFormatter()]);
   const who = entry.authorName ?? t('comments.formerMember');
 
   return (
-    <li className="flex items-start gap-2.5">
+    <li id={`comment-${entry.id}`} className="flex items-start gap-2.5">
       <Avatar id={entry.authorUserId ?? entry.authorMemberId} name={who} size="md" className="mt-0.5" />
 
       <div className="min-w-0 flex-1 space-y-1">
@@ -125,10 +138,10 @@ async function Comment({
                 is often the whole message, so an empty body renders nothing
                 rather than an empty paragraph. */}
             {entry.body !== '' && <Body body={entry.body} mentioned={mentioned} />}
-            {entry.files.length > 0 && (
+            {files !== null && entry.files.length > 0 && (
               <AttachmentList
                 files={entry.files}
-                context={context}
+                context={files}
                 label={t('attachments.inComment', { author: who })}
               />
             )}
@@ -152,7 +165,7 @@ export async function CommentThread({
   showAllHref,
 }: {
   thread: CommentThreadView;
-  context: ComposerContext;
+  context: ThreadContext;
   /** The company's zone (§6-1), so one comment has one timestamp for everybody. */
   timezone: string;
   /** Where "show the whole conversation" goes, or null when nothing is hidden. */
@@ -205,7 +218,15 @@ export async function CommentThread({
         <Alert tone="warning">
           {thread.cannotCommentReason === 'archived'
             ? t('comments.cannotCommentArchived')
-            : t('comments.cannotCommentForbidden')}
+            : context.subject.kind === 'wiki_page'
+              ? // A different sentence, because it asks for a different thing. On
+                // an item the answer is "ask for a role on this project"; on a
+                // page the reader cannot see the space at all — and §21.6 gives
+                // commenting to everyone who can, so there is no third state
+                // where somebody reads a space and may not reply in it except a
+                // view-as session.
+                t('comments.cannotCommentPage')
+              : t('comments.cannotCommentForbidden')}
         </Alert>
       )}
     </section>

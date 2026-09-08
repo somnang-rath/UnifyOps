@@ -6,15 +6,20 @@ import { PageDelete } from '@/components/wiki/page-delete';
 import { PageIconForm } from '@/components/wiki/page-icon-form';
 import { PageLinks } from '@/components/wiki/page-links';
 import { PageReader, pageContext } from '@/components/wiki/page-reader';
+import { PageTemplateForm } from '@/components/wiki/page-template-form';
 import { PageToc } from '@/components/wiki/page-toc';
 import { SpaceSidebar } from '@/components/wiki/space-sidebar';
 import { VerificationPanel } from '@/components/wiki/verification-panel';
+import { CommentThread } from '@/components/work-item/comment-thread';
 import { resolveActorContext } from '@/server/auth/context';
 import { getPage } from '@/server/services/wiki';
 import {
   deletePageAction,
+  deletePageCommentAction,
   linkPageAction,
+  postPageCommentAction,
   setPageIconAction,
+  setPageTemplateAction,
   unlinkPageAction,
 } from '../../actions';
 
@@ -35,7 +40,7 @@ export default async function WikiPageReader({
   searchParams,
 }: {
   params: Promise<{ locale: string; workspaceSlug: string; spaceSlug: string; pageSlug: string }>;
-  searchParams: Promise<{ unverified?: string }>;
+  searchParams: Promise<{ unverified?: string; comments?: string }>;
 }) {
   const { locale, workspaceSlug, spaceSlug, pageSlug } = await params;
   setRequestLocale(locale);
@@ -43,11 +48,35 @@ export default async function WikiPageReader({
   const resolved = await resolveActorContext(workspaceSlug);
   if (!resolved) notFound();
 
-  const [view, { unverified }] = await Promise.all([
-    getPage(resolved, { spaceSlug, pageSlug }),
-    searchParams,
-  ]);
+  /**
+   * `?comments=all` widens the thread from 100 to 500, exactly as it does on an
+   * item and as `?activity=all` does beside it (slice 7).
+   *
+   * A search param rather than an entry in the filter DSL: that DSL describes a
+   * query over many items and has no business carrying one page's scroll depth,
+   * and a link is shareable and back-buttonable where a button is neither. Read
+   * before `getPage`, because it changes what `getPage` fetches.
+   */
+  const { unverified, comments } = await searchParams;
+  const allComments = comments === 'all';
+
+  const view = await getPage(resolved, { spaceSlug, pageSlug, thread: true, allComments });
   if (!view) notFound();
+
+  /**
+   * What the thread posts back with (§21.6).
+   *
+   * The wiki's own pair of actions travels with it, so `CommentThread` — which
+   * slice 8 wrote for a work item and slice 21 made subject-agnostic — needs to
+   * know nothing about which route it is rendering inside.
+   */
+  const threadContext = {
+    workspaceSlug,
+    locale,
+    subject: { kind: 'wiki_page' as const, pageId: view.page.id },
+    post: postPageCommentAction,
+    remove: deletePageCommentAction,
+  };
 
   return (
     <div className="space-y-4">
@@ -59,7 +88,14 @@ export default async function WikiPageReader({
       />
 
       <div className="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)_14rem]">
-        <aside className="lg:sticky lg:top-4 lg:self-start">
+        {/*
+          §21.8's PDF is this screen through the print stylesheet, so everything
+          that is navigation rather than document is marked for it. §17-26's rule
+          is already in `globals.css`; what a screen owes it is saying which of
+          its parts are chrome. The sidebar, the right rail and the thread are —
+          a printed policy is the policy.
+        */}
+        <aside data-print="hide" className="lg:sticky lg:top-4 lg:self-start">
           <SpaceSidebar
             pages={view.tree}
             workspaceSlug={workspaceSlug}
@@ -86,9 +122,41 @@ export default async function WikiPageReader({
             else this is discussed" is the next useful thing.
           */}
           <PageBacklinks backlinks={view.backlinks} workspaceSlug={workspaceSlug} />
+
+          {/*
+            §21.6's thread, **below the backlinks and outside the right rail**.
+
+            A page's conversation is part of the document's tail rather than a
+            property of it: the panels on the right answer "who is answerable for
+            this and is it still true", and a question somebody asked about a
+            paragraph belongs under the paragraph. It is also the widest thing on
+            the screen after the body, and a thread squeezed into a 14rem rail is
+            a thread nobody replies in.
+
+            §21.6 refuses the alternative that would have put it elsewhere:
+            "inline comments anchored to a phrase are refused — an anchor is
+            block identity. A page comment quotes the sentence it is about, which
+            is what a person does anyway."
+          */}
+          {/* Never null here — this route asks for it. The guard is the type
+              system's, not a runtime doubt. */}
+          {view.thread && (
+          <div data-print="hide">
+          <CommentThread
+            thread={view.thread}
+            context={threadContext}
+            timezone={resolved.workspace.timezone}
+            showAllHref={
+              allComments
+                ? null
+                : `/${workspaceSlug}/wiki/${spaceSlug}/${pageSlug}?comments=all`
+            }
+          />
+          </div>
+          )}
         </div>
 
-        <aside className="lg:sticky lg:top-4 lg:self-start space-y-4">
+        <aside data-print="hide" className="lg:sticky lg:top-4 lg:self-start space-y-4">
           {/*
             §21.5's table of contents, at the top of the right rail: it is
             navigation *within* this page, so it sits above the panels that talk
@@ -131,6 +199,21 @@ export default async function WikiPageReader({
               pageId={view.page.id}
               icon={view.page.icon}
               save={setPageIconAction}
+            />
+          )}
+
+          {/*
+            §21.7's flag, under the icon and above the links: it is a property of
+            the page in the same way those are, and the panel is where §21.2 put
+            the last one for exactly that reason.
+          */}
+          {view.canWrite && (
+            <PageTemplateForm
+              workspaceSlug={workspaceSlug}
+              locale={locale === 'km' ? 'km' : 'en'}
+              pageId={view.page.id}
+              isTemplate={view.page.isTemplate}
+              save={setPageTemplateAction}
             />
           )}
 

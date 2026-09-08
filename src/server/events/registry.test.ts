@@ -410,17 +410,15 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
   'comment.created': {
     type: 'comment.created',
     workspaceId: 'w1',
-    projectId: 'p1',
-    workItemId: 'wi1',
+    subject: { kind: 'work_item', projectId: 'p1', workItemId: 'wi1' },
     commentId: 'c1',
     mentioned: ['m2'],
-      assigneeIds: [],
+    subscriberIds: [],
   },
   'comment.deleted': {
     type: 'comment.deleted',
     workspaceId: 'w1',
-    projectId: 'p1',
-    workItemId: 'wi1',
+    subject: { kind: 'work_item', projectId: 'p1', workItemId: 'wi1' },
     commentId: 'c1',
     byAuthor: false,
   },
@@ -500,6 +498,27 @@ const sample: { [T in EventType]: Extract<DomainEvent, { type: T }> } = {
     pageId: 'wp1',
     title: 'Leave policy',
     reason: 'edited',
+  },
+  'wiki_page.template_changed': {
+    type: 'wiki_page.template_changed',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pageId: 'wp1',
+    title: 'Incident report',
+    isTemplate: true,
+  },
+  'wiki_space.exported': {
+    type: 'wiki_space.exported',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    pages: 12,
+  },
+  'wiki_space.imported': {
+    type: 'wiki_space.imported',
+    workspaceId: 'w1',
+    spaceId: 's1',
+    created: 12,
+    skipped: 1,
   },
   'wiki_page.moved': {
     type: 'wiki_page.moved',
@@ -624,6 +643,24 @@ describe('the event registry', () => {
         'wiki_page.owner_changed',
         'wiki_page.verified',
         'wiki_page.unverified',
+        /**
+         * Slice 22's three (§21.7, §21.8).
+         *
+         * `wiki_page.template_changed` joins the slice-19 group on the same
+         * argument: it changes no body, writes no revision, and removes a page
+         * from the sidebar — which is a change somebody will ask about.
+         *
+         * `wiki_space.exported` is **the one audited read in the product**, and
+         * it is here on purpose rather than by accident of the mapped type. An
+         * export takes every word a company has written down and puts it in a
+         * file that leaves the building; "who took a copy of the handbook, and
+         * when" is exactly what §18-11 built this log to answer, and
+         * `workspace.view_as_started` is the precedent — also not a mutation,
+         * also audited, for the same question with no file attached.
+         */
+        'wiki_page.template_changed',
+        'wiki_space.exported',
+        'wiki_space.imported',
         'invitation.accepted',
         'project.archived',
         'project.created',
@@ -816,7 +853,13 @@ describe('the activity projectors', () => {
     const row = auditRowFor(sample['comment.deleted']);
 
     expect(row?.subjectType).toBe('comment');
-    expect(row?.data).toMatchObject({ workItemId: 'wi1', byAuthor: false });
+    expect(row?.data).toMatchObject({
+      // The subject rather than two nullable ids (§21.6): the log says which
+      // *kind* of thing the removed comment was on, so an Owner reading it a
+      // year later does not have to know that a null column was the difference.
+      subject: { kind: 'work_item', projectId: 'p1', workItemId: 'wi1' },
+      byAuthor: false,
+    });
     expect(JSON.stringify(row?.data)).not.toContain('body');
   });
 
@@ -1023,7 +1066,7 @@ describe('the notify projectors', () => {
       commentId: 'c1',
       mentioned: ['m2'],
       // m2 is mentioned *and* assigned; m3 is only assigned.
-      assigneeIds: ['m2', 'm3'],
+      subscriberIds: ['m2', 'm3'],
     });
 
     expect(drafts.map((draft) => draft.kind)).toEqual(['mention', 'comment']);
@@ -1031,12 +1074,33 @@ describe('the notify projectors', () => {
     expect(drafts[1]?.recipientMemberIds).toEqual(['m3']);
   });
 
+  it('sends a page comment to the page, not to an item that is not there (§21.6)', () => {
+    const drafts = notifyDraftsFor({
+      ...sample['comment.created'],
+      subject: { kind: 'wiki_page', wikiPageId: 'wp1' },
+      commentId: 'c9',
+      mentioned: ['m2'],
+      // A page's standing interest: its owner (§21.3) and whoever has already
+      // written in the thread. `postPageComment` resolves them; the projector
+      // only has to stay pure about it.
+      subscriberIds: ['m2', 'm3'],
+    });
+
+    expect(drafts.map((draft) => draft.kind)).toEqual(['mention', 'comment']);
+    // The whole of what §20.6's union bought: one entry, either subject.
+    expect(drafts[0]?.subject).toEqual({ kind: 'wiki_page', id: 'wp1' });
+    expect(drafts[1]?.subject).toEqual({ kind: 'wiki_page', id: 'wp1' });
+    // §21.6 answered §20.16's open question, so a page deep-link now carries a
+    // comment anchor. 0038 drops the CHECK that used to refuse exactly this row.
+    expect(drafts[0]?.commentId).toBe('c9');
+  });
+
   it('carries the comment id, so the click lands on the comment (§7.8)', () => {
     const drafts = notifyDraftsFor({
       ...sample['comment.created'],
       commentId: 'c1',
       mentioned: ['m2'],
-      assigneeIds: [],
+      subscriberIds: [],
     });
 
     expect(drafts[0]?.commentId).toBe('c1');
@@ -1046,7 +1110,7 @@ describe('the notify projectors', () => {
     const drafts = notifyDraftsFor({
       ...sample['comment.created'],
       mentioned: [],
-      assigneeIds: [],
+      subscriberIds: [],
     });
 
     expect(drafts).toEqual([]);

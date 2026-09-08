@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   date,
   foreignKey,
   index,
@@ -296,6 +297,38 @@ export const wikiPage = pgTable(
     revisionNo: integer('revision_no').notNull().default(1),
 
     /**
+     * Whether this page is a template (§21.7 — slice 22).
+     *
+     * **"A template is an ordinary page with a flag."** That sentence is the
+     * whole design, and it is deliberately not a type: "a template that cannot
+     * be read, edited and searched like a page is a second document format with
+     * a second set of screens". So there is no `wiki_template` table, no second
+     * editor, no second permission question and no second export path — a
+     * template has a body, a history, an owner, a verification state and a
+     * search row, because it *is* a page.
+     *
+     * What the flag changes is exactly two things: the page is hidden from the
+     * space tree, and it is offered when somebody creates a page.
+     *
+     * **A template is always a root page**, pinned by a CHECK in migration 0040.
+     * Hidden from the tree and *inside* it are contradictory — a template nested
+     * under the handbook would put an invisible node in the middle of a subtree
+     * that `deletePage` reparents and `subtreeIds` walks, and the first screen to
+     * meet it would be drawing a tree with a hole in it. The other half of the
+     * rule — that a template is never a *parent* — cannot be a CHECK on this row
+     * (it is a fact about somebody else's `parent_id`) and is refused in the
+     * service, with the parent picker never offering one in the first place.
+     *
+     * Not null with a `false` default, unlike every other column added to this
+     * table since slice 18: there is no such thing as a page that has not
+     * decided whether it is a template, so a nullable column would only add a
+     * third state for every predicate to get wrong. That is the opposite call
+     * from `icon` and `owner_member_id` beside it, and the difference is that
+     * *those* have a meaningful absence.
+     */
+    isTemplate: boolean('is_template').notNull().default(false),
+
+    /**
      * The person answerable for this page being true (§21.3 — slice 19).
      *
      * **Not its author, and not necessarily its last editor.** Those two are
@@ -422,6 +455,18 @@ export const wikiPage = pgTable(
      * is what keeps it outside §9's builder without being outside §16's rule.
      */
     index('wiki_page_verification_idx').on(t.spaceId, t.verificationExpiresAt),
+
+    /**
+     * The template picker's question, asked on every "New page" (§21.7).
+     *
+     * Partial, because a space holds a handful of templates and thousands of
+     * pages — an index over the `false` rows would be an index of the whole
+     * table to find the four rows that are not. This is `wiki_page_owner_idx`'s
+     * shape one column along, and for the same reason.
+     */
+    index('wiki_page_template_idx')
+      .on(t.spaceId, t.title)
+      .where(sql`${t.isTemplate} and ${t.deletedAt} is null`),
 
     foreignKey({
       name: 'wiki_page_space_fk',

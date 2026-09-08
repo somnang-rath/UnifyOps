@@ -33,6 +33,7 @@ import {
   fetchRevisions,
   fetchSpaces,
   fetchSpacePages,
+  fetchSpaceTemplates,
   fetchSpaceTree,
   fetchSubtree,
   fetchVerificationCounts,
@@ -43,6 +44,7 @@ import {
   type PageSummary,
   type RevisionRow,
   type SpacePageRow,
+  type TemplateRow,
 } from '@/server/queries/wiki';
 import { normalizeDocument } from '@/lib/documents';
 import { parsePageIds } from '@/lib/doc-refs';
@@ -76,6 +78,7 @@ import {
   withProject,
   type SpaceContext,
 } from './space-access';
+import { pageCommentThreadIn, type CommentThreadView } from './comments';
 
 /**
  * The wiki (§20 — slice 18).
@@ -125,7 +128,18 @@ export type WikiFailure =
   /** A verification period that is not one of `VERIFICATION_DAYS` (§21.3). */
   | 'invalid_period'
   /** An owner id naming nobody in this workspace (§21.3). */
-  | 'unknown_member';
+  | 'unknown_member'
+  /**
+   * §21.7's two halves of "a template is a root page with nothing under it",
+   * refused separately because they are two different things to do about it.
+   *
+   * A page with a parent has to be moved to the top of the space first; a page
+   * with children has to lose them first. Telling somebody "that cannot be a
+   * template" without saying which would leave them guessing at a rule the
+   * product never states — §11's "a refusal names what to do next".
+   */
+  | 'template_not_root'
+  | 'template_has_children';
 
 export type SpaceView = {
   id: string;
@@ -174,6 +188,25 @@ export type PageView = {
    * view in the company space — which is the most-read screen in the wiki.
    */
   members: { id: string; name: string }[];
+  /**
+   * The page's conversation (§21.6 — slice 21), or **null on the editor**.
+   *
+   * Rides `getPage`'s own transaction through `pageCommentThreadIn`, which is
+   * §20.12's rule and the trap six earlier slices each learned separately —
+   * slice 8 with `getCommentThread` itself, on the item page, for exactly this
+   * shape of query.
+   *
+   * Null rather than absent, and asked for rather than assumed: `getPage` serves
+   * the reader *and* the editor, and the editor renders no thread. Fetching one
+   * there would be three queries on every edit for a value discarded before
+   * paint — and it was not a theoretical cost. It lengthened the editor's render
+   * enough to break `wiki.spec.ts`'s stale-save test on `mobile-km`, where a
+   * `fill` landed before the body arrived and the two texts concatenated. That
+   * is the fourth time in this repo that adding queries to a page's loader has
+   * exposed a latent race (slice 8's two specs, slice 10's `getWorkItem`, slice
+   * 20's `getPage`), and the first where the right answer was to not run them.
+   */
+  thread: CommentThreadView | null;
 };
 
 /**
@@ -400,7 +433,19 @@ export async function renameSpace(
  */
 export async function getPage(
   resolved: ResolvedActor,
-  input: { spaceSlug: string; pageSlug: string },
+  input: {
+    spaceSlug: string;
+    pageSlug: string;
+    /**
+     * Whether to load the thread at all (§21.6). The editor says no.
+     *
+     * Not defaulted, so the caller that forgets it does not silently pay for
+     * three queries it will not render — and so the one that means "no" says so
+     * where somebody reading the route can see it.
+     */
+    thread: boolean;
+    allComments?: boolean;
+  },
 ): Promise<PageView | null> {
   return withActor(resolved.context, async (tx) => {
     const space = await loadSpaceBySlug(tx, input.spaceSlug);
@@ -460,6 +505,16 @@ export async function getPage(
       verification: await verificationViewFor(tx, resolved, page, space.id),
       labelIds: await fetchPageLabelIds(tx, page.id),
       members: canWrite ? await assignableMembers(tx) : [],
+      thread: input.thread
+        ? await pageCommentThreadIn(tx, resolved, {
+            pageId: page.id,
+            // Handed the space this render already resolved, rather than resolved
+            // again from the page id — which would be §20.5's question asked twice
+            // about one request, and the second answer is the one that could drift.
+            context,
+            all: input.allComments,
+          })
+        : null,
     };
   });
 }
@@ -492,7 +547,15 @@ async function assignableMembers(tx: TenantDb): Promise<{ id: string; name: stri
 export async function getSpace(
   resolved: ResolvedActor,
   spaceSlug: string,
-): Promise<{ space: SpaceView; tree: PageSummary[] } | null> {
+  options: { templateId?: string } = {},
+): Promise<{
+  space: SpaceView;
+  tree: PageSummary[];
+  /** §21.7's templates, by name — hidden from `tree`, listed on their own. */
+  templates: TemplateRow[];
+  /** The body of the template `templateId` names, when it named one. */
+  draft: { title: string; body: string } | null;
+} | null> {
   return withActor(resolved.context, async (tx) => {
     const space = await loadSpaceBySlug(tx, spaceSlug);
     if (!space) return null;
@@ -500,10 +563,39 @@ export async function getSpace(
     const context = await withProject(tx, space);
     if (!context || !canReadSpace(resolved.actor, context)) return null;
 
+    /*
+      Three reads on the one transaction that is already open, which is the trap
+      slice 8 hit with `getCommentThread`, slice 9 with the unread count, slice
+      10 with the custom fields, slice 13 with §7.4's six lists and slice 14 on a
+      keystroke. `inSequence` is not needed because these are awaited in order —
+      a transaction is one client and one socket, and `Promise.all` over a shared
+      `tx` never made anything concurrent.
+    */
     const tree = await fetchSpaceTree(tx, space.id);
+    const templates = await fetchSpaceTemplates(tx, space.id);
+
+    /*
+      The chosen template's body, read here rather than shipped with the list —
+      see `fetchSpaceTemplates` for the ten-megabyte version of this that was not
+      built. A `templateId` naming a page that is not a live template *of this
+      space* resolves to no draft rather than to an error: the id is in a URL
+      somebody may have kept after the template was deleted, and the honest
+      answer to that is the empty create form they asked for, not a 404 on a
+      screen whose whole job is to make a page.
+    */
+    let draft: { title: string; body: string } | null = null;
+    if (options.templateId !== undefined) {
+      const template = await fetchPage(tx, options.templateId);
+      if (template && template.spaceId === space.id && template.isTemplate) {
+        draft = { title: template.title, body: template.body };
+      }
+    }
+
     return {
       space: toSpaceView(context, tree.length, canWriteSpace(resolved.actor, context)),
       tree,
+      templates,
+      draft,
     };
   });
 }
@@ -1558,7 +1650,7 @@ async function refusedMentions(
 }
 
 /** `@[uuid]` → display name, for the bodies on one screen. */
-async function hydrateMentions(tx: TenantDb, bodies: string[]): Promise<Record<string, string>> {
+export async function hydrateMentions(tx: TenantDb, bodies: string[]): Promise<Record<string, string>> {
   const ids = [...new Set(bodies.flatMap((body) => parseMentionIds(body)))];
   if (ids.length === 0) return {};
 
@@ -2334,4 +2426,105 @@ export async function setPageIcon(
 
     return { ok: true } as const;
   });
+}
+
+/**
+ * Make a page a template, or stop it being one (§21.7 — slice 22).
+ *
+ * **"A template is an ordinary page with a flag"**, so this is an update of one
+ * boolean and there is deliberately nothing else to it: no copy, no second
+ * table, no separate editor, no new §10 row. What the flag buys is that the page
+ * leaves the sidebar and starts being offered on the create screen.
+ *
+ * **Its own action rather than a field on the save**, which is slice 20's call
+ * for `setPageIcon` and holds here with more force. Folded into `saveWikiPage`
+ * it would ride the conditional update — so flagging a template while a
+ * colleague was typing would be refused as a stale save (§20.3.3), a refusal
+ * with real weight spent on a filing decision — and it would clear §21.3's
+ * verification, which every body save does unconditionally. A verified runbook
+ * that somebody has now also marked as a template is still a page somebody read
+ * and vouched for. So this touches neither `revision_no` nor the verification
+ * columns.
+ *
+ * **The two refusals are checked here and pinned in the database.** 0040 carries
+ * the CHECK that a template has no parent and the trigger that nothing nests
+ * under one, for the reason every invariant since 0008 is in the database: a row
+ * written by a seed script, §21.8's importer or a Phase 2 MCP tool has to be as
+ * correct as one written here. What this adds is the *sentence* — a constraint
+ * violation reaching a screen is §7.11's disabled select in its worst form.
+ */
+export async function setPageTemplate(
+  resolved: ResolvedActor,
+  input: { pageId: string; isTemplate: boolean },
+): Promise<Ok | Failed> {
+  return withActor(resolved.context, async (tx, uow) =>
+    setPageTemplateIn(tx, uow, resolved, input),
+  );
+}
+
+/**
+ * The same, inside a transaction that is already open.
+ *
+ * Split for `createPageIn`'s reason, and with a caller that makes the split
+ * load-bearing rather than tidy: §21.8's importer creates a tree and then flags
+ * the files that said they were templates, and those two are one act. They also
+ * have to happen **in that order and in one transaction** — flagging a page
+ * before its children exist would make every child violate 0040's "nothing nests
+ * under a template", which is a trigger and would abort the whole import rather
+ * than skip one file.
+ */
+export async function setPageTemplateIn(
+  tx: TenantDb,
+  uow: UnitOfWork,
+  resolved: ResolvedActor,
+  input: { pageId: string; isTemplate: boolean },
+): Promise<Ok | Failed> {
+  {
+    const page = await fetchPage(tx, input.pageId);
+    if (!page) return { ok: false, problem: 'not_found' } as const;
+
+    const context = await resolveSpace(tx, page.spaceId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const refusal = checkSpaceWrite(resolved.actor, context);
+    if (refusal !== null) return { ok: false, problem: refusal } as const;
+
+    // Nothing to record and nothing to change. Emitting an audit row for a
+    // no-op is how a log fills with afternoons in which nothing happened.
+    if (page.isTemplate === input.isTemplate) return { ok: true } as const;
+
+    if (input.isTemplate) {
+      if (page.parentId !== null) return { ok: false, problem: 'template_not_root' } as const;
+
+      /*
+        The live children only. A page whose children were deleted last week is
+        a leaf now, and §20.3.6's 30-day window is a recovery promise rather
+        than a claim that those pages are still in the tree — restoring one
+        reparents it, which is the moment the rule is re-checked.
+      */
+      const children = await tx
+        .select({ id: wikiPage.id })
+        .from(wikiPage)
+        .where(and(eq(wikiPage.parentId, page.id), isNull(wikiPage.deletedAt)))
+        .limit(1);
+
+      if (children.length > 0) return { ok: false, problem: 'template_has_children' } as const;
+    }
+
+    await tx
+      .update(wikiPage)
+      .set({ isTemplate: input.isTemplate })
+      .where(eq(wikiPage.id, page.id));
+
+    uow.emit({
+      type: 'wiki_page.template_changed',
+      workspaceId: resolved.workspace.id,
+      spaceId: page.spaceId,
+      pageId: page.id,
+      title: page.title,
+      isTemplate: input.isTemplate,
+    });
+
+    return { ok: true } as const;
+  }
 }

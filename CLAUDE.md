@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status: **§14 and §20 are complete; §21 is specified and slices 19 and 20 of it are built**
+## Status: **§14, §20 and §21 are complete — every slice the plan specifies is built**
 
 `PLAN.en.md` / `PLAN.km.md` are the specification and still carry more weight than the code. The build was
 approved on **2026-08-31**, and §18's last two blocking questions were answered the same day: **#11** audit
@@ -43,19 +43,26 @@ unbuilt abandoned-upload sweeper**, and §13's per-content `lang` fix applied to
 item titles and descriptions together (§20.10 asked for all four in one slice "because fixing it in one place
 and not the others is how one gap becomes four").
 
-**§20 is finished, and there is no §14 slice left.** What remains is the gap list, three items long, each
-named where it lives: **Google OAuth** (§4's last unbuilt must-have, a slice-3 gap), **§4's full create
-form** (a slice-5 gap, and what note-promotion and §7.9's "no results + create" should both open once it
-exists), and **a workspace-wide recovery screen** for §4's 30-day window — which §20.3.6 assumed already
-existed and which does not.
+**§20 and §21 are finished, and there is no slice left.** What remains is the gap list, still four items
+long, each named where it lives: **Google OAuth** (§4's last unbuilt must-have, a slice-3 gap), **§4's full
+create form** (a slice-5 gap, and what note-promotion and §7.9's "no results + create" should both open once
+it exists), **a workspace-wide recovery screen** for §4's 30-day window — which §20.3.6 assumed already
+existed and which does not — and, found by slice 21, **the upload ticket a page has never had**: §20.9 landed
+`attachment.wiki_page_id`, the download route and the sweeper, and `createUploadTicket` still takes a
+`workItemId` and has no page branch, so neither a page nor a comment on one can carry a file (a slice-18
+gap). **Slice 22 sharpened that last one rather than closing it**: §21.8 asks an export to carry "the
+attachments the bodies reference", and it carries none — because there are none to carry.
 
 **§21 is the second pass over §20's two nouns, and it is specified as four independent slices — 19 through
 22.** They are "not a queue": each is shippable on its own and any may be skipped without stranding another,
-and §21.13 orders them by *what makes a wiki survive* before *what makes it pleasant*. **Slices 19 and 20
-are built** (both 2026-09-05) and each has its own section below — ownership, verification, expiry, the
-All-pages view and one new section on an email that was already going out; then backlinks, the reference
-graph and the editor pass. **Slices 21 and 22 are specified and unbuilt**: comments on pages, and templates
-with export/import. Work is still taken one at a time, on request.
+and §21.13 orders them by *what makes a wiki survive* before *what makes it pleasant*. **All four are built**
+(all 2026-09-05) and each has its own section below — ownership, verification, expiry, the All-pages view and
+one new section on an email that was already going out; then backlinks, the reference graph and the editor
+pass; then comments on pages, which widened `comment` into a subject union and found a slice-18 defect that
+had been silently discarding every page notification; and now templates, export and import, which added a zip
+writer and a zip reader with no dependency and found **the wiki's space list reporting zero pages for every
+space since slice 18**. **There is no unbuilt slice left in the plan.** What remains is the gap list.
+Work is still taken one at a time, on request.
 
 §21.1 is the sentence the whole section hangs off, and it is worth having before touching any of it: **copy
 what a knowledge product knows about documents rotting; refuse what it knows about letting people build their
@@ -184,12 +191,43 @@ heading anchors, the `/` menu, the formatting shortcuts and the live preview bes
 (`src/lib/editor-commands.ts`, `tableOfContents` and the callout half of `src/lib/documents.ts`, migrations
 `0035`/`0036`, `fetchBacklinks` and `PageRef.excerpt` in `src/server/queries/wiki.ts`,
 `syncPageRefs`/`setPageIcon` in `src/server/services/wiki.ts`, `normalizePageIcon` in `src/lib/wiki.ts`, and
-`src/components/wiki/{insert-menu,page-toc,page-backlinks}.tsx`).
+`src/components/wiki/{insert-menu,page-toc,page-backlinks}.tsx`), and now §21's third slice — comments on pages: `comment`'s subject union and the two
+CHECKs that replace its NOT NULLs, the `CommentSubject` event union, the space-level comment permissions, the
+page thread, and the worker fix that made a page notification arrive at all (migrations `0037`/`0038`,
+`wikiPageId` on `src/server/db/schema/comment.ts`, `CommentSubject` in `src/server/events/types.ts`,
+`notifySubjectOf` in `registry.ts`, `canCommentInSpace`/`canModerateSpace`/`checkSpaceComment` in
+`src/server/services/space-access.ts`, `CommentSubjectRef` in `src/server/queries/comments.ts`,
+`membersPassing`/`spaceReaders`/`pageCommentThreadIn`/`postPageComment` in
+`src/server/services/comments.ts`, `subjectOf`/`subjectUrl` and the left joins in
+`src/server/jobs/notify.ts`, `src/components/work-item/thread-context.ts`, and
+`postPageCommentAction`/`deletePageCommentAction` in the wiki's `actions.ts`), and now §21's fourth and last
+slice — templates, export and import: the `is_template` column and 0040's two rules, a zip writer and reader
+with no dependency, the front-matter format, the import planner and the round trip (`src/server/transfer/`,
+`src/server/services/wiki-transfer.ts`, migrations `0039`/`0040`, `MAX_IMPORT_BYTES` in `src/lib/wiki.ts`,
+`setPageTemplate`/`setPageTemplateIn` in `src/server/services/wiki.ts`,
+`fetchSpaceTemplates`/`fetchSpaceExport` in `src/server/queries/wiki.ts`, and
+`src/components/wiki/{page-template-form,space-templates,space-transfer,page-print}.tsx`).
 All the `db:*` scripts work once `pnpm db:setup` has run.
 
-Every gate passed on 2026-09-05 after **slice 20** — `typecheck`, `lint`, `test` (588 unit), `build`,
-`test:e2e` (239 across three Playwright projects, 13 skips) and `test:tenancy` (344 against real
-Postgres 18.4). **Re-run them rather than trusting this line**; it is a snapshot, not a promise.
+Every gate was re-run on 2026-09-05 after **slice 22** — `typecheck`, `lint`, `test` (644 unit), `build`,
+`test:tenancy` (365 against real Postgres 18.4) and `test:e2e` (247 passed, 13 skipped, across three
+Playwright projects, plus the one known-flaky `a11y` failure below). **Re-run them rather than trusting this
+line**; it is a snapshot, not a promise.
+
+**`a11y.spec.ts`'s "the command palette and the shortcut sheet, which are the two overlays" is flaky, and it
+is not slice 21's.** The palette opens, is named and closes; the `?` sheet that follows it sometimes never
+appears, so `getByRole('dialog')` times out. It failed in one full run and passed in the next, and **failed
+once in three isolated runs** — the failures being the runs against a **freshly built server** (5.7s) and the
+passes the warm ones (2.6s), which is the tell worth having.
+
+It was **verified against HEAD with slice 21 stashed, where it fails the same way** — the check worth doing
+before blaming a slice for a failure on a screen it did not touch, since nothing in slice 21 renders on My
+Work or in the shortcut path. Two threads for whoever picks it up, and the cold/warm split favours the first:
+the `keydown` binding is attached by a client effect, so a press before hydration is heard by nobody; and
+`body.press('?')` follows an `Escape` that closed a native `<dialog>`, where focus restored inside the closed
+dialog would reach `isTypingTarget` and be correctly swallowed. That guard is the one slice 14 called "the
+single most important line in the shortcut path", so the fix belongs on the test's waiting or on focus
+restoration — **not** on the guard.
 
 **`pnpm test:e2e` needs `--workers=2` on this machine, and that number is a fact about the hardware rather
 than about the suite.** `workers` is unset in `playwright.config.ts`, so locally Playwright defaults to half
@@ -431,7 +469,7 @@ Planned layout (`PLAN.en.md` §8) — follow it rather than inventing one:
 
 ```
 src/app/[locale]/{(auth),(onboarding),[workspaceSlug]/...}   src/app/api/internal/{reorder,list,upload,reassign,search}
-src/server/{db/{schema,client.ts,tenant.ts,identity.ts},auth,authz/policy.ts,queries,services,events,jobs}
+src/server/{db/{schema,client.ts,tenant.ts,identity.ts},auth,authz/policy.ts,queries,services,events,jobs,transfer}
 src/components/{ui,auth,invite,members,work-item,views,search,notes,wiki}   src/i18n   src/lib   drizzle/
 ```
 
@@ -443,8 +481,8 @@ The migration order in `drizzle/` is load-bearing: `0000` creates the `tenancy.*
 creates policies that call them, and `0002` adds what drizzle-kit cannot express (`FORCE ROW LEVEL SECURITY`,
 grants, revokes). Every slice after that repeats the pair — `0003`/`0004` for slice 3, `0005`/`0006` for slice
 4, `0007`/`0008` for slice 5, and so on to `0027`/`0028` for slice 15 and `0029`/`0030` for
-slice 17, `0031`/`0032` for slice 18, `0033`/`0034` for slice 19 and `0035`/`0036` for slice 20. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
-`0004`, `0006`, `0008`, `0010`, `0012`, `0014`, `0016`, `0018`, `0020`, `0022`, `0024`, `0026`, `0028`, `0030`, `0032` and `0034` are hand-written and must stay that way. A hand-written migration is
+slice 17, `0031`/`0032` for slice 18, `0033`/`0034` for slice 19, `0035`/`0036` for slice 20, `0037`/`0038` for slice 21 and `0039`/`0040` for slice 22. Regenerating a generated file with `db:generate` is fine; `0000`, `0002`,
+`0004`, `0006`, `0008`, `0010`, `0012`, `0014`, `0016`, `0018`, `0020`, `0022`, `0024`, `0026`, `0028`, `0030`, `0032`, `0034`, `0036`, `0038` and `0040` are hand-written and must stay that way. A hand-written migration is
 scaffolded with `db:generate --custom` so the journal and snapshot stay consistent. **Renaming a generated
 migration means editing its `tag` in `drizzle/meta/_journal.json` too, and deleting one means deleting its
 snapshot** — drizzle-kit diffs against the highest snapshot it finds, so a stale `000N_snapshot.json` makes
@@ -2532,6 +2570,318 @@ the 390px assertion: it has two panes side by side and an absolutely positioned 
 sweep found that an absolutely positioned descendant of a `static` parent resolves against the initial
 containing block and grows the *document*. Both sweeps assert with the menu **open**, which is the only state
 worth asserting.
+
+## Comments on pages, and the notification nobody was receiving
+
+Slice 21, the third of §21's four. `src/server/db/schema/comment.ts`, migrations `0037`/`0038`, the
+`CommentSubject` union in `src/server/events/types.ts`, `notifySubjectOf` in `registry.ts`,
+`canCommentInSpace`/`canModerateSpace`/`checkSpaceComment` in `src/server/services/space-access.ts`,
+`fetchComments`'s subject in `src/server/queries/comments.ts`, `pageCommentThreadIn`/`postPageComment` in
+`src/server/services/comments.ts`, `src/components/work-item/thread-context.ts`, the two actions at the foot
+of `wiki/actions.ts`, and the thread on the page reader.
+
+**It is `comment` rows with a subject union, and §21.6 answers §20.16's open question by pointing at a shape
+the product already had.** `attachment` widened this way in slice 18 and `notification` in §20.6; this is the
+third. Two NOT NULLs come off the second-busiest table in the schema and `comment_one_subject` replaces
+them — **refusing more than they did, because it also refuses a row belonging to both**. The companion
+`comment_project_with_item` keeps the denormalized project present exactly when the item is, which is 0032's
+constraint for `attachment.project_id` applied one slice later to the same problem.
+
+**Three service functions were shared and three were not, and the split is the slice.** The comment machinery
+— the parse, the mention rows, the tombstone, the hydration, the picker's contract — has one implementation.
+The *subject* machinery has two: an item's permission question is asked of its project and a page's of its
+space (§20.5), an item has assignees where a page has an owner and a thread, and an item's comments carry
+files where a page's do not. `membersPassing` is the generalisation that made the first half possible —
+`visibleMembers` and the new `spaceReaders` are now two predicates over one query.
+
+**Who may comment is the one genuinely new decision, and it needed no §10 row — the sixteenth time.** §21.6:
+"anyone who can read the space may comment in it, which for a project space includes a Guest who can see the
+project — deliberately, because the whole value of a comment on documentation comes from the person who found
+it wrong, and that is disproportionately the newest person in the room." So it is `canReadSpace` plus one
+clause, and **that clause is a view-as refusal written by hand**: `can()` denies every `mutation: true` action
+while `readOnly` is set, and there is no action here for it to deny. A rule that is not a §10 action does not
+reach the module that enforces §7.13, so `canCommentInSpace` states it. Deleting somebody else's is
+`canModerateSpace` — `comment.delete_others` for a project space, `wiki.write_company_space` for the one
+container with no project to ask about. Both rows already existed.
+
+**`CommentSubject` is a union so the compiler finds every construction site**, and it did that job the moment
+the schema widened: three sites inside `deleteComment` failed to compile before anything else was touched.
+`comment.created` also renamed `assigneeIds` to `subscriberIds`, because a page has no assignees — its
+standing interest is **its owner (§21.3) plus everybody who has already written in the thread**. That second
+half is what makes it a conversation rather than a suggestion box: §21.13 asks for a question asked *and
+answered*, and without it the asker only ever hears back if the answerer remembers to type their name.
+
+**Slice 21 found a live slice-18 defect that had been silently discarding notifications, and it is the most
+instructive thing here.** `deliverToOne` opened with `if (message.workItemId === null) return;` under a
+comment reading "every notifying event is about a work item — the registry's `notify` drafts all carry one".
+§20.6 made that false one slice earlier: a mention in a page body writes an outbox row with a null
+`work_item_id`. `loadContext`'s **inner join** on `work_item` then matched nothing, the function returned
+null, and `deliverNotification` returned **without marking the message delivered** — so the row stayed at the
+head of `drainOutbox`'s partial index and was re-enqueued every five seconds, for ever, while nobody's inbox
+ever showed it. Not a lost notification but a stuck row, invisible unless somebody read the outbox by hand.
+
+The inbox query had already been converted to left joins for exactly this reason and says so in its own
+comment; the worker was missed. **Widening a union is not done until every reader of the narrow field has
+been visited, and the compiler cannot find them, because a nullable column type-checks either way.** It is
+the third time this repo has had to chase a subject union through a join — §20.6's `notification` inner join,
+slice 18's `SEARCH_SECTIONS` payload, this — and the pattern is the same each time. `loadContext` now left-joins
+both branches and reconstructs the subject; a context that will not resolve marks the message delivered with a
+reason rather than returning, because it will not resolve on the tenth attempt either.
+
+**Three more places assumed a page had no thread, and all three are now the same sentence.** 0032's
+`notification_comment_with_item` CHECK ("a comment deep-link only makes sense on the item branch") is dropped
+in 0038 — a page comment's mention is exactly the row it refused. `subjectHref` in the inbox dropped the
+`#comment-…` anchor on the page branch. And **the anchor did not exist anywhere**: every `#comment-<id>` deep
+link the product has ever sent pointed at nothing, because no comment carried that `id`. `comment-thread.tsx`
+now puts it on the `<li>`.
+
+**A missing message key surfaced the moment a page subject was rendered in an inbox for the first time.**
+`inbox.subject.page` was absent from *both* catalogues, so `messages.test.ts` passed on parity while
+next-intl swallowed a `MISSING_MESSAGE` into the server log — slice 10's `soon` defect and slice 13's `due`
+grouping, for the third time. The e2e assertion that caught it was looking for `notification.` and the key
+was `inbox.`; it matches `/\b(inbox|notification)\.[a-z]/i` now.
+
+**`ComposerContext` was not widened, and `thread-context.ts` exists because of a boundary rule.** The five
+attachment components take an item-shaped context and a page comment has no files, so widening it would have
+made five components narrow a subject they can do nothing with. What the thread needs instead is
+`ThreadContext` — a subject union plus **the two actions as props**, which is `PageIconForm`'s own precedent
+and which removed slice 8's hard import of the work-item route from a component the wiki now renders.
+
+Those types and `filesContextOf` live in their own module with **no `'use client'` directive**, and the reason
+is worth knowing before splitting another component: a client module's *types* cross the server boundary
+freely and its **functions do not**. `comment-thread.tsx` is a server component, and calling `filesContextOf`
+while it lived in the composer failed at render with *"Attempted to call filesContextOf() from the server but
+filesContextOf is on the client"* — a runtime error on a page that type-checks and that no unit test could
+reach.
+
+**Paste-to-upload is absent rather than disabled on a page, and the gap is named rather than hidden.** §21.6
+lists "attachments in a comment" among what a page thread inherits free, and it is the one thing that did not
+come free: `createUploadTicket` takes a `workItemId` and has **no page branch at all**, so §20.9's schema
+(`attachment.wiki_page_id`, the download route, the sweeper) has never had anything to create a row. That is a
+**slice-18 gap** — a page cannot hold an image either — and closing it is the ticket, the route and 0032's
+`attachment_comment_with_item` CHECK, which is a slice about page *files* rather than page *comments*.
+`useUploads` takes `workItemId: string | null` so a hook stays unconditional, and refuses before the round
+trip.
+
+**`getPage` takes `thread: boolean` with no default, and that is not tidiness.** The editor calls `getPage`
+too and renders no thread; fetching one there added three queries to the screen somebody is typing into — and
+it was not a theoretical cost. It lengthened the editor's render enough to break `wiki.spec.ts`'s stale-save
+test on `mobile-km`, where a `fill` landed before the body arrived and the two texts concatenated into
+`my paragraphthe original line`. **That is the fourth time in this repo that adding queries to a page's loader
+has exposed a latent race** (slice 8's two specs, slice 10's `getWorkItem`, slice 20's `getPage`), and the
+first where the right answer was to not run them.
+
+**Two e2e traps this file had already recorded, walked into again.** An assertion a control beside the thing
+can satisfy is not testing the thing it names: `expect(main).toContainText('Contractor')` after adding a
+project member passes whether or not the add succeeded, because the picker's own `<option>` carries that name
+— slice 15's accent picker and slice 19's owner picker, a third time. And anchoring on a *positive* before
+asserting an absence: `not.toContainText` is satisfied by a page that has not arrived, and the following
+`goto` then failed with `net::ERR_ABORTED` on a render still in flight.
+
+**The editor redirects a reader rather than 404ing**, which `edit/page.tsx` states — "`notFound()` would be
+wrong here: the page exists and they can see it" — so §21.14-5's "cannot write one" is asserted as *where they
+ended up* plus the absence of a Save control, not as a 404.
+
+**No §10 row, no new table, no new §10 question — and the Guest reading is now pinned by a test.** §20.5's
+Guest disagreement is still one line either way and still owed a confirmation before the pilot (§18-7), but
+reversing it now costs a deliberate edit to `e2e/wiki-comments.spec.ts`, which states the sentence rather than
+implying it.
+
+## Templates, the round trip, and a subquery that was counting nothing
+
+Slice 22, the last of §21's four and the last slice the plan specifies. `src/server/transfer/`
+(`zip.ts`, `markdown.ts`, `plan.ts`), `src/server/services/wiki-transfer.ts`, migrations `0039`/`0040`,
+`setPageTemplate`/`setPageTemplateIn` and `getSpace`'s new options in `src/server/services/wiki.ts`,
+`fetchSpaceTemplates`/`fetchSpaceExport` in `src/server/queries/wiki.ts`, the three components
+`page-template-form.tsx`, `space-templates.tsx` and `space-transfer.tsx`, `page-print.tsx`, and
+`MAX_IMPORT_BYTES` in `src/lib/wiki.ts`.
+
+**§21.7 is one boolean column, and saying so is the whole design.** "A template is an ordinary page with a
+flag — living in the space it belongs to and hidden from the tree." There is no `wiki_template` table, no
+second editor, no second permission question and no second export path, because "a template that cannot be
+read, edited and searched like a page is a second document format with a second set of screens". What the
+flag changes is exactly two things: the page leaves the sidebar, and it is offered when somebody creates a
+page.
+
+**The two rules that make that coherent are in the database, and they need two different mechanisms.** *A
+template is a root page* is a CHECK — hidden from the tree and inside it are contradictory, and a template
+nested under the handbook would be an invisible node that `deletePage`'s reparenting, `subtreeIds` and
+`buildPageTree` all have to reason about. *Nothing hangs off a template* cannot be a CHECK, because it is a
+fact about a **different row**; it is a clause added to 0032's `wiki_page_hierarchy` trigger, which already
+had the parent row in hand. A third case needed a second trigger: flagging a page that **already has
+children** changes nobody's `parent_id`, so the hierarchy trigger never fires and the CHECK only looks at the
+page's own parent. That is the argument every invariant since 0008 has made — a row written by a seed script
+or an importer has to be as correct as one the service wrote — and this is the first slice where it stopped
+being hypothetical, because **the importer is in the same slice and it is a loop**.
+
+**`fetchSpaceTree` is where the hiding happens, not the sidebar.** That function is also what `createPageIn`
+and `movePage` read to compute a depth and a sibling position, and what the parent picker is built from — so
+filtering in the one place is what makes a template un-offerable as a parent by a screen that forgot. The same
+shape as `fetchPage`'s `includeDeleted` being off by default rather than applied per caller.
+
+**Templates are listed in the All-pages view though they are hidden from the tree**, and the two are not in
+tension: the tree is navigation and that view is governance. A template nobody owns is exactly what the
+`unowned` filter exists to find, and it is the page whose staleness propagates — every incident report
+written from it inherits its headings. The row is badged, so "why is this not in the sidebar" is answered on
+screen rather than in a plan.
+
+**The picker is four links, and the version that was not built is the interesting one.** Fetching the
+templates *with their bodies* would let a choice fill the textarea with no round trip — and would put fifty
+pages of prose in the payload of every "New page" render to use one of them. `MAX_PAGE_BODY_LENGTH` is
+200,000 characters, so the worst case is ten megabytes sent to a phone on mobile data (§2.5) to draw four
+links. So `fetchSpaceTemplates` selects no body, the links carry an **id**, and
+`/wiki/{space}/new?template={id}` is a URL somebody can send a colleague — which §5 asks of every other state
+in the product and which a `<select>` could not have been. The form is **keyed on the template id** so
+choosing a second one remounts it; without that key React keeps the old body in a controlled textarea, which
+is the create screen quietly ignoring the thing just clicked. Seeding `useState` from props is safe *because*
+of the key — the distinction `GroupList` recorded in slice 5.
+
+**`setPageTemplate` is its own action, which is `setPageIconAction`'s call from slice 20 with more force.**
+Folded into the save it would ride §20.3.3's conditional update — so flagging a template while a colleague was
+typing would be refused as a stale save, a refusal with real weight spent on a filing decision — and it would
+clear §21.3's verification, which every body save does unconditionally. A verified runbook somebody has now
+also marked as a template is still a page somebody read and vouched for.
+
+### Export, import, and a zip written by hand
+
+**§21.8's argument is a sales argument and it is the strongest one in §21**: §18-7's pilot customer will ask
+what happens to their handbook if they leave, and *"a folder of Markdown files you can open in any editor"* is
+a better answer than any feature in the section. That sets the standard the file format is held to — the files
+have to be readable by somebody who has never heard of this product, in either script.
+
+**The zip is ours, and it is the same bargain `sigv4.ts` makes against `@aws-sdk`** — an easier one, because
+the format was frozen in 1993 and `node:zlib` already ships the only hard part. The argument specific to this
+feature is that an export is the promise a customer will actually test, so it must not be the part that breaks
+when a transitive dependency changes a default, which is exactly what §20.7 refused a Markdown library for.
+Zip64, encryption and multi-disk are **refused with a named reason rather than mis-parsed**: a reader that
+silently returns half an archive is worse than one that says it cannot read this.
+
+Three things in `zip.ts` are load-bearing and will look arbitrary later. **Sizes and the method come from the
+central directory, never from the local header** — a streaming writer (every browser, `zip -`) sets bit 3 and
+writes zeroes there, and `zip.test.ts` assembles exactly that archive by hand from `node:zlib` so the reader is
+checked against something its own writer never produces. The **UTF-8 filename flag is not optional**, because
+without it a reader may decode the name as CP437 and a Khmer page becomes accented Latin at the moment
+somebody unzips the export they asked for to prove their data is theirs (§21.14's check 4). And the end record
+is **scanned backwards**, because a forward scan finds those four bytes inside a stored file that happens to
+contain them.
+
+Beyond the unit tests, the archive was unpacked by **Windows' own `Expand-Archive`** — Khmer filename,
+deflated entry and all. That is the check `sigv4.test.ts` could not make from inside itself.
+
+**The export says what the screen says**, and that one sentence settles every token fallback. `resolveTokens`
+uses `document-body.tsx`'s own: a bare `@` for a member the workspace cannot name, an em dash for a reference
+to a page that never existed, a plain title for one that is real but outside this folder. Inventing kinder
+fallbacks for the file would make the export disagree with the product about what a document contains.
+
+**A file is a page and a folder is that page's children** — `handbook.md` beside `handbook/`, not
+`handbook/index.md`. Both conventions exist; this one has no ambiguity to resolve on the way back in, where
+`index.md` needs a rule about a folder holding both an `index.md` and a page called *index*.
+
+**There is deliberately no "strip the wrapping folder" step, and the absence is the decision.** Zipping an
+unpacked export wraps it in the folder's name, and detecting the single shared top-level directory would
+remove it — but that shape is indistinguishable from `runbooks/deploy.md`, where the directory is a *page*
+with a child. No rule over paths can tell them apart, because the difference is in what somebody meant. So a
+wrapper becomes an ordinary page, visible and one click from deletion, where a wrong strip silently moves
+every page up a level. **A guessed value is worse than an absent one, because nobody goes looking to check
+it** — slice 15's holiday rule, applied to a folder.
+
+**Nothing about a person is restored on import, and that is the sharpest refusal in the module.** The front
+matter carries an owner and a verifier as *names*, which is right for the human reading the folder and useless
+as an instruction: a name is not an id, and the target workspace may not contain that person. Worse than
+useless for the verification — §21.3 makes it an attributable claim by a member about a particular revision,
+and writing one from a file would forge exactly the attribution the feature exists to make trustworthy. An
+imported page arrives **owned by nobody and never verified**, which is the honest starting point and is what
+the All-pages view's `unowned` and `unverified` filters exist to find.
+
+**Import creates ordinary pages through `createPageIn`**, so it inherits validation, a free slug, the first
+revision, `wiki_page.created`, and the body's links and refs. The template flags are a **second pass inside
+the same transaction**, and it cannot be otherwise: flagging a page before its children exist would make every
+child violate 0040's trigger, which would abort the whole import rather than skip one file. §7.10's invitation
+rule holds throughout — partial success, no rollback, and the result lists what did not land, by path.
+
+**No route handler, and that constraint is §21's own**: its impact table says "§8's five exceptions stay
+five". So the archive comes back **base64 inside the action's result** and the browser turns it into a Blob;
+the import is a `File` on FormData, with `serverActions.bodySizeLimit` raised to 6mb so it clears
+`MAX_IMPORT_BYTES` (5 MiB) with room for multipart overhead. The refusal a person meets is then *ours* — a
+sentence naming the limit — rather than Next's 413, which a form cannot explain. Raising that limit is a real
+cost, applied to every action in the product, and is the reason the number is not larger.
+
+**Export is audited, and it is the one audited read in the product.** Everything else in the event union is a
+change to the company's data; an export changes nothing and takes every word the company has written down out
+of the building. "Who took a copy of the handbook, and when" is what §18-11 built the log to answer, and
+`workspace.view_as_started` is the precedent — also not a mutation, also audited. It is emphatically not a
+claim to have prevented anything: anyone who can read a space can read its pages one at a time and paste them
+somewhere. What the row buys is that the *convenient* path leaves a trace. **Whoever can read a space may
+export it** — §21.8 left that open and both plans now record the answer — and it is **refused inside a view-as
+session**, a rule written by hand because `can()` denies mutations and there is no §10 action here for it to
+deny, exactly as `canCommentInSpace` had to state its own in slice 21.
+
+**The per-page PDF is `window.print()` and the stylesheet slice 13 wrote** (§17-26), which is why the reader's
+sidebar, right rail and comment thread gained `data-print="hide"`. §21.8 names this explicitly, and a page
+body is the one screen where all three of §17-26's rules matter at once: it is long-form text, often Khmer,
+read by people who print policies.
+
+### What the tests found
+
+**`fetchSpaces` had been reporting zero pages for every space in the product since slice 18, and the e2e run
+is what noticed.** The wiki's space list has always said "No pages". The cause is slice 19's finding wearing a
+quieter face: the page count is a correlated subquery that interpolated drizzle columns —
+`${wikiPage.spaceId} = ${wikiSpace.id}` — and **that query has no join**, so drizzle emitted both
+unqualified. Inside a subquery over `wiki_page` the inner scope then wins for both: Postgres read the
+predicate as `wiki_page.space_id = wiki_page.id`, planned it as an uncorrelated InitPlan, and matched nothing.
+
+Slice 19's version of this **threw** (`column reference "id" is ambiguous`). This one returns a plausible
+number, which is why it survived four slices and a review each time. It typechecks, no unit test can see it,
+and the tenancy suite never called the shape.
+
+**The rule is about joins, and getting that precise mattered — the first version of this fix was wrong.**
+"drizzle emits a column unqualified in a select-fields `sql` template" is what slice 19 wrote and it is only
+half true: drizzle qualifies when the statement has **more than one table**. On that misreading the three
+correlated counts on §7.12's offboarding dialog (`noteCount`, `pageCount`, `ownedPageCount`) were "fixed" too
+— and they had never been broken, because `listMembers` joins `app_user`. What settled it was reverting the
+change and watching the new tests still pass, and drizzle's own `.toSQL()` on both shapes side by side:
+
+```
+WITH JOIN   : … where note.owner_member_id = "workspace_member"."id" …
+WITHOUT JOIN: … where note.owner_member_id = "id" …
+```
+
+So: an interpolated outer column inside a correlated subquery is safe wherever the outer query **joins**, and
+safe wherever the inner tables have **no column of that name** to shadow it (which is why
+`fetchSpacePages`'s subqueries are fine, as slice 19 noted). It is a trap only where neither holds. Naming
+the outer table literally and aliasing the inner one is correct in every case and is what `fetchSpaces` now
+does — but it is not a licence to rewrite queries that join, and it costs alias-safety, which is why
+`ownedPageCountFor` kept its parameter.
+
+**Those three counts had no test at all, and now they do.** That is the part of the false alarm worth
+keeping: `listMembers` was split into `listMembersIn(tx)` — slice 14's `listProjectsIn` move — so
+`__tenancy__/member-counts.test.ts` can assert the **numbers** against real Postgres. Numbers rather than
+SQL, because a broken correlation returns a plausible value rather than an error, and §7.12 makes these a
+decision somebody acts on before a click they cannot undo.
+
+**The planner's unit tests found a real defect in code written an hour earlier**, which is the argument for
+having moved `planImport` out of the service into `src/server/transfer/plan.ts`: the interesting half of an
+import — a zip written on Windows, wrapped in its own folder, four levels deep, with a `.DS_Store` in it — is
+a unit test rather than a fixture with a Postgres behind it. The wrapper-stripping heuristic above is what
+they caught.
+
+**Two e2e locator scars, both already in this file and both walked into again.** An assertion anchored on an
+accessible name has to account for the **whole** name — the space link reads "Archive No pages", so
+`/^Archive$/` matches nothing — and that name is **translated**, so an English regex passes on `en` and fails
+on the two Khmer projects. The count is asserted by `href` now, and the digit is safe in both because §13 pins
+Latin digits. Chasing that is what surfaced the `fetchSpaces` defect, and the assertion is now what would
+catch it again.
+
+**`a11y.spec.ts`'s "two overlays" test failed twice in the full run and is still not this slice's.** It is the
+flake recorded above, with the same cold/warm tell: it failed against the freshly built server and passed in
+three isolated re-runs afterwards at 2.6s each, and `km` passed in the same run in which `en` failed. Nothing
+in slice 22 renders on My Work or in the shortcut path.
+
+**One thing §21.8 asks for that is not built, and it is named rather than hidden.** The export carries no
+attachments, because a page cannot hold one: `createUploadTicket` takes a `workItemId` and has no page branch,
+which is the **slice-18 gap** §21.16 already records. §20.9 landed the schema, the download route and the
+sweeper; the day the ticket lands, `fileFor` is where the files go — and the base64-through-an-action decision
+above is the line to revisit, because a 25 MiB attachment is not a Markdown file.
 
 ## Bilingual invariants
 

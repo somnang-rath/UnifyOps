@@ -1,9 +1,9 @@
 import 'server-only';
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import type { ResolvedActor } from '@/server/auth/context';
-import { assertCan, can, type Actor } from '@/server/authz/policy';
+import { assertCan, can, ForbiddenError, type Actor } from '@/server/authz/policy';
 import type { ProjectRole } from '@/server/authz/roles';
 import type { TenantDb } from '@/server/db/client';
 import {
@@ -11,12 +11,22 @@ import {
   commentMention,
   projectMember,
   user,
+  wikiPage,
   workItem,
   workspaceMember,
 } from '@/server/db/schema';
 import { inSequence } from '@/server/db/sequence';
 import { withActor } from '@/server/db/tenant';
+import type { CommentSubject } from '@/server/events/types';
 import { fetchComments, type CommentRow } from '@/server/queries/comments';
+import {
+  canCommentInSpace,
+  canModerateSpace,
+  canReadSpace,
+  checkSpaceComment,
+  resolvePageSpace,
+  type SpaceContext,
+} from './space-access';
 import {
   attachmentsForComments,
   claimPendingAttachments,
@@ -97,8 +107,10 @@ export type CommentThreadView = {
   /** Whether this actor may post at all — §10, plus §4's archived rule. */
   canComment: boolean;
   /**
-   * Who the `@` picker may offer, already filtered to people who can see this
-   * project — so the ordinary path never reaches §7.7's refusal.
+   * Who the `@` picker may offer, already filtered to people who may read the
+   * subject — so the ordinary path never reaches §7.7's refusal. For an item
+   * that is "can see the project"; for a page it is "can read the space"
+   * (§20.5, §21.6).
    *
    * Part of the thread rather than its own call, because it is the same
    * question about the same project and separating them cost a second
@@ -115,6 +127,18 @@ export type CommentThreadView = {
    * keeps "archived" and "forbidden" apart at the top of every mutation.
    */
   cannotCommentReason: 'archived' | 'forbidden' | null;
+};
+
+/**
+ * An item's thread, which is a thread plus the one thing only an item has.
+ *
+ * **Split from `CommentThreadView` in slice 21 rather than making `itemFiles`
+ * optional**, because `CommentThread` — the component both subjects render
+ * through — genuinely does not read it: the item page draws the item's own files
+ * in their own panel. An optional field would have compiled either way and left
+ * the component free to reach for something a page can never supply.
+ */
+export type ItemCommentThreadView = CommentThreadView & {
   /**
    * The files hanging on the *item* rather than on any comment.
    *
@@ -122,7 +146,7 @@ export type CommentThreadView = {
    * the same project, asked inside a transaction that is already open and has
    * already applied §10 to this project. A second service call would be a third
    * `withActor` on every item page render — which is precisely the latency that
-   * exposed the e2e race this slice had to fix.
+   * exposed the e2e race slice 8 had to fix.
    */
   itemFiles: AttachmentView[];
 };
@@ -173,11 +197,17 @@ async function loadItemProject(
  * Viewer, Guests getting nothing) that one implementation is worth more than
  * the round trip saved.
  */
-async function visibleMembers(
+async function membersPassing(
   tx: TenantDb,
-  project: ProjectRow,
-  memberIds?: string[],
+  input: {
+    workspaceId: string;
+    /** The project whose explicit memberships a candidate Actor carries, if any. */
+    projectId: string | null;
+    allows: (actor: Actor) => boolean;
+    memberIds?: string[];
+  },
 ): Promise<Map<string, { name: string; email: string }>> {
+  const { memberIds, projectId } = input;
   if (memberIds && memberIds.length === 0) return new Map();
 
   const rows = await tx
@@ -193,11 +223,17 @@ async function visibleMembers(
     .innerJoin(user, eq(user.id, workspaceMember.userId))
     .leftJoin(
       projectMember,
-      and(
-        eq(projectMember.workspaceMemberId, workspaceMember.id),
-        eq(projectMember.projectId, project.id),
-        isNull(projectMember.deletedAt),
-      ),
+      projectId === null
+        ? // No project to join against: the company space asks a workspace-wide
+          // question (§20.5). A false join condition rather than a second query
+          // shape, so `projectRole` is simply always null on that branch and the
+          // loop below stays one loop.
+          sql`false`
+        : and(
+            eq(projectMember.workspaceMemberId, workspaceMember.id),
+            eq(projectMember.projectId, projectId),
+            isNull(projectMember.deletedAt),
+          ),
     )
     .where(
       memberIds
@@ -205,29 +241,72 @@ async function visibleMembers(
         : isNull(workspaceMember.deletedAt),
     );
 
-  const resource = projectResource(project);
-  const visible = new Map<string, { name: string; email: string }>();
+  const passing = new Map<string, { name: string; email: string }>();
 
   for (const row of rows) {
-    // A one-project Actor. Everything §10 composes — Owner and Admin as
-    // implicit Leads, a workspace-visible project granting Members a Viewer,
-    // Guests getting nothing — is derived by the module from exactly this.
+    // A candidate Actor. Everything §10 composes — Owner and Admin as implicit
+    // Leads, a workspace-visible project granting Members a Viewer, Guests
+    // getting nothing — is derived by the module from exactly this.
+    //
+    // `readOnly: false` throughout, and that is not an oversight. The question
+    // is what *this other person* may see, and whether the actor running the
+    // query happens to be in a view-as session says nothing about it. The
+    // actor's own read-only refusal is applied where they act, not here.
     const candidate: Actor = {
-      workspaceId: project.workspaceId,
+      workspaceId: input.workspaceId,
       userId: row.userId,
       workspaceRole: row.role,
-      projectRoles: row.projectRole
-        ? new Map<string, ProjectRole>([[project.id, row.projectRole]])
-        : new Map<string, ProjectRole>(),
+      projectRoles:
+        projectId !== null && row.projectRole
+          ? new Map<string, ProjectRole>([[projectId, row.projectRole]])
+          : new Map<string, ProjectRole>(),
       readOnly: false,
     };
 
-    if (can(candidate, 'project.view', resource)) {
-      visible.set(row.memberId, { name: row.name, email: row.email });
+    if (input.allows(candidate)) {
+      passing.set(row.memberId, { name: row.name, email: row.email });
     }
   }
 
-  return visible;
+  return passing;
+}
+
+/** The members who can see this project — `membersPassing` under §10's read row. */
+async function visibleMembers(
+  tx: TenantDb,
+  project: ProjectRow,
+  memberIds?: string[],
+): Promise<Map<string, { name: string; email: string }>> {
+  const resource = projectResource(project);
+  return membersPassing(tx, {
+    workspaceId: project.workspaceId,
+    projectId: project.id,
+    allows: (candidate) => can(candidate, 'project.view', resource),
+    memberIds,
+  });
+}
+
+/**
+ * The members who can read this **space** (§20.5, §21.6).
+ *
+ * The mention rule for a page thread, and it is `canReadSpace` rather than
+ * `canWriteSpace` deliberately: §21.6 gives commenting to every reader, so a
+ * picker that could not offer somebody who is allowed to reply would be narrower
+ * than the feature it serves. For a project space this resolves to exactly
+ * `visibleMembers` above; for the company space it is every non-Guest member,
+ * which is a sentence `canReadSpace` already owns and this does not restate.
+ */
+async function spaceReaders(
+  tx: TenantDb,
+  context: SpaceContext,
+  memberIds?: string[],
+): Promise<Map<string, { name: string; email: string }>> {
+  return membersPassing(tx, {
+    workspaceId: context.space.workspaceId,
+    projectId: context.project?.id ?? null,
+    allows: (candidate) => canReadSpace(candidate, context),
+    memberIds,
+  });
 }
 
 /**
@@ -237,9 +316,18 @@ async function visibleMembers(
  * reaches the refusal — §7.7's `[!]` is a backstop, not a workflow.
  */
 async function mentionableFor(tx: TenantDb, project: ProjectRow): Promise<MentionablePerson[]> {
-  const visible = await visibleMembers(tx, project);
+  return toMentionable(await visibleMembers(tx, project));
+}
 
-  return [...visible.entries()]
+/**
+ * A resolved member set as the picker draws it.
+ *
+ * Split out in slice 21 because the two subjects resolve *different sets* by
+ * different rules and then present them identically — so the presentation is
+ * the half that should have one implementation.
+ */
+function toMentionable(people: Map<string, { name: string; email: string }>): MentionablePerson[] {
+  return [...people.entries()]
     .map(([memberId, person]) => ({
       memberId,
       // The address is the fallback identity everywhere else in the product,
@@ -272,14 +360,14 @@ async function hydrateMentions(tx: TenantDb, rows: CommentRow[]): Promise<Record
 export async function getCommentThread(
   resolved: ResolvedActor,
   input: { workItemId: string; all?: boolean },
-): Promise<CommentThreadView | null> {
+): Promise<ItemCommentThreadView | null> {
   return withActor(resolved.context, async (tx) => {
     const loaded = await loadItemProject(tx, resolved.actor, input.workItemId);
     if (!loaded) return null;
     const { project } = loaded;
 
     const page = await fetchComments(tx, {
-      workItemId: input.workItemId,
+      subject: { kind: 'work_item', workItemId: input.workItemId },
       limit: input.all ? FULL_LIMIT : DEFAULT_LIMIT,
     });
 
@@ -414,6 +502,12 @@ export async function postComment(
       workspaceId: resolved.workspace.id,
       projectId: project.id,
       workItemId: input.workItemId,
+      // Named explicitly rather than left to the column default, which is
+      // §21.15's mitigation written into the one insert it protects: this table
+      // has two possible subjects now and 0038's CHECK refuses a row claiming
+      // both. Saying `null` here is how the next person to read this insert
+      // learns that the other column exists.
+      wikiPageId: null,
       authorMemberId: resolved.memberId,
       body,
     });
@@ -441,11 +535,12 @@ export async function postComment(
     uow.emit({
       type: 'comment.created',
       workspaceId: resolved.workspace.id,
-      projectId: project.id,
-      workItemId: input.workItemId,
+      subject: { kind: 'work_item', projectId: project.id, workItemId: input.workItemId },
       commentId,
       mentioned,
-      assigneeIds,
+      // An item's standing interest is its assignees, which is §7.8's rule
+      // unchanged — only the field's name generalised, because a page's is not.
+      subscriberIds: assigneeIds,
     });
 
     return { ok: true, commentId } as const;
@@ -468,6 +563,7 @@ export async function deleteComment(
       .select({
         id: comment.id,
         workItemId: comment.workItemId,
+        wikiPageId: comment.wikiPageId,
         projectId: comment.projectId,
         authorMemberId: comment.authorMemberId,
       })
@@ -478,22 +574,67 @@ export async function deleteComment(
     const found = rows[0];
     if (!found) return { ok: false, problem: 'not_found' } as const;
 
-    const project = await loadProject(tx, found.projectId);
-    if (!project) return { ok: false, problem: 'not_found' } as const;
-    if (!can(resolved.actor, 'project.view', projectResource(project))) {
-      return { ok: false, problem: 'not_found' } as const;
-    }
-    if (isArchived(project)) return { ok: false, problem: 'archived' } as const;
-
     const byAuthor = found.authorMemberId === resolved.memberId;
 
-    // Retracting your own needs the right to comment; removing somebody else's
-    // is the separate §10 row, and the two produce different refusals.
-    assertCan(
-      resolved.actor,
-      byAuthor ? 'comment.create' : 'comment.delete_others',
-      projectResource(project),
-    );
+    /**
+     * Which subject this comment is on, and therefore which permission question
+     * to ask (§21.6).
+     *
+     * The narrowing is done by *testing the columns* rather than by asserting
+     * them, for the reason `claimPending` gives in `attachments.ts`: a `!` would
+     * keep compiling if 0038's CHECK were ever relaxed, and a row that satisfies
+     * neither branch should read as "no such comment" rather than as a crash in
+     * a delete. `comment_one_subject` means the third case cannot happen; this
+     * is what the product does on the day it does.
+     */
+    const subject: CommentSubject | null =
+      found.workItemId !== null && found.projectId !== null
+        ? { kind: 'work_item', projectId: found.projectId, workItemId: found.workItemId }
+        : found.wikiPageId !== null
+          ? { kind: 'wiki_page', wikiPageId: found.wikiPageId }
+          : null;
+
+    if (subject === null) return { ok: false, problem: 'not_found' } as const;
+
+    if (subject.kind === 'work_item') {
+      const project = await loadProject(tx, subject.projectId);
+      if (!project) return { ok: false, problem: 'not_found' } as const;
+      if (!can(resolved.actor, 'project.view', projectResource(project))) {
+        return { ok: false, problem: 'not_found' } as const;
+      }
+      if (isArchived(project)) return { ok: false, problem: 'archived' } as const;
+
+      // Retracting your own needs the right to comment; removing somebody else's
+      // is the separate §10 row, and the two produce different refusals.
+      assertCan(
+        resolved.actor,
+        byAuthor ? 'comment.create' : 'comment.delete_others',
+        projectResource(project),
+      );
+    } else {
+      /**
+       * The page branch, and the same two questions asked of the space (§20.5).
+       *
+       * `checkSpaceComment` covers the reader, the archived project behind a
+       * project space and the view-as session in one call — the last of which is
+       * why retracting your own comment cannot simply skip the check. Removing
+       * somebody else's is `canModerateSpace`, which resolves to
+       * `comment.delete_others` for a project space and to
+       * `wiki.write_company_space` for the one container that has no project to
+       * ask about. No new §10 row either way.
+       */
+      const context = await resolvePageSpace(tx, subject.wikiPageId);
+      if (!context) return { ok: false, problem: 'not_found' } as const;
+
+      const problem = checkSpaceComment(resolved.actor, context);
+      if (problem === 'not_found') return { ok: false, problem: 'not_found' } as const;
+      if (problem === 'archived') return { ok: false, problem: 'archived' } as const;
+
+      const allowed = byAuthor
+        ? canCommentInSpace(resolved.actor, context)
+        : canModerateSpace(resolved.actor, context);
+      if (!allowed) throw new ForbiddenError('comment.delete_others', 'insufficient_role');
+    }
 
     await tx
       .update(comment)
@@ -503,12 +644,225 @@ export async function deleteComment(
     uow.emit({
       type: 'comment.deleted',
       workspaceId: resolved.workspace.id,
-      projectId: found.projectId,
-      workItemId: found.workItemId,
+      subject,
       commentId: input.commentId,
       byAuthor,
     });
 
     return { ok: true } as const;
+  });
+}
+
+/* ------------------------------------------------------------------------- *
+ * The page thread (§21.6 — slice 21)
+ * ------------------------------------------------------------------------- */
+
+/**
+ * One page's thread, inside a transaction the caller already opened.
+ *
+ * **The `In` suffix is slice 14's move**, taken here for the reason it was taken
+ * there and in slice 17: `getPage` already has a `withActor` open and has already
+ * resolved this page's space, so a service of its own would be a second pooled
+ * connection and a second resolution of the same permission on every wiki page
+ * view. §20.12 states the rule; five earlier slices each learned it separately.
+ *
+ * The `SpaceContext` is taken rather than looked up, for the same reason: the
+ * caller resolved it to decide whether to render the page at all, and asking
+ * again would be asking §20.5 twice about one request.
+ */
+export async function pageCommentThreadIn(
+  tx: TenantDb,
+  resolved: ResolvedActor,
+  input: { pageId: string; context: SpaceContext; all?: boolean },
+): Promise<CommentThreadView> {
+  const page = await fetchComments(tx, {
+    subject: { kind: 'wiki_page', wikiPageId: input.pageId },
+    limit: input.all ? FULL_LIMIT : DEFAULT_LIMIT,
+  });
+
+  const problem = checkSpaceComment(resolved.actor, input.context);
+  const canComment = problem === null;
+  const canModerate = canModerateSpace(resolved.actor, input.context);
+
+  return {
+    entries: page.rows.map((row) => ({
+      ...row,
+      canDelete:
+        row.deletedAt === null &&
+        (row.authorMemberId === resolved.memberId ? canComment : canModerate),
+      /**
+       * Always empty, and named rather than hidden.
+       *
+       * §21.6 lists "attachments in a comment" among what comes free, and it does
+       * not come free here: `createUploadTicket` takes a `workItemId` and has no
+       * page branch, so there is no way to *create* the `pending` row a page
+       * comment's file would claim. That is a **slice-18 gap** rather than this
+       * slice's — §20.9 landed the schema (`attachment.wiki_page_id`, the
+       * download path, the sweeper) and never landed the ticket, so a page cannot
+       * hold an image either. Closing it means widening the ticket, the route and
+       * 0032's `attachment_comment_with_item` CHECK, which is a slice about page
+       * *files* rather than one about page *comments*.
+       */
+      files: [],
+    })),
+    truncated: page.truncated,
+    mentioned: await hydrateMentions(tx, page.rows),
+    canComment,
+    cannotCommentReason: problem === 'archived' ? 'archived' : canComment ? null : 'forbidden',
+    // Skipped when there is no composer to fill, exactly as the item thread
+    // skips it: on the company space this is a query over every member of the
+    // workspace, and a reader who cannot post discards the result.
+    mentionable: canComment ? toMentionable(await spaceReaders(tx, input.context)) : [],
+  };
+}
+
+/**
+ * The people with a standing interest in a page's thread (§7.8, §21.6).
+ *
+ * A page has no assignees, so §7.8's "every assignee except the actor" has to be
+ * answered with the two things a page does have: **its owner** (§21.3 — the
+ * person answerable for whether it is still true, and the one §21.13's outcome
+ * names) and **everybody who has already written in the thread**.
+ *
+ * The second half is what makes this a conversation rather than a suggestion
+ * box. §21.13 asks for a question asked *and answered*, and without it the person
+ * who asked only ever hears back if the answerer remembers to type their name —
+ * which is the failure mode of every comment box that does not do this.
+ *
+ * Authors of *deleted* comments are included, deliberately: somebody who
+ * retracted a badly-worded question is still in the conversation they started.
+ * The actor is not filtered here — `UnitOfWork.flush` is the one layer that knows
+ * who that is, and slice 9 put "never notify yourself" there precisely so thirty
+ * registry entries would not each have to remember it.
+ */
+async function pageSubscribers(tx: TenantDb, pageId: string): Promise<string[]> {
+  const [owner, participants] = await inSequence(
+    () =>
+      tx
+        .select({ ownerMemberId: wikiPage.ownerMemberId })
+        .from(wikiPage)
+        .where(eq(wikiPage.id, pageId))
+        .limit(1),
+    () =>
+      tx
+        .selectDistinct({ authorMemberId: comment.authorMemberId })
+        .from(comment)
+        .where(eq(comment.wikiPageId, pageId)),
+  );
+
+  const ownerMemberId = owner[0]?.ownerMemberId ?? null;
+
+  return [
+    ...new Set([
+      ...(ownerMemberId === null ? [] : [ownerMemberId]),
+      ...participants.map((row) => row.authorMemberId),
+    ]),
+  ];
+}
+
+/**
+ * Post a comment on a page (§21.6).
+ *
+ * `postComment`'s shape with three things different, and each is a §20.5
+ * consequence rather than a choice made here: the permission question is asked of
+ * the *space*, the mention rule is "can read the space" rather than "can see the
+ * project", and there are no attachments to claim.
+ *
+ * **No `assertCan`, because there is no action to assert.** §21.6 gives
+ * commenting to every reader and adds no §10 row for it, so `checkSpaceComment`
+ * is the whole check — including the view-as refusal that `can()` supplies for
+ * free everywhere else.
+ */
+export async function postPageComment(
+  resolved: ResolvedActor,
+  input: { pageId: string; body: string },
+): Promise<Ok<{ commentId: string }> | Failed> {
+  const body = normalizeBody(input.body);
+
+  // No file can carry a wordless page comment yet, so an empty body is simply
+  // empty here — unlike the item path, where §2.4's pasted screenshot makes one
+  // legitimate.
+  if (!body) return { ok: false, problem: 'body_required' };
+  if ([...body].length > MAX_BODY) return { ok: false, problem: 'body_too_long' };
+
+  return withActor(resolved.context, async (tx, uow) => {
+    const context = await resolvePageSpace(tx, input.pageId);
+    if (!context) return { ok: false, problem: 'not_found' } as const;
+
+    const problem = checkSpaceComment(resolved.actor, context);
+    if (problem === 'not_found') return { ok: false, problem: 'not_found' } as const;
+    if (problem === 'archived') return { ok: false, problem: 'archived' } as const;
+    if (problem === 'forbidden') {
+      // Thrown rather than returned, so it reaches the same `ForbiddenError`
+      // branch every other refused mutation in the wiki does. The action named
+      // is the nearest true one: a reader who may not comment here is a reader
+      // who may not write here either.
+      throw new ForbiddenError('wiki.write_project_space', 'insufficient_role');
+    }
+
+    const mentioned = parseMentionIds(body);
+
+    if (mentioned.length > 0) {
+      const readers = await spaceReaders(tx, context, mentioned);
+      const refused = mentioned.filter((id) => !readers.has(id));
+
+      if (refused.length > 0) {
+        // The names of the people who *are* resolvable, so the screen can say who
+        // it means. A hand-typed token resolving to nobody contributes no name
+        // and the message degrades to the count — §7.7's rule, unchanged.
+        const names = await tx
+          .select({ name: user.name, email: user.email })
+          .from(workspaceMember)
+          .innerJoin(user, eq(user.id, workspaceMember.userId))
+          .where(inArray(workspaceMember.id, refused));
+
+        return {
+          ok: false,
+          problem: 'mention_not_visible',
+          names: names.map((person) => person.name.trim() || person.email),
+        } as const;
+      }
+    }
+
+    // Read *before* the insert, so the author of this comment is not put in
+    // their own subscriber list by way of the thread they are joining. `flush`
+    // would drop them anyway; asking first means the list says what it means.
+    const subscriberIds = await pageSubscribers(tx, input.pageId);
+
+    const commentId = uuidv7();
+
+    await tx.insert(comment).values({
+      id: commentId,
+      workspaceId: resolved.workspace.id,
+      // Both null, and 0038's `comment_project_with_item` is what makes that the
+      // only correct pair: a page's permission question is asked of its space,
+      // and a page in the company space has no project to denormalize.
+      projectId: null,
+      workItemId: null,
+      wikiPageId: input.pageId,
+      authorMemberId: resolved.memberId,
+      body,
+    });
+
+    if (mentioned.length > 0) {
+      await tx.insert(commentMention).values(
+        mentioned.map((memberId) => ({
+          workspaceId: resolved.workspace.id,
+          commentId,
+          workspaceMemberId: memberId,
+        })),
+      );
+    }
+
+    uow.emit({
+      type: 'comment.created',
+      workspaceId: resolved.workspace.id,
+      subject: { kind: 'wiki_page', wikiPageId: input.pageId },
+      commentId,
+      mentioned,
+      subscriberIds,
+    });
+
+    return { ok: true, commentId } as const;
   });
 }

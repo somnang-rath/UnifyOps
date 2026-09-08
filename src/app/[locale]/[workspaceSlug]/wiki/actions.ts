@@ -4,7 +4,19 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from '@/i18n/navigation';
 import { resolveActorContext } from '@/server/auth/context';
 import { ForbiddenError } from '@/server/authz/policy';
-import type { RowActionState, WikiPageFormState } from '@/lib/form-state';
+import type {
+  CommentFormState,
+  RowActionState,
+  SpaceExportState,
+  SpaceImportState,
+  WikiPageFormState,
+} from '@/lib/form-state';
+import {
+  exportSpace,
+  importSpace,
+  MAX_IMPORT_BYTES,
+  type TransferFailure,
+} from '@/server/services/wiki-transfer';
 import {
   createPage,
   deletePage,
@@ -18,6 +30,7 @@ import {
   setPageLabels,
   setPageIcon,
   setPageOwner,
+  setPageTemplate,
   setSpaceVerificationDefault,
   unlinkPageFromItem,
   unverifyPage,
@@ -25,6 +38,11 @@ import {
   type WikiFailure,
 } from '@/server/services/wiki';
 import { isVerificationDays, type VerificationDays } from '@/lib/wiki';
+import {
+  deleteComment,
+  postPageComment,
+  type CommentProblem,
+} from '@/server/services/comments';
 
 /**
  * The wiki's actions (§20.3.2, §20.3.3, §20.3.6 — slice 18).
@@ -56,6 +74,23 @@ const KEYS: Record<WikiFailure, string> = {
   mention_not_visible: 'wiki.errors.mentionNotVisible',
   invalid_period: 'wiki.errors.invalidPeriod',
   unknown_member: 'wiki.errors.unknownMember',
+  template_not_root: 'wiki.errors.templateNotRoot',
+  template_has_children: 'wiki.errors.templateHasChildren',
+};
+
+/**
+ * §21.8's four extra refusals, on top of every wiki failure.
+ *
+ * A separate map rather than four more rows in `KEYS`, because `TransferFailure`
+ * is `WikiFailure` *plus* four — the spread keeps the two in step by
+ * construction, so a failure added to the wiki service cannot be missing here.
+ */
+const TRANSFER_KEYS: Record<TransferFailure, string> = {
+  ...KEYS,
+  read_only: 'wiki.errors.readOnly',
+  too_large: 'wiki.errors.tooLarge',
+  unreadable: 'wiki.errors.unreadable',
+  nothing_to_import: 'wiki.errors.nothingToImport',
 };
 
 type Context = { workspaceSlug: string; locale: 'en' | 'km' };
@@ -598,6 +633,205 @@ export async function setPageLabelsAction(
 
     revalidateWiki(context);
     return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/**
+ * Comment problems to message keys (§21.6 — slice 21).
+ *
+ * A fourth map in this repo beside `KEYS`, `COMMENT_KEYS` and the attachment
+ * one, and it exists for the reason the second one did: each is exhaustive over
+ * its own problem union, and merging them would produce a map that accepted a
+ * page problem where a comment problem was meant. Three of the five keys are the
+ * item thread's own strings — the sentences are the same because the failures
+ * are — and `mentionNotVisible` is the wiki's, because "cannot see this project"
+ * is the wrong sentence about a space.
+ */
+const COMMENT_KEYS: Record<CommentProblem, string> = {
+  not_found: 'wiki.errors.notFound',
+  archived: 'wiki.errors.archived',
+  body_required: 'comments.errors.bodyRequired',
+  body_too_long: 'comments.errors.bodyTooLong',
+  mention_not_visible: 'wiki.errors.mentionNotVisible',
+};
+
+/**
+ * Ask a question on a page (§21.6).
+ *
+ * `postCommentAction`'s shape, with `pageId` where the item pair was and no
+ * attachment ids — see `pageCommentThreadIn` for why a page comment carries no
+ * files yet.
+ *
+ * `revalidateWiki` rather than one path, for the reason every other action in
+ * this file uses it: a comment does not change the tree, but the reader and the
+ * `?comments=all` widening of it are two URLs of the same page and revalidating
+ * one would leave the other showing a thread one comment short.
+ */
+export async function postPageCommentAction(
+  _previous: CommentFormState,
+  formData: FormData,
+): Promise<CommentFormState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  try {
+    const result = await postPageComment(resolved, {
+      pageId: String(formData.get('pageId') ?? ''),
+      body: String(formData.get('body') ?? ''),
+    });
+
+    if (result.ok === false) {
+      return { error: COMMENT_KEYS[result.problem], names: result.names };
+    }
+
+    revalidateWiki(context);
+    // A timestamp rather than a boolean: two successful posts in a row must look
+    // different to the composer, or the second one does not clear the box.
+    return { postedAt: Date.now() };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/**
+ * Retract your own, or remove somebody else's with §10's power (§21.6).
+ *
+ * One action for both, because the service decides which is being asked for from
+ * the row itself — the same split `deleteCommentAction` makes on an item, and the
+ * reason `deleteComment` is one function rather than two.
+ */
+export async function deletePageCommentAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  try {
+    const result = await deleteComment(resolved, {
+      commentId: String(formData.get('commentId') ?? ''),
+    });
+    if (result.ok === false) return { error: COMMENT_KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Templates, export and import (§21.7, §21.8 — slice 22)                    */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Mark a page as a template, or stop it being one (§21.7).
+ *
+ * Its own action for `setPageIconAction`'s reason one step further along: folded
+ * into the save it would ride §20.3.3's conditional update and clear §21.3's
+ * verification, and neither is right for a filing decision.
+ */
+export async function setPageTemplateAction(
+  _previous: RowActionState,
+  formData: FormData,
+): Promise<RowActionState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  try {
+    const result = await setPageTemplate(resolved, {
+      pageId: String(formData.get('pageId') ?? ''),
+      isTemplate: formData.get('isTemplate') === 'true',
+    });
+    if (result.ok === false) return { error: KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return { done: true };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/**
+ * Export a space (§21.8).
+ *
+ * The archive rides back in the result rather than through a route handler,
+ * because §21 adds none — see `SpaceExportState`. Nothing is revalidated: an
+ * export changes nothing anybody is looking at, and rebuilding the route would
+ * be work done to arrive at the screen already on the screen (the call
+ * `saveTableLayoutAction` made in slice 12).
+ */
+export async function exportSpaceAction(
+  _previous: SpaceExportState,
+  formData: FormData,
+): Promise<SpaceExportState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  try {
+    const result = await exportSpace(resolved, String(formData.get('spaceSlug') ?? ''));
+    if (result.ok === false) return { error: TRANSFER_KEYS[result.problem] };
+
+    return {
+      filename: result.filename,
+      base64: result.base64,
+      pages: result.pages,
+      at: Date.now(),
+    };
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
+    throw error;
+  }
+}
+
+/**
+ * Import Markdown into a space (§21.8).
+ *
+ * A `File` off the FormData, which is what makes this a server action rather
+ * than the sixth route handler §21 refuses: an action already takes multipart
+ * form data, and `next.config.ts` raises `serverActions.bodySizeLimit` to sit
+ * above `MAX_IMPORT_BYTES` so the refusal is ours and has words on it.
+ *
+ * An absent or empty file is `unreadable` rather than a crash: a form submitted
+ * with nothing chosen is a mis-click, and the honest answer to one is the
+ * message that says so.
+ */
+export async function importSpaceAction(
+  _previous: SpaceImportState,
+  formData: FormData,
+): Promise<SpaceImportState> {
+  const context = contextFrom(formData);
+  const resolved = await actorFor(context.workspaceSlug);
+
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: TRANSFER_KEYS.unreadable };
+  }
+  if (file.size > MAX_IMPORT_BYTES) return { error: TRANSFER_KEYS.too_large };
+
+  try {
+    const result = await importSpace(resolved, {
+      spaceSlug: String(formData.get('spaceSlug') ?? ''),
+      filename: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    });
+    if (result.ok === false) return { error: TRANSFER_KEYS[result.problem] };
+
+    revalidateWiki(context);
+    return {
+      created: result.created,
+      skipped: result.skipped.map(({ path, reason }) => ({
+        path,
+        reason: `wiki.transfer.skipped.${reason}`,
+      })),
+      at: Date.now(),
+    };
   } catch (error) {
     if (error instanceof ForbiddenError) return { error: KEYS.forbidden };
     throw error;

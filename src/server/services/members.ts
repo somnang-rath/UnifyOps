@@ -11,6 +11,7 @@ import type { ResolvedActor } from '@/server/auth/context';
 import { endAllSessions } from '@/server/auth/session';
 import { assertCan, can } from '@/server/authz/policy';
 import type { WorkspaceRole } from '@/server/authz/roles';
+import type { TenantDb } from '@/server/db/client';
 import { user as userTable, workspaceMember } from '@/server/db/schema';
 import { withActor } from '@/server/db/tenant';
 import { reassignOpenWorkInTx } from './work-items';
@@ -56,7 +57,21 @@ export type Member = {
 } & Availability;
 
 export async function listMembers(context: ActorContext): Promise<Member[]> {
-  return withActor(context, async (tx) =>
+  return withActor(context, async (tx) => listMembersIn(tx));
+}
+
+/**
+ * The same, inside a transaction that is already open.
+ *
+ * Split for `listProjectsIn`'s reason from slice 14, with a caller that makes it
+ * worth doing: the three counts below are **correlated subqueries with no test**,
+ * and slice 22 found that all three had been returning zero since the slices
+ * that wrote them. A function that takes a `tx` is one the tenancy suite can
+ * call against real Postgres, which is the only place that class of defect is
+ * visible — it typechecks, and a unit test with no database cannot see it.
+ */
+export function listMembersIn(tx: TenantDb): Promise<Member[]> {
+  return (
     tx
       .select({
         memberId: workspaceMember.id,
@@ -90,6 +105,24 @@ export async function listMembers(context: ActorContext): Promise<Member[]> {
          * member list already opened, which is the rule slices 8 through 14 each
          * learned the hard way.
          */
+        /*
+          **The interpolated outer column is correct here, and slice 22 checked
+          rather than assumed it.**
+
+          `fetchSpaces` carried a subquery that looked exactly like this one and
+          had been returning 0 since slice 18, so all three counts below were
+          suspected and all three were verified with drizzle's own `.toSQL()`.
+          The difference is the join: drizzle emits a column **unqualified** only
+          when the statement has a single table, and this query joins
+          `app_user` — so `${workspaceMember.id}` reaches Postgres as
+          `"workspace_member"."id"` and the correlation is real. Without the
+          join it would arrive as a bare `"id"`, which inside a subquery over
+          `note` binds to `note.id` and matches nothing.
+
+          The counts had no test at all until slice 22, which is why the
+          suspicion was worth chasing and why `__tenancy__/member-counts.test.ts`
+          now pins the *numbers* — the only thing that would have failed.
+        */
         noteCount: sql<number>`(
           select count(*)::int from note
           where note.owner_member_id = ${workspaceMember.id}
@@ -128,7 +161,7 @@ export async function listMembers(context: ActorContext): Promise<Member[]> {
       .from(workspaceMember)
       .innerJoin(userTable, eq(userTable.id, workspaceMember.userId))
       .where(isNull(workspaceMember.deletedAt))
-      .orderBy(userTable.name),
+      .orderBy(userTable.name)
   );
 }
 

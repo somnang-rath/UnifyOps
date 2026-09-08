@@ -2251,6 +2251,14 @@ A product that is easy to leave is easier to adopt.
 already left it open and this section does not close it, because the answer changes if data residency (§18-6)
 ever does.
 
+**RESOLVED (slice 22, 2026-09-05): a space action, offered to anybody who can read the space.** Not a settings
+row, because §6's governing rule is that "a company that never opens Settings must be completely fine" and an
+export is a thing you do *to a space* rather than a preference. Not gated on write, because somebody who can
+read every page can already open them one at a time and paste them somewhere — requiring write would stop
+nobody and would deny the export to the reader most likely to want it, which is the person leaving. It is
+**refused inside a §7.13 view-as session**, and it is the one *read* in the product that writes an audit row:
+"who took a copy of the handbook, and when" is exactly the question §18-11 built that log to answer.
+
 ### 21.9 What is refused, and what each refusal would cost
 
 | Refused | What it would cost |
@@ -2321,8 +2329,8 @@ stranding another. They are ordered by *what makes a wiki survive* before *what 
 | --- | --- | --- |
 | 19 ✅ | **Ownership, verification and the All-pages view** — *built 2026-09-05* | Mark the leave policy verified for 180 days, see it turn amber a week before it lapses, receive it in Tuesday evening's digest, and find every unowned page in the company space in one filtered list |
 | 20 ✅ | **Backlinks, the reference graph and the editor pass** — *built 2026-09-05* | Write a page referencing two others and watch both list it without anybody maintaining an index; insert a table from the `/` menu; jump to a heading from a generated table of contents; hover a reference and read its first line |
-| 21 | **Comments on pages** | Ask a question on the onboarding page, mention its owner, have it reach their inbox under the preference they already set, and have them answer in the thread |
-| 22 | **Templates, export and import** | Create an incident report from a template, export the whole company space to a folder of Markdown a person can read, and import it back into an empty workspace |
+| 21 ✅ | **Comments on pages** — *built 2026-09-05* | Ask a question on the onboarding page, mention its owner, have it reach their inbox under the preference they already set, and have them answer in the thread |
+| 22 ✅ | **Templates, export and import** — *built 2026-09-05* | Create an incident report from a template, export the whole company space to a folder of Markdown a person can read, and import it back into an empty workspace |
 
 **Definition of done, on top of §15's per-slice gates.** Slice 19: editing a verified page clears its
 verification, and the digest section is asserted in the worker's own test rather than only through the UI.
@@ -2363,7 +2371,15 @@ Open, and deliberately not added to §18, because none of it blocks anything:
 
 - **§20.5's Guest disagreement is still one line either way**, and it is now overdue: §21.6 gives a Guest the
   ability to comment on a project space, which makes the write question sharper rather than softer. It should
-  be confirmed against §20.5 before the pilot (§18-7), as §20.0 already asked.
+  be confirmed against §20.5 before the pilot (§18-7), as §20.0 already asked. Slice 21 pinned the current
+  reading in `e2e/wiki-comments.spec.ts` rather than leaving it to `policy.test.ts` alone, so reversing it now
+  costs a deliberate edit to a test that states the sentence.
+- **A page cannot hold a file, and neither can a comment on one.** §20.9 landed the schema
+  (`attachment.wiki_page_id`, the download route, the sweeper) and never landed the *ticket*:
+  `createUploadTicket` takes a `workItemId` and has no page branch. §21.6 lists "attachments in a comment"
+  among what a page thread inherits for free, and that is the one thing it did not. It is a **slice-18 gap**
+  rather than a slice-21 one, and closing it is the ticket, the route, and widening 0032's
+  `attachment_comment_with_item` CHECK — a slice about page *files*, not one about page *comments*.
 - **Revision retention.** Every revision is kept forever, which is right while a save is a deliberate act and
   becomes wrong the day anything autosaves. §21.5 refuses autosave partly for this reason. If retention is ever
   wanted, the mechanism is compaction of consecutive same-author revisions inside a short window — a job, an

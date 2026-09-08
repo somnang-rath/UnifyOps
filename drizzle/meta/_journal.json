@@ -260,6 +260,34 @@
       "when": 1788584912182,
       "tag": "0036_slice20_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788593542325,
+      "tag": "0037_slice21_page_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788593557566,
+      "tag": "0038_slice21_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1788600846348,
+      "tag": "0039_slice22_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788600890896,
+      "tag": "0040_slice22_hardening",
+      "breakpoints": true
     }
   ]
 }

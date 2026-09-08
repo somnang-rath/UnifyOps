@@ -26,6 +26,26 @@ const nextConfig: NextConfig = {
   // cover opening the dev server from a phone on the same network, which is
   // §15-6's 390px pass done on real hardware.
   allowedDevOrigins: ['127.0.0.1', '192.168.*.*', '10.*.*.*', '169.254.*.*'],
+  experimental: {
+    serverActions: {
+      // §21.8's import takes a zip of a company's documentation, and a Server
+      // Action's request body is capped at 1MB by default. Raised rather than
+      // routed around: §21's impact table says "§8's five exceptions stay five",
+      // so an upload endpoint for this was not on offer.
+      //
+      // 6MB sits above `MAX_IMPORT_BYTES` (5 MiB) with room for multipart
+      // overhead, which is the point — the refusal a person meets has to be
+      // *ours*, a sentence naming the limit on the screen they are standing on,
+      // rather than Next's 413, which the form has no way to explain. That is
+      // the same division `createUploadTicket` makes when it validates a size
+      // the object store would also reject.
+      //
+      // The cost is real and is the reason this is not larger: the default
+      // exists to bound what an unauthenticated POST can make the server parse,
+      // and this raises it for *every* action in the product, not only this one.
+      bodySizeLimit: '6mb',
+    },
+  },
 };
 
 export default withNextIntl(nextConfig);
